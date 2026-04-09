@@ -44,20 +44,27 @@ export default function LoginPage() {
   };
 
   return (
-    <SignInPage
-      title={
-        <>
-          Bem-vindo de{" "}
-          <span className="text-brand-600">volta</span>
-        </>
-      }
-      description="Acesse sua conta e acompanhe suas marcas em tempo real."
-      heroImageSrc="https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=1600&q=80"
-      testimonials={testimonials}
-      onSignIn={handleSignIn}
-      onGoogleSignIn={() => alert("Em breve!")}
-      onResetPassword={() => alert("Enviaremos um link para seu e-mail.")}
-      onCreateAccount={undefined}
-    />
+    <div className="relative">
+      {error && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-red-50 border border-red-200 text-red-700 px-6 py-3 rounded-2xl shadow-lg text-sm font-medium">
+          {error}
+        </div>
+      )}
+      <SignInPage
+        title={
+          <>
+            Bem-vindo de{" "}
+            <span className="text-brand-600">volta</span>
+          </>
+        }
+        description="Acesse sua conta e acompanhe suas marcas em tempo real."
+        heroImageSrc="https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=1600&q=80"
+        testimonials={testimonials}
+        onSignIn={handleSignIn}
+        onGoogleSignIn={() => alert("Em breve!")}
+        onResetPassword={() => alert("Enviaremos um link para seu e-mail.")}
+        onCreateAccount={undefined}
+      />
+    </div>
   );
 }
