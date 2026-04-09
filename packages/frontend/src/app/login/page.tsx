@@ -1,7 +1,11 @@
 "use client";
 
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { SignInPage, Testimonial } from "@/components/ui/sign-in";
+import axios from "axios";
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 
 const testimonials: Testimonial[] = [
   {
@@ -20,12 +24,23 @@ const testimonials: Testimonial[] = [
 
 export default function LoginPage() {
   const router = useRouter();
+  const [error, setError] = useState("");
 
   const handleSignIn = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    // TODO: conectar com API /auth/login
-    // Por ora redireciona direto pro dashboard
-    router.push("/dashboard");
+    setError("");
+    const form = e.currentTarget;
+    const email = (form.elements.namedItem("email") as HTMLInputElement)?.value;
+    const password = (form.elements.namedItem("password") as HTMLInputElement)?.value;
+
+    try {
+      const { data } = await axios.post(`${API_URL}/api/v1/auth/login`, { email, password });
+      localStorage.setItem("access_token", data.accessToken);
+      localStorage.setItem("refresh_token", data.refreshToken);
+      router.push("/dashboard");
+    } catch (err: any) {
+      setError(err?.response?.data?.message || "E-mail ou senha incorretos.");
+    }
   };
 
   return (
