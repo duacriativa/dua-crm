@@ -296,42 +296,39 @@ export default function FunilPage() {
   return (
     <div className="h-full flex flex-col bg-gray-50">
       {/* Kanban header */}
-      <div className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between shrink-0">
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => setActivePipeline(null)}
-            className="text-sm text-gray-400 hover:text-gray-700 transition-colors flex items-center gap-1"
-          >
-            Funis
-          </button>
-          <ChevronRight className="w-4 h-4 text-gray-300" />
-          <h1 className="text-base font-bold text-gray-900">{activePipeline.name}</h1>
-        </div>
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-1.5 text-sm text-gray-500">
-            <Users className="w-4 h-4" />
-            <span>{totalLeads} leads</span>
+      <div className="bg-white border-b border-gray-200 px-4 py-3 shrink-0">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <button onClick={() => setActivePipeline(null)} className="text-xs text-gray-400 hover:text-gray-700 shrink-0">Funis</button>
+            <ChevronRight className="w-3.5 h-3.5 text-gray-300 shrink-0" />
+            <h1 className="text-sm font-bold text-gray-900 truncate">{activePipeline.name}</h1>
           </div>
-          <div className="flex items-center gap-1.5 text-sm text-gray-500">
-            <DollarSign className="w-4 h-4" />
-            <span>R$ {totalValue.toLocaleString("pt-BR")}</span>
+          <div className="flex items-center gap-2 shrink-0">
+            <span className="hidden sm:flex items-center gap-1 text-xs text-gray-500"><Users className="w-3.5 h-3.5" />{totalLeads}</span>
+            <span className="hidden sm:flex items-center gap-1 text-xs text-gray-500"><DollarSign className="w-3.5 h-3.5" />R$ {(totalValue / 1000).toFixed(1)}k</span>
+            <button className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-brand-600 rounded-xl hover:bg-brand-700">
+              <Plus className="w-3.5 h-3.5" />Novo Lead
+            </button>
           </div>
-          <button className="flex items-center gap-2 px-3 py-1.5 text-xs font-semibold text-white bg-brand-600 rounded-xl hover:bg-brand-700 transition-colors">
-            <Plus className="w-3.5 h-3.5" />
-            Novo Lead
-          </button>
         </div>
+        {/* Scroll hint on mobile */}
+        <p className="sm:hidden text-[10px] text-gray-400 mt-1.5 flex items-center gap-1">
+          <span>←</span> Deslize para ver mais etapas <span>→</span>
+        </p>
       </div>
 
       {/* Kanban board */}
-      <div className="flex-1 overflow-x-auto overflow-y-hidden">
-        <div className="flex gap-4 p-5 h-full" style={{ minWidth: `${activePipeline.stages.length * 280 + 80}px` }}>
+      <div
+        className="flex-1 overflow-x-auto overflow-y-hidden"
+        style={{ WebkitOverflowScrolling: "touch" } as React.CSSProperties}
+      >
+        <div className="flex gap-3 p-4 h-full" style={{ minWidth: `${activePipeline.stages.length * 240 + 32}px` }}>
           {activePipeline.stages.map((stage) => {
             const stageValue = stage.leads.reduce((a, l) => a + (l.value || 0), 0);
             return (
               <div
                 key={stage.id}
-                className="w-64 shrink-0 flex flex-col"
+                className="w-56 sm:w-64 shrink-0 flex flex-col"
                 onDragOver={(e) => e.preventDefault()}
                 onDrop={() => onDrop(stage.id)}
               >
