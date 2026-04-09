@@ -8,7 +8,7 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 type ConnectionStatus = "disconnected" | "connecting" | "connected" | "loading";
 
 export default function WhatsAppPage() {
-  const [status, setStatus] = useState<ConnectionStatus>("loading");
+  const [status, setStatus] = useState<ConnectionStatus>("disconnected");
   const [qrCode, setQrCode] = useState<string | null>(null);
   const [instanceName, setInstanceName] = useState("dua-criativa");
   const [polling, setPolling] = useState(false);
