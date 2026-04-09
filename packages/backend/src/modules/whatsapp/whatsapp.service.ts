@@ -3,188 +3,128 @@ import axios from 'axios';
 import { PrismaService } from '../../prisma/prisma.service';
 import { EncryptionService } from '../../common/services/encryption.service';
 
-const META_API_VERSION = 'v19.0';
-const META_BASE_URL = `https://graph.facebook.com/${META_API_VERSION}`;
-
 @Injectable()
 export class WhatsAppService {
   private readonly logger = new Logger(WhatsAppService.name);
+  private readonly evolutionUrl = process.env.EVOLUTION_API_URL;
+  private readonly evolutionKey = process.env.EVOLUTION_API_KEY;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly encryption: EncryptionService,
   ) {}
 
-  /**
-   * Processa eventos recebidos via webhook da Meta.
-   * Suporta: mensagens recebidas, status de entrega/leitura.
-   */
-  async processWebhookEvent(payload: any) {
-    const entry = payload?.entry?.[0];
-    const changes = entry?.changes?.[0]?.value;
+  private get headers() {
+    return { apikey: this.evolutionKey, 'Content-Type': 'application/json' };
+  }
 
-    if (!changes) return;
+  async connect(instanceName: string) {
+    try {
+      // Tenta criar instância na Evolution API
+      await axios.post(
+        `${this.evolutionUrl}/instance/create`,
+        { instanceName, qrcode: true },
+        { headers: this.headers },
+      ).catch(() => {}); // ignora se já existir
 
-    const phoneNumberId = changes.metadata?.phone_number_id;
+      // Busca QR code
+      const res = await axios.get(
+        `${this.evolutionUrl}/instance/connect/${instanceName}`,
+        { headers: this.headers },
+      );
 
-    // Encontra o tenant pelo phoneNumberId
-    const credential = await this.prisma.metaCredential.findFirst({
-      where: { phoneNumberId },
-    });
-
-    if (!credential) {
-      this.logger.warn(`Webhook sem tenant para phoneNumberId: ${phoneNumberId}`);
-      return;
-    }
-
-    // Processa mensagens recebidas
-    if (changes.messages?.length) {
-      for (const msg of changes.messages) {
-        await this.handleIncomingMessage(credential.tenantId, msg, changes.contacts?.[0]);
+      const qrCode = res.data?.base64 || res.data?.qrcode?.base64;
+      if (qrCode) {
+        return { qrCode: qrCode.startsWith('data:') ? qrCode : `data:image/png;base64,${qrCode}` };
       }
-    }
 
-    // Processa atualizações de status (enviado, entregue, lido)
-    if (changes.statuses?.length) {
-      for (const status of changes.statuses) {
-        await this.handleStatusUpdate(status);
+      // Se já está conectado
+      return { connected: true };
+    } catch (err: any) {
+      this.logger.error('Erro ao conectar Evolution API:', err.message);
+      throw new Error('Não foi possível gerar o QR code. Verifique a Evolution API.');
+    }
+  }
+
+  async getStatus(instanceName: string) {
+    try {
+      const res = await axios.get(
+        `${this.evolutionUrl}/instance/connectionState/${instanceName}`,
+        { headers: this.headers },
+      );
+      const state = res.data?.instance?.state || res.data?.state;
+      return { connected: state === 'open' };
+    } catch {
+      return { connected: false };
+    }
+  }
+
+  async disconnect(instanceName: string) {
+    try {
+      await axios.delete(
+        `${this.evolutionUrl}/instance/logout/${instanceName}`,
+        { headers: this.headers },
+      );
+    } catch (err: any) {
+      this.logger.error('Erro ao desconectar:', err.message);
+    }
+  }
+
+  async sendTextMessage(instanceName: string, to: string, text: string) {
+    const phone = to.replace(/\D/g, '');
+    const res = await axios.post(
+      `${this.evolutionUrl}/message/sendText/${instanceName}`,
+      { number: phone, textMessage: { text } },
+      { headers: this.headers },
+    );
+    return res.data;
+  }
+
+  async processWebhook(payload: any) {
+    try {
+      const event = payload?.event;
+      const instance = payload?.instance;
+
+      if (event === 'messages.upsert') {
+        const msg = payload?.data?.messages?.[0] || payload?.data;
+        if (!msg || msg.key?.fromMe) return;
+
+        const phone = `+${msg.key?.remoteJid?.replace('@s.whatsapp.net', '')}`;
+        const content = msg.message?.conversation || msg.message?.extendedTextMessage?.text || '[mídia]';
+        const pushName = msg.pushName || phone;
+
+        // Encontra tenant pela instância
+        const tenant = await this.prisma.tenant.findFirst({ where: { slug: instance } });
+        if (!tenant) return;
+
+        // Upsert contato
+        const contact = await this.prisma.contact.upsert({
+          where: { tenantId_phone: { tenantId: tenant.id, phone } },
+          create: { tenantId: tenant.id, phone, name: pushName },
+          update: {},
+        });
+
+        // Upsert conversa
+        const conversation = await this.prisma.conversation.upsert({
+          where: { tenantId_externalId: { tenantId: tenant.id, externalId: phone } },
+          create: { tenantId: tenant.id, contactId: contact.id, channel: 'WHATSAPP', externalId: phone, status: 'OPEN' },
+          update: { status: 'OPEN', updatedAt: new Date() },
+        });
+
+        await this.prisma.message.create({
+          data: {
+            conversationId: conversation.id,
+            direction: 'INBOUND',
+            type: 'TEXT',
+            content,
+            externalId: msg.key?.id,
+          },
+        });
+
+        this.logger.log(`Mensagem de ${phone} salva`);
       }
-    }
-  }
-
-  private async handleIncomingMessage(
-    tenantId: string,
-    msg: any,
-    metaContact: any,
-  ) {
-    const phone = `+${msg.from}`;
-    const name = metaContact?.profile?.name ?? phone;
-
-    // Upsert do contato
-    const contact = await this.prisma.contact.upsert({
-      where: { tenantId_phone: { tenantId, phone } },
-      create: { tenantId, phone, name },
-      update: {},
-    });
-
-    // Upsert da conversa (uma por contato/canal)
-    const conversation = await this.prisma.conversation.upsert({
-      where: { tenantId_externalId: { tenantId, externalId: contact.id } },
-      create: {
-        tenantId,
-        contactId: contact.id,
-        channel: 'WHATSAPP',
-        externalId: contact.id,
-        status: 'OPEN',
-      },
-      update: { status: 'OPEN', updatedAt: new Date() },
-    });
-
-    const type = msg.type ?? 'text';
-    const content = this.extractMessageContent(msg);
-
-    await this.prisma.message.create({
-      data: {
-        conversationId: conversation.id,
-        direction: 'INBOUND',
-        type: type.toUpperCase() as any,
-        content,
-        externalId: msg.id,
-      },
-    });
-
-    this.logger.log(`[${tenantId}] Mensagem recebida de ${phone}`);
-  }
-
-  private async handleStatusUpdate(status: any) {
-    const now = new Date();
-    const update: any = {};
-
-    if (status.status === 'delivered') update.deliveredAt = now;
-    if (status.status === 'read') update.readAt = now;
-    if (status.status === 'failed') update.errorCode = status.errors?.[0]?.code?.toString();
-
-    if (Object.keys(update).length === 0) return;
-
-    await this.prisma.message.updateMany({
-      where: { externalId: status.id },
-      data: update,
-    });
-  }
-
-  /**
-   * Envia mensagem de texto simples via Meta Cloud API.
-   */
-  async sendTextMessage(tenantId: string, to: string, text: string) {
-    const { token, phoneNumberId } = await this.getCredentials(tenantId);
-
-    const response = await axios.post(
-      `${META_BASE_URL}/${phoneNumberId}/messages`,
-      {
-        messaging_product: 'whatsapp',
-        to,
-        type: 'text',
-        text: { body: text },
-      },
-      {
-        headers: { Authorization: `Bearer ${token}` },
-      },
-    );
-
-    return response.data;
-  }
-
-  /**
-   * Envia template aprovado pela Meta (necessário para mensagens ativas).
-   */
-  async sendTemplate(
-    tenantId: string,
-    to: string,
-    templateName: string,
-    languageCode = 'pt_BR',
-    components: any[] = [],
-  ) {
-    const { token, phoneNumberId } = await this.getCredentials(tenantId);
-
-    const response = await axios.post(
-      `${META_BASE_URL}/${phoneNumberId}/messages`,
-      {
-        messaging_product: 'whatsapp',
-        to,
-        type: 'template',
-        template: {
-          name: templateName,
-          language: { code: languageCode },
-          components,
-        },
-      },
-      {
-        headers: { Authorization: `Bearer ${token}` },
-      },
-    );
-
-    return response.data;
-  }
-
-  private async getCredentials(tenantId: string) {
-    const cred = await this.prisma.metaCredential.findUnique({
-      where: { tenantId },
-    });
-
-    if (!cred) throw new Error(`Credenciais Meta não configuradas para tenant ${tenantId}`);
-
-    const token = this.encryption.decrypt(cred.accessToken);
-    return { token, phoneNumberId: cred.phoneNumberId };
-  }
-
-  private extractMessageContent(msg: any): string {
-    switch (msg.type) {
-      case 'text': return msg.text?.body ?? '';
-      case 'image': return msg.image?.caption ?? '[imagem]';
-      case 'audio': return '[áudio]';
-      case 'video': return msg.video?.caption ?? '[vídeo]';
-      case 'document': return msg.document?.filename ?? '[documento]';
-      default: return `[${msg.type}]`;
+    } catch (err: any) {
+      this.logger.error('Erro no webhook:', err.message);
     }
   }
 }
