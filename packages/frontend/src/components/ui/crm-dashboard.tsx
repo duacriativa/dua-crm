@@ -1,16 +1,10 @@
 "use client";
 
-import React, { useState } from "react";
+import React from "react";
 import {
-  LayoutDashboard,
   MessageCircle,
   Users,
-  Filter,
-  Megaphone,
   Bot,
-  Settings,
-  ChevronDown,
-  ChevronsRight,
   Bell,
   TrendingUp,
   TrendingDown,
@@ -26,18 +20,9 @@ import {
   Search,
   Package,
   ArrowUpRight,
-  Wifi,
-  WifiOff,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-
-type NavItem = {
-  icon: React.ElementType;
-  label: string;
-  badge?: number;
-  href: string;
-};
 
 type KpiCard = {
   label: string;
@@ -73,16 +58,6 @@ type TopProduct = {
 };
 
 // ─── Mock Data ────────────────────────────────────────────────────────────────
-
-const navItems: NavItem[] = [
-  { icon: LayoutDashboard, label: "Dashboard",   href: "/dashboard" },
-  { icon: MessageCircle,   label: "Conversas",   href: "/conversas", badge: 12 },
-  { icon: Users,           label: "Contatos",    href: "/contatos" },
-  { icon: Filter,          label: "Funil",       href: "/funil", badge: 8 },
-  { icon: Megaphone,       label: "Campanhas",   href: "/campanhas" },
-  { icon: Bot,             label: "Bots",        href: "/bots" },
-  { icon: Settings,        label: "Configurações", href: "/configuracoes" },
-];
 
 const kpis: KpiCard[] = [
   {
@@ -190,98 +165,6 @@ function agentStatusConfig(s: AIAgent["status"]) {
   if (s === "active") return { label: "Ativo",   cls: "bg-brand-100 text-brand-700",    dot: "bg-brand-500" };
   if (s === "online") return { label: "Online",  cls: "bg-emerald-100 text-emerald-700", dot: "bg-emerald-500" };
   return                     { label: "Pausado", cls: "bg-gray-100 text-gray-500",       dot: "bg-gray-400" };
-}
-
-// ─── Sidebar ──────────────────────────────────────────────────────────────────
-
-function Sidebar({ open, setOpen, selected, setSelected }: {
-  open: boolean;
-  setOpen: (v: boolean) => void;
-  selected: string;
-  setSelected: (v: string) => void;
-}) {
-  return (
-    <nav
-      className={`relative flex flex-col shrink-0 h-screen transition-all duration-300 ease-in-out
-        ${open ? "w-60" : "w-16"}
-        bg-brand-600 text-white`}
-    >
-      {/* Logo */}
-      <div className={`flex items-center gap-3 px-4 py-5 border-b border-brand-500/40`}>
-        <div className="flex items-center justify-center w-9 h-9 rounded-xl bg-white/15 shrink-0">
-          <span className="text-white font-bold text-lg leading-none">D</span>
-        </div>
-        {open && (
-          <div className="min-w-0">
-            <p className="font-semibold text-sm leading-tight truncate">Dua CRM</p>
-            <p className="text-xs text-brand-200 truncate">Plano Crescimento</p>
-          </div>
-        )}
-        {open && <ChevronDown className="ml-auto h-4 w-4 text-brand-300 shrink-0" />}
-      </div>
-
-      {/* Nav */}
-      <div className="flex-1 py-4 space-y-0.5 px-2 overflow-y-auto">
-        {navItems.map(({ icon: Icon, label, badge, href }) => {
-          const active = selected === label;
-          return (
-            <button
-              key={label}
-              onClick={() => setSelected(label)}
-              className={`relative flex items-center gap-3 w-full h-10 px-2.5 rounded-lg transition-all duration-150
-                ${active
-                  ? "bg-white/20 text-white"
-                  : "text-brand-200 hover:bg-white/10 hover:text-white"
-                }`}
-            >
-              <Icon className="h-4.5 w-4.5 shrink-0" />
-              {open && (
-                <span className="text-sm font-medium truncate">{label}</span>
-              )}
-              {badge && open && (
-                <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-white/25 text-xs font-semibold px-1">
-                  {badge}
-                </span>
-              )}
-              {badge && !open && (
-                <span className="absolute top-1 right-1 h-2 w-2 rounded-full bg-amber-400" />
-              )}
-            </button>
-          );
-        })}
-      </div>
-
-      {/* WhatsApp status */}
-      {open && (
-        <div className="mx-3 mb-3 p-3 rounded-lg bg-white/10 border border-white/10">
-          <div className="flex items-center gap-2">
-            <div className="relative">
-              <div className="w-7 h-7 rounded-full bg-emerald-400 flex items-center justify-center">
-                <Phone className="h-3.5 w-3.5 text-white" />
-              </div>
-              <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-emerald-300 border-2 border-brand-600" />
-            </div>
-            <div className="min-w-0">
-              <p className="text-xs font-medium text-white truncate">WhatsApp</p>
-              <p className="text-xs text-brand-200">Conectado via QR</p>
-            </div>
-            <Wifi className="ml-auto h-3.5 w-3.5 text-emerald-300 shrink-0" />
-          </div>
-        </div>
-      )}
-
-      {/* Toggle */}
-      <button
-        onClick={() => setOpen(!open)}
-        className="flex items-center gap-2 px-4 py-3 border-t border-brand-500/40 text-brand-200 hover:text-white hover:bg-white/5 transition-colors"
-      >
-        <ChevronsRight
-          className={`h-4 w-4 shrink-0 transition-transform duration-300 ${open ? "rotate-180" : ""}`}
-        />
-        {open && <span className="text-xs">Recolher</span>}
-      </button>
-    </nav>
-  );
 }
 
 // ─── KPI Card ─────────────────────────────────────────────────────────────────
@@ -554,20 +437,7 @@ function DashboardContent() {
 // ─── Root Export ──────────────────────────────────────────────────────────────
 
 export function CRMDashboard() {
-  const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [selected, setSelected] = useState("Dashboard");
-
-  return (
-    <div className="flex h-screen w-full overflow-hidden bg-gray-50">
-      <Sidebar
-        open={sidebarOpen}
-        setOpen={setSidebarOpen}
-        selected={selected}
-        setSelected={setSelected}
-      />
-      <DashboardContent />
-    </div>
-  );
+  return <DashboardContent />;
 }
 
 export default CRMDashboard;
