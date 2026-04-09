@@ -1,8 +1,8 @@
 [phases.install]
-cmds = ["npm install --legacy-peer-deps"]
+cmds = ["npm install --legacy-peer-deps --include=dev"]
 
 [phases.build]
-cmds = ["npx prisma generate", "npm run build"]
+cmds = ["npx prisma generate", "npx tsc -p tsconfig.build.json"]
 
 [start]
 cmd = "npx prisma generate && npx prisma db push --accept-data-loss && npx ts-node prisma/seed.ts && node dist/main"
