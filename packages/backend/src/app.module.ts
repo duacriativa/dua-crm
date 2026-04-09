@@ -14,6 +14,7 @@ import { InstagramModule } from './modules/instagram/instagram.module';
 import { AutomationsModule } from './modules/automations/automations.module';
 import { CampaignsModule } from './modules/campaigns/campaigns.module';
 import { IntegrationsModule } from './modules/integrations/integrations.module';
+import { UsersModule } from './modules/users/users.module';
 
 @Module({
   imports: [
@@ -42,6 +43,7 @@ import { IntegrationsModule } from './modules/integrations/integrations.module';
     AutomationsModule,
     CampaignsModule,
     IntegrationsModule,
+    UsersModule,
   ],
   providers: [
     // Rate limiting aplicado globalmente

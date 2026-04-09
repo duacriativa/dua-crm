@@ -57,7 +57,7 @@ export default function LoginPage() {
       onSignIn={handleSignIn}
       onGoogleSignIn={() => alert("Em breve!")}
       onResetPassword={() => alert("Enviaremos um link para seu e-mail.")}
-      onCreateAccount={() => router.push("/cadastro")}
+      onCreateAccount={undefined}
     />
   );
 }
