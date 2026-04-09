@@ -1,0 +1,304 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── ENUMS ────────────────────────────────────────────────────────────────────
+
+enum Plan {
+  ESSENCIAL
+  CRESCIMENTO
+  ESCALA
+}
+
+enum Role {
+  OWNER
+  ADMIN
+  AGENT
+}
+
+enum Channel {
+  WHATSAPP
+  INSTAGRAM
+}
+
+enum ConversationStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  ARCHIVED
+}
+
+enum MessageDirection {
+  INBOUND
+  OUTBOUND
+}
+
+enum MessageType {
+  TEXT
+  IMAGE
+  AUDIO
+  VIDEO
+  DOCUMENT
+  TEMPLATE
+  INTERACTIVE
+}
+
+enum ContactSegment {
+  NEW       // nunca comprou
+  ACTIVE    // comprou nos últimos 60 dias
+  VIP       // top 20% por valor gasto
+  AT_RISK   // comprou antes, sumiu há 30-60 dias
+  DORMANT   // sem compra há +60 dias
+}
+
+enum OrderSource {
+  NUVEMSHOP
+  SHOPIFY
+  WOOCOMMERCE
+  MANUAL
+}
+
+enum OrderStatus {
+  PENDING
+  PAID
+  SHIPPED
+  DELIVERED
+  CANCELLED
+  REFUNDED
+}
+
+enum IntegrationType {
+  NUVEMSHOP
+  SHOPIFY
+  WOOCOMMERCE
+}
+
+enum AutomationTrigger {
+  ABANDONED_CART         // carrinho abandonado no ecommerce
+  ORDER_DELIVERED        // pedido entregue
+  ORDER_PAID             // pagamento confirmado
+  NEW_FOLLOWER           // novo seguidor no Instagram
+  CONTACT_DORMANT        // cliente sem compra há N dias
+  CONTACT_AT_RISK        // cliente em risco de churn
+}
+
+enum CampaignStatus {
+  DRAFT
+  SCHEDULED
+  RUNNING
+  COMPLETED
+  CANCELLED
+}
+
+// ─── MODELOS ──────────────────────────────────────────────────────────────────
+
+model Tenant {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  plan      Plan     @default(ESSENCIAL)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users            User[]
+  contacts         Contact[]
+  conversations    Conversation[]
+  campaigns        Campaign[]
+  automations      Automation[]
+  integrations     Integration[]
+  metaCredential   MetaCredential?
+  auditLogs        AuditLog[]
+}
+
+model User {
+  id           String   @id @default(cuid())
+  tenantId     String
+  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  email        String
+  passwordHash String
+  name         String
+  role         Role     @default(AGENT)
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  refreshTokens RefreshToken[]
+
+  @@unique([tenantId, email])
+  @@index([tenantId])
+}
+
+model RefreshToken {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String   @unique  // bcrypt hash do token
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  revokedAt DateTime?
+
+  @@index([userId])
+}
+
+model Contact {
+  id              String         @id @default(cuid())
+  tenantId        String
+  tenant          Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name            String
+  phone           String?        // formato E.164: +5511999999999
+  instagramId     String?        // Instagram user ID
+  instagramHandle String?
+  email           String?
+  tags            String[]
+  segment         ContactSegment @default(NEW)
+  totalSpent      Float          @default(0)
+  orderCount      Int            @default(0)
+  lastPurchaseAt  DateTime?
+  notes           String?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  conversations Conversation[]
+  orders        Order[]
+
+  @@unique([tenantId, phone])
+  @@unique([tenantId, instagramId])
+  @@index([tenantId])
+  @@index([tenantId, segment])
+}
+
+model Conversation {
+  id         String             @id @default(cuid())
+  tenantId   String
+  tenant     Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  contactId  String
+  contact    Contact            @relation(fields: [contactId], references: [id])
+  channel    Channel
+  status     ConversationStatus @default(OPEN)
+  assignedTo String?            // userId
+  externalId String?            // ID da conversa no Meta
+  createdAt  DateTime           @default(now())
+  updatedAt  DateTime           @updatedAt
+
+  messages Message[]
+
+  @@unique([tenantId, externalId])
+  @@index([tenantId, status])
+  @@index([contactId])
+}
+
+model Message {
+  id             String           @id @default(cuid())
+  conversationId String
+  conversation   Conversation     @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  direction      MessageDirection
+  type           MessageType      @default(TEXT)
+  content        String
+  mediaUrl       String?
+  templateName   String?
+  externalId     String?          // Meta message ID
+  sentAt         DateTime         @default(now())
+  deliveredAt    DateTime?
+  readAt         DateTime?
+  errorCode      String?
+
+  @@index([conversationId])
+  @@index([externalId])
+}
+
+model Order {
+  id          String      @id @default(cuid())
+  tenantId    String
+  contactId   String
+  contact     Contact     @relation(fields: [contactId], references: [id])
+  externalId  String
+  source      OrderSource
+  total       Float
+  status      OrderStatus
+  items       Json        // [{ name, sku, qty, price }]
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  @@unique([tenantId, externalId, source])
+  @@index([tenantId])
+  @@index([contactId])
+}
+
+model Integration {
+  id        String          @id @default(cuid())
+  tenantId  String
+  tenant    Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  type      IntegrationType
+  config    String          // JSON criptografado (AES-256)
+  active    Boolean         @default(true)
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+
+  @@unique([tenantId, type])
+}
+
+model MetaCredential {
+  id              String  @id @default(cuid())
+  tenantId        String  @unique
+  tenant          Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  phoneNumberId   String
+  accessToken     String  // criptografado AES-256
+  wabaId          String  // WhatsApp Business Account ID
+  verifyToken     String  // para validação do webhook
+  instagramPageId String?
+  instagramToken  String? // criptografado AES-256
+}
+
+model Automation {
+  id         String            @id @default(cuid())
+  tenantId   String
+  name       String
+  trigger    AutomationTrigger
+  conditions Json              // ex: { "daysSinceLastPurchase": 30 }
+  actions    Json              // ex: [{ "type": "SEND_WHATSAPP", "template": "..." }]
+  active     Boolean           @default(true)
+  runCount   Int               @default(0)
+  createdAt  DateTime          @default(now())
+  updatedAt  DateTime          @updatedAt
+
+  @@index([tenantId, trigger, active])
+}
+
+model Campaign {
+  id          String         @id @default(cuid())
+  tenantId    String
+  name        String
+  message     String
+  mediaUrl    String?
+  segment     Json           // filtros: { "tags": ["vip"], "minSpent": 500 }
+  status      CampaignStatus @default(DRAFT)
+  sentCount   Int            @default(0)
+  failedCount Int            @default(0)
+  scheduledAt DateTime?
+  startedAt   DateTime?
+  finishedAt  DateTime?
+  createdAt   DateTime       @default(now())
+
+  @@index([tenantId, status])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  tenantId   String
+  tenant     Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  userId     String?
+  action     String   // ex: "contact.delete", "campaign.send"
+  entityType String?
+  entityId   String?
+  meta       Json?
+  ip         String?
+  createdAt  DateTime @default(now())
+
+  @@index([tenantId, createdAt])
+}
