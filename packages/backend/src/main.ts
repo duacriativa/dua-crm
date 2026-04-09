@@ -27,10 +27,15 @@ async function bootstrap() {
     }),
   );
 
+  // ── Health check (sem prefixo) ────────────────────────────────────────────
+  const httpAdapter = app.getHttpAdapter();
+  httpAdapter.get('/health', (_req: any, res: any) => res.send({ status: 'ok' }));
+
   // ── Prefixo global da API ─────────────────────────────────────────────────
   app.setGlobalPrefix('api/v1');
 
-  await app.listen(process.env.APP_PORT ?? 3001);
+  const port = process.env.PORT ?? process.env.APP_PORT ?? 3001;
+  await app.listen(port);
   console.log(`ModaCRM Backend rodando na porta ${process.env.APP_PORT ?? 3001}`);
 }
 

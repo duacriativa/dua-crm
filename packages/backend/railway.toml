@@ -1,12 +1,10 @@
 [build]
 builder = "nixpacks"
-buildCommand = "npm install --legacy-peer-deps && npm run build"
 
 [deploy]
-startCommand = "npm run db:deploy && npm run start:prod"
 restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 3
 
 [deploy.healthcheck]
 path = "/health"
-timeout = 30
+timeout = 60
