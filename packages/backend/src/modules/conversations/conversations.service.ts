@@ -142,8 +142,9 @@ export class ConversationsService {
 
     const phone = conv.externalId.replace(/\D/g, '');
 
-    // Envia via Evolution API (instanceName = tenantId)
-    const instanceName = tenantId;
+    // Envia via Evolution API (instanceName = tenant slug)
+    const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { slug: true } });
+    const instanceName = tenant?.slug ?? tenantId;
     try {
       await axios.post(
         `${process.env.EVOLUTION_API_URL}/message/sendText/${instanceName}`,
