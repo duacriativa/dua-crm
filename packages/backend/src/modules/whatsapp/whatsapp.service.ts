@@ -93,8 +93,8 @@ export class WhatsAppService {
         const content = msg.message?.conversation || msg.message?.extendedTextMessage?.text || '[mídia]';
         const pushName = msg.pushName || phone;
 
-        // Encontra tenant pela instância
-        const tenant = await this.prisma.tenant.findFirst({ where: { slug: instance } });
+        // Encontra tenant pela instância (instanceName = tenantId)
+        const tenant = await this.prisma.tenant.findFirst({ where: { id: instance } });
         if (!tenant) return;
 
         // Upsert contato

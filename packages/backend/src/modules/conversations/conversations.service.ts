@@ -142,8 +142,8 @@ export class ConversationsService {
 
     const phone = conv.externalId.replace(/\D/g, '');
 
-    // Envia via Evolution API
-    const instanceName = `tenant-${tenantId}`;
+    // Envia via Evolution API (instanceName = tenantId)
+    const instanceName = tenantId;
     try {
       await axios.post(
         `${process.env.EVOLUTION_API_URL}/message/sendText/${instanceName}`,
