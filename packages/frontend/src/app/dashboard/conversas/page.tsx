@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   Search, Send, Phone, MoreVertical, Clock, CheckCheck, Check,
   Smile, Paperclip, Archive, MessageCircle, Instagram, Circle,
-  ArrowLeft, RefreshCw,
+  ArrowLeft, RefreshCw, Plus, X,
 } from "lucide-react";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
@@ -59,6 +60,9 @@ const tabs: { label: string; value: string }[] = [
 ];
 
 export default function ConversasPage() {
+  const searchParams = useSearchParams();
+  const phoneParam = searchParams.get("phone");
+
   const [activeTab, setActiveTab] = useState("ALL");
   const [search, setSearch] = useState("");
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -73,6 +77,14 @@ export default function ConversasPage() {
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const selectedRef = useRef<Conversation | null>(null);
   selectedRef.current = selected;
+
+  // Nova conversa outbound
+  const [showNewConv, setShowNewConv] = useState(false);
+  const [newConvPhone, setNewConvPhone] = useState("");
+  const [newConvName, setNewConvName] = useState("");
+  const [newConvMessage, setNewConvMessage] = useState("");
+  const [startingConv, setStartingConv] = useState(false);
+  const phoneParamUsed = useRef(false);
 
   // ── Busca lista de conversas ──────────────────────────────────────────────
   const fetchConversations = useCallback(async () => {
@@ -103,6 +115,51 @@ export default function ConversasPage() {
     const interval = setInterval(fetchConversations, 5000);
     return () => clearInterval(interval);
   }, [fetchConversations]);
+
+  // ── Auto-seleciona conversa pelo ?phone= param ────────────────────────────
+  useEffect(() => {
+    if (!phoneParam || loading || phoneParamUsed.current) return;
+    const digits = phoneParam.replace(/\D/g, "");
+    const match = conversations.find((c) =>
+      c.contact.phone?.replace(/\D/g, "") === digits
+    );
+    if (match) {
+      phoneParamUsed.current = true;
+      selectConversation(match);
+    } else if (!loading) {
+      phoneParamUsed.current = true;
+      setNewConvPhone(phoneParam);
+      setShowNewConv(true);
+    }
+  }, [phoneParam, conversations, loading]);
+
+  // ── Inicia conversa outbound ──────────────────────────────────────────────
+  const startConversation = async () => {
+    if (!newConvPhone.trim() || startingConv) return;
+    setStartingConv(true);
+    try {
+      const res = await fetch(`${API_URL}/api/v1/conversations/start`, {
+        method: "POST",
+        headers: authHeaders(),
+        body: JSON.stringify({
+          phone: newConvPhone.trim(),
+          name: newConvName.trim() || undefined,
+          message: newConvMessage.trim() || undefined,
+        }),
+      });
+      if (!res.ok) return;
+      const conv = await res.json();
+      setConversations((prev) => {
+        const exists = prev.find((c) => c.id === conv.id);
+        return exists ? prev : [{ ...conv, lastMessage: newConvMessage || null, unreadCount: 0 }, ...prev];
+      });
+      selectConversation({ ...conv, lastMessage: newConvMessage || null, unreadCount: 0 });
+      setShowNewConv(false);
+      setNewConvPhone(""); setNewConvName(""); setNewConvMessage("");
+    } finally {
+      setStartingConv(false);
+    }
+  };
 
   // ── Busca mensagens da conversa selecionada ───────────────────────────────
   const fetchMessages = useCallback(async (convId: string) => {
@@ -184,9 +241,15 @@ export default function ConversasPage() {
       <div className="px-4 pt-4 pb-3 border-b border-gray-100">
         <div className="flex items-center justify-between mb-3">
           <h1 className="text-lg font-bold text-gray-900">Conversas</h1>
-          <button onClick={fetchConversations} className="p-1.5 text-gray-400 hover:text-gray-700 rounded-xl hover:bg-gray-100">
-            <RefreshCw className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-1">
+            <button onClick={() => { setNewConvPhone(""); setNewConvName(""); setNewConvMessage(""); setShowNewConv(true); }}
+              className="p-1.5 text-brand-600 hover:bg-brand-50 rounded-xl" title="Nova conversa">
+              <Plus className="w-4 h-4" />
+            </button>
+            <button onClick={fetchConversations} className="p-1.5 text-gray-400 hover:text-gray-700 rounded-xl hover:bg-gray-100">
+              <RefreshCw className="w-4 h-4" />
+            </button>
+          </div>
         </div>
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -392,6 +455,51 @@ export default function ConversasPage() {
         {mobileView === "chat" && ChatPanel}
         {mobileView === "info" && InfoPanel}
       </div>
+
+      {/* Modal Nova Conversa */}
+      {showNewConv && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-6">
+            <div className="flex items-center justify-between mb-5">
+              <h2 className="text-base font-bold text-gray-900">Nova Conversa</h2>
+              <button onClick={() => setShowNewConv(false)} className="p-1.5 rounded-xl hover:bg-gray-100">
+                <X className="w-4 h-4 text-gray-400" />
+              </button>
+            </div>
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs font-medium text-gray-600 block mb-1">WhatsApp *</label>
+                <input value={newConvPhone} onChange={(e) => setNewConvPhone(e.target.value)}
+                  placeholder="+55 85 99999-9999"
+                  className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500" />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-gray-600 block mb-1">Nome (opcional)</label>
+                <input value={newConvName} onChange={(e) => setNewConvName(e.target.value)}
+                  placeholder="Nome do contato"
+                  className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500" />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-gray-600 block mb-1">Primeira mensagem (opcional)</label>
+                <textarea value={newConvMessage} onChange={(e) => setNewConvMessage(e.target.value)}
+                  placeholder="Olá! Vi seu cadastro em nosso site..."
+                  rows={3}
+                  className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500 resize-none" />
+              </div>
+            </div>
+            <div className="flex gap-3 mt-5">
+              <button onClick={() => setShowNewConv(false)}
+                className="flex-1 py-2.5 text-sm font-medium text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50">
+                Cancelar
+              </button>
+              <button onClick={startConversation} disabled={!newConvPhone.trim() || startingConv}
+                className="flex-1 py-2.5 text-sm font-semibold text-white bg-brand-600 rounded-xl hover:bg-brand-700 disabled:opacity-50">
+                {startingConv ? "Iniciando..." : "Iniciar"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

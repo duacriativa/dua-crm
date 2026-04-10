@@ -175,6 +175,68 @@ export class ConversationsService {
     return message;
   }
 
+  async startConversation(
+    tenantId: string,
+    phone: string,
+    name?: string,
+    firstMessage?: string,
+  ) {
+    // Normaliza telefone para formato +55...
+    const normalized = phone.startsWith('+') ? phone : `+${phone.replace(/\D/g, '')}`;
+    const digits = normalized.replace(/\D/g, '');
+
+    // Busca ou cria contato
+    let contact = await this.prisma.contact.findFirst({
+      where: { tenantId, phone: normalized },
+    });
+    if (!contact) {
+      contact = await this.prisma.contact.create({
+        data: {
+          tenantId,
+          name: name || normalized,
+          phone: normalized,
+        },
+      });
+    }
+
+    // Busca ou cria conversa (tenta por externalId com e sem +)
+    let conv = await this.prisma.conversation.findFirst({
+      where: {
+        tenantId,
+        OR: [
+          { externalId: normalized },
+          { externalId: digits },
+          { contactId: contact.id },
+        ],
+      },
+      include: {
+        contact: { select: { id: true, name: true, phone: true, email: true, tags: true, segment: true } },
+      },
+    });
+
+    if (!conv) {
+      conv = await this.prisma.conversation.create({
+        data: {
+          tenantId,
+          contactId: contact.id,
+          channel: 'WHATSAPP',
+          externalId: normalized,
+          status: 'OPEN',
+        },
+        include: {
+          contact: { select: { id: true, name: true, phone: true, email: true, tags: true, segment: true } },
+        },
+      });
+    }
+
+    // Envia primeira mensagem se fornecida
+    if (firstMessage?.trim()) {
+      await this.sendMessage(tenantId, conv.id, firstMessage.trim());
+    }
+
+    return conv;
+  }
+
   async updateStatus(tenantId: string, conversationId: string, status: string) {
     const conv = await this.prisma.conversation.findFirst({
       where: { id: conversationId, tenantId },

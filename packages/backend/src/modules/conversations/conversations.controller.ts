@@ -48,6 +48,20 @@ export class ConversationsController {
     );
   }
 
+  /** POST /conversations/start — inicia conversa outbound por telefone */
+  @Post('start')
+  startConversation(
+    @Request() req: any,
+    @Body() body: { phone: string; name?: string; message?: string },
+  ) {
+    return this.conversationsService.startConversation(
+      req.user.tenantId,
+      body.phone,
+      body.name,
+      body.message,
+    );
+  }
+
   /** POST /conversations/:id/messages — envia mensagem */
   @Post(':id/messages')
   sendMessage(
