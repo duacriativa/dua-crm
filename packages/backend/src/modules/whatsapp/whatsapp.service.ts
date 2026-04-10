@@ -26,24 +26,25 @@ export class WhatsAppService {
         { headers: this.headers },
       ).catch(() => {}); // ignora se não existir
 
-      // Cria instância nova com webhook configurado
-      const webhookUrl = process.env.WEBHOOK_URL ||
-        `${process.env.BACKEND_URL || 'https://renewed-youth-production-7d32.up.railway.app'}/api/v1/whatsapp/webhook`;
-
+      // Cria instância nova
       await axios.post(
         `${this.evolutionUrl}/instance/create`,
-        {
-          instanceName,
-          qrcode: true,
-          webhook: {
-            url: webhookUrl,
-            byEvents: false,
-            base64: false,
-            events: ['MESSAGES_UPSERT', 'CONNECTION_UPDATE'],
-          },
-        },
+        { instanceName, qrcode: true },
         { headers: this.headers },
       );
+
+      // Configura webhook na instância recém criada
+      const webhookUrl = process.env.WEBHOOK_URL ||
+        `https://renewed-youth-production-7d32.up.railway.app/api/v1/whatsapp/webhook`;
+      await axios.post(
+        `${this.evolutionUrl}/webhook/set/${instanceName}`,
+        {
+          url: webhookUrl,
+          enabled: true,
+          events: ['MESSAGES_UPSERT', 'CONNECTION_UPDATE'],
+        },
+        { headers: this.headers },
+      ).catch((e) => this.logger.warn('Webhook set falhou:', e.message));
 
       // Busca QR code
       const res = await axios.get(
