@@ -120,9 +120,42 @@ export class WhatsAppService {
         // Suporte a @lid (WhatsApp Business multi-device) e @s.whatsapp.net
         const rawId = remoteJid.replace('@s.whatsapp.net', '').replace('@lid', '');
         const phone = remoteJid.endsWith('@lid') ? `lid:${rawId}` : `+${rawId}`;
-        const content = msg.message?.conversation || msg.message?.extendedTextMessage?.text || '[mídia]';
         const pushName = msg.pushName || phone;
-        this.logger.log(`Mensagem de ${phone} (${pushName}): ${content}`);
+
+        // Detecta tipo e conteúdo
+        let content = '';
+        let msgType: 'TEXT' | 'IMAGE' | 'VIDEO' | 'AUDIO' | 'DOCUMENT' = 'TEXT';
+        let mediaUrl: string | null = null;
+
+        const m = msg.message;
+        if (m?.conversation) {
+          content = m.conversation;
+        } else if (m?.extendedTextMessage?.text) {
+          content = m.extendedTextMessage.text;
+        } else if (m?.imageMessage) {
+          msgType = 'IMAGE';
+          content = m.imageMessage.caption || '[imagem]';
+          const thumb = m.imageMessage.jpegThumbnail;
+          if (thumb) mediaUrl = `data:image/jpeg;base64,${thumb}`;
+        } else if (m?.videoMessage) {
+          msgType = 'VIDEO';
+          content = m.videoMessage.caption || '[vídeo]';
+          const thumb = m.videoMessage.jpegThumbnail;
+          if (thumb) mediaUrl = `data:image/jpeg;base64,${thumb}`;
+        } else if (m?.audioMessage || m?.ptvMessage) {
+          msgType = 'AUDIO';
+          content = '[áudio]';
+        } else if (m?.documentMessage) {
+          msgType = 'DOCUMENT';
+          content = m.documentMessage.fileName || m.documentMessage.caption || '[documento]';
+        } else if (m?.stickerMessage) {
+          msgType = 'IMAGE';
+          content = '[figurinha]';
+        } else {
+          content = '[mídia]';
+        }
+
+        this.logger.log(`Mensagem de ${phone} (${pushName}) [${msgType}]: ${content}`);
 
         // Encontra tenant pela instância (instanceName = tenant slug)
         const tenant = await this.prisma.tenant.findFirst({ where: { slug: instance } });
@@ -158,8 +191,9 @@ export class WhatsAppService {
           data: {
             conversationId: conversation.id,
             direction: 'INBOUND',
-            type: 'TEXT',
+            type: msgType,
             content,
+            mediaUrl,
             externalId: msgExternalId,
           },
         });
