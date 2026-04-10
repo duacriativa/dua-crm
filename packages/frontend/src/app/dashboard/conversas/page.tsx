@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation";
 import {
   Search, Send, Phone, MoreVertical, Clock, CheckCheck, Check,
   Smile, Paperclip, Archive, MessageCircle, Instagram, Circle,
-  ArrowLeft, RefreshCw, Plus, X,
+  ArrowLeft, RefreshCw, Plus, X, Trash2,
 } from "lucide-react";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
@@ -235,6 +235,16 @@ export default function ConversasPage() {
     setConversations((prev) => prev.map((c) => c.id === selected.id ? { ...c, status: status as ConversationStatus } : c));
   };
 
+  const deleteConversation = async () => {
+    if (!selected) return;
+    if (!confirm(`Excluir conversa com ${selected.contact.name}? Todo o histórico será apagado.`)) return;
+    await fetch(`${API_URL}/api/v1/conversations/${selected.id}`, { method: "DELETE", headers: authHeaders() });
+    setConversations((prev) => prev.filter((c) => c.id !== selected.id));
+    setSelected(null);
+    setMessages([]);
+    setMobileView("list");
+  };
+
   // ── Conversation List ─────────────────────────────────────────────────────
   const ConvList = (
     <aside className="w-full lg:w-80 flex flex-col border-r border-gray-200 bg-white shrink-0 h-full">
@@ -437,6 +447,7 @@ export default function ConversasPage() {
         <button onClick={() => updateStatus("RESOLVED")} className="w-full text-left text-sm px-3 py-2.5 rounded-xl bg-green-50 text-green-700 font-medium hover:bg-green-100 flex items-center gap-2"><CheckCheck className="w-4 h-4" />Resolver</button>
         <button onClick={() => updateStatus("PENDING")} className="w-full text-left text-sm px-3 py-2.5 rounded-xl bg-yellow-50 text-yellow-700 font-medium hover:bg-yellow-100 flex items-center gap-2"><Clock className="w-4 h-4" />Pendente</button>
         <button onClick={() => updateStatus("ARCHIVED")} className="w-full text-left text-sm px-3 py-2.5 rounded-xl bg-gray-50 text-gray-600 font-medium hover:bg-gray-100 flex items-center gap-2"><Archive className="w-4 h-4" />Arquivar</button>
+        <button onClick={deleteConversation} className="w-full text-left text-sm px-3 py-2.5 rounded-xl bg-red-50 text-red-600 font-medium hover:bg-red-100 flex items-center gap-2 mt-1"><Trash2 className="w-4 h-4" />Excluir conversa</button>
       </div>
     </aside>
   ) : null;

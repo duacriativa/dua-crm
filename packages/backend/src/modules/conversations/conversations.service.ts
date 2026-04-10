@@ -175,6 +175,13 @@ export class ConversationsService {
     return message;
   }
 
+  async remove(tenantId: string, conversationId: string) {
+    await this.prisma.conversation.deleteMany({
+      where: { id: conversationId, tenantId },
+    });
+    return { ok: true };
+  }
+
   async startConversation(
     tenantId: string,
     phone: string,

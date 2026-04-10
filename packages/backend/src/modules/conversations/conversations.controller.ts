@@ -1,5 +1,5 @@
 import {
-  Controller, Get, Post, Patch, Param, Body, Query, UseGuards, Request,
+  Controller, Get, Post, Patch, Delete, Param, Body, Query, UseGuards, Request,
 } from '@nestjs/common';
 import { ConversationsService } from './conversations.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -70,6 +70,12 @@ export class ConversationsController {
     @Body('content') content: string,
   ) {
     return this.conversationsService.sendMessage(req.user.tenantId, id, content);
+  }
+
+  /** DELETE /conversations/:id — exclui conversa e mensagens */
+  @Delete(':id')
+  remove(@Request() req: any, @Param('id') id: string) {
+    return this.conversationsService.remove(req.user.tenantId, id);
   }
 
   /** PATCH /conversations/:id/status */
