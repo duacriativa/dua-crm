@@ -145,18 +145,14 @@ export class ConversationsService {
     // Envia via Evolution API (instanceName = tenant slug)
     const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { slug: true } });
     const instanceName = tenant?.slug ?? tenantId;
+    const evolutionUrl = `${process.env.EVOLUTION_API_URL}/message/sendText/${instanceName}`;
+    const body = { number: phone, textMessage: { text: content } };
+    console.log('Evolution API send:', evolutionUrl, JSON.stringify(body));
     try {
-      await axios.post(
-        `${process.env.EVOLUTION_API_URL}/message/sendText/${instanceName}`,
-        {
-          number: phone,
-          text: content,
-        },
-        { headers: this.evolutionHeaders },
-      );
+      const resp = await axios.post(evolutionUrl, body, { headers: this.evolutionHeaders });
+      console.log('Evolution API send ok:', resp.status);
     } catch (err: any) {
-      // Salva mensagem mesmo se envio falhar (log do erro)
-      console.error('Evolution API send error:', err?.response?.data ?? err.message);
+      console.error('Evolution API send error:', JSON.stringify(err?.response?.data ?? err.message));
     }
 
     // Salva no banco
