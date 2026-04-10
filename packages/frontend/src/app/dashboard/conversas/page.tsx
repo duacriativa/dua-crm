@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import {
   Search, Send, Phone, MoreVertical, Clock, CheckCheck, Check,
@@ -60,7 +60,7 @@ const tabs: { label: string; value: string }[] = [
   { label: "Resolvidas", value: "RESOLVED" },
 ];
 
-export default function ConversasPage() {
+function ConversasInner() {
   const searchParams = useSearchParams();
   const phoneParam = searchParams.get("phone");
 
@@ -608,5 +608,17 @@ export default function ConversasPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function ConversasPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center h-full text-gray-400">
+        <RefreshCw className="w-6 h-6 animate-spin" />
+      </div>
+    }>
+      <ConversasInner />
+    </Suspense>
   );
 }
