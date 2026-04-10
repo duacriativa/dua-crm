@@ -111,16 +111,18 @@ export class WhatsAppService {
 
       if (event === 'messages.upsert') {
         const msg = payload?.data?.messages?.[0] || payload?.data;
-        this.logger.log(`messages.upsert payload: fromMe=${msg?.key?.fromMe} jid=${msg?.key?.remoteJid} content=${msg?.message?.conversation || msg?.message?.extendedTextMessage?.text || '[sem texto]'}`);
         if (!msg || msg.key?.fromMe) return;
 
         const remoteJid = msg.key?.remoteJid || '';
-        // Ignora LIDs (mensagens do próprio dispositivo) e grupos
-        if (remoteJid.endsWith('@lid') || remoteJid.endsWith('@g.us')) return;
+        // Ignora grupos
+        if (remoteJid.endsWith('@g.us')) return;
 
-        const phone = `+${remoteJid.replace('@s.whatsapp.net', '')}`;
+        // Suporte a @lid (WhatsApp Business multi-device) e @s.whatsapp.net
+        const rawId = remoteJid.replace('@s.whatsapp.net', '').replace('@lid', '');
+        const phone = remoteJid.endsWith('@lid') ? `lid:${rawId}` : `+${rawId}`;
         const content = msg.message?.conversation || msg.message?.extendedTextMessage?.text || '[mídia]';
         const pushName = msg.pushName || phone;
+        this.logger.log(`Mensagem de ${phone} (${pushName}): ${content}`);
 
         // Encontra tenant pela instância (instanceName = tenant slug)
         const tenant = await this.prisma.tenant.findFirst({ where: { slug: instance } });
