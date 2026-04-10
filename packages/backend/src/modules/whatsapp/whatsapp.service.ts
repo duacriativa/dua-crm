@@ -111,6 +111,7 @@ export class WhatsAppService {
 
       if (event === 'messages.upsert') {
         const msg = payload?.data?.messages?.[0] || payload?.data;
+        this.logger.log(`messages.upsert payload: fromMe=${msg?.key?.fromMe} jid=${msg?.key?.remoteJid} content=${msg?.message?.conversation || msg?.message?.extendedTextMessage?.text || '[sem texto]'}`);
         if (!msg || msg.key?.fromMe) return;
 
         const remoteJid = msg.key?.remoteJid || '';
