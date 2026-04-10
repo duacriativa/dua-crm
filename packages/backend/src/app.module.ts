@@ -15,6 +15,7 @@ import { AutomationsModule } from './modules/automations/automations.module';
 import { CampaignsModule } from './modules/campaigns/campaigns.module';
 import { IntegrationsModule } from './modules/integrations/integrations.module';
 import { UsersModule } from './modules/users/users.module';
+import { PipelinesModule } from './modules/pipelines/pipelines.module';
 
 @Module({
   imports: [
@@ -44,6 +45,7 @@ import { UsersModule } from './modules/users/users.module';
     CampaignsModule,
     IntegrationsModule,
     UsersModule,
+    PipelinesModule,
   ],
   providers: [
     // Rate limiting aplicado globalmente

@@ -114,6 +114,7 @@ model Tenant {
   integrations     Integration[]
   metaCredential   MetaCredential?
   auditLogs        AuditLog[]
+  pipelines        Pipeline[]
 }
 
 model User {
@@ -164,8 +165,9 @@ model Contact {
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
 
-  conversations Conversation[]
-  orders        Order[]
+  conversations  Conversation[]
+  orders         Order[]
+  pipelineLeads  PipelineLead[]
 
   @@unique([tenantId, phone])
   @@unique([tenantId, instagramId])
@@ -288,6 +290,48 @@ model Campaign {
   createdAt   DateTime       @default(now())
 
   @@index([tenantId, status])
+}
+
+model Pipeline {
+  id        String   @id @default(cuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  stages PipelineStage[]
+
+  @@index([tenantId])
+}
+
+model PipelineStage {
+  id         String   @id @default(cuid())
+  pipelineId String
+  pipeline   Pipeline @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  name       String
+  color      String   @default("#6366F1")
+  position   Int      @default(0)
+
+  leads PipelineLead[]
+
+  @@index([pipelineId])
+}
+
+model PipelineLead {
+  id        String        @id @default(cuid())
+  stageId   String
+  stage     PipelineStage @relation(fields: [stageId], references: [id], onDelete: Cascade)
+  contactId String
+  contact   Contact       @relation(fields: [contactId], references: [id])
+  value     Float?
+  notes     String?
+  position  Int           @default(0)
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  @@index([stageId])
+  @@index([contactId])
 }
 
 model AuditLog {
