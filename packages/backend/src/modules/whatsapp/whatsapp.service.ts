@@ -95,7 +95,11 @@ export class WhatsAppService {
         const msg = payload?.data?.messages?.[0] || payload?.data;
         if (!msg || msg.key?.fromMe) return;
 
-        const phone = `+${msg.key?.remoteJid?.replace('@s.whatsapp.net', '')}`;
+        const remoteJid = msg.key?.remoteJid || '';
+        // Ignora LIDs (mensagens do próprio dispositivo) e grupos
+        if (remoteJid.endsWith('@lid') || remoteJid.endsWith('@g.us')) return;
+
+        const phone = `+${remoteJid.replace('@s.whatsapp.net', '')}`;
         const content = msg.message?.conversation || msg.message?.extendedTextMessage?.text || '[mídia]';
         const pushName = msg.pushName || phone;
 
