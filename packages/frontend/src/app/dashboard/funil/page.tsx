@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   Plus, MoreVertical, ChevronRight, Kanban, DollarSign, Users,
   GripVertical, X, RefreshCw, Check, Phone, Mail, Instagram,
-  MessageCircle, Tag, FileText, ExternalLink, TrendingUp
+  MessageCircle, Tag, FileText, ExternalLink, TrendingUp, Trash2
 } from "lucide-react";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
@@ -66,6 +66,9 @@ export default function FunilPage() {
   const [newStageColor, setNewStageColor] = useState(COLORS[0]);
   const stageMenuRef = useRef<HTMLDivElement>(null);
 
+  // Card menu
+  const [cardMenuId, setCardMenuId] = useState<string | null>(null);
+
   // Lead detail panel
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [fullContact, setFullContact] = useState<Contact | null>(null);
@@ -96,6 +99,22 @@ export default function FunilPage() {
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, []);
+
+  const deleteLead = async (leadId: string, stageId: string) => {
+    if (!activePipeline) return;
+    if (!confirm("Excluir este lead do funil?")) return;
+    await fetch(`${API_URL}/api/v1/pipelines/leads/${leadId}`, { method: "DELETE", headers: authHeaders() });
+    const updated = {
+      ...activePipeline,
+      stages: activePipeline.stages.map((s) =>
+        s.id === stageId ? { ...s, leads: s.leads.filter((l) => l.id !== leadId) } : s
+      ),
+    };
+    setActivePipeline(updated);
+    setPipelines((prev) => prev.map((p) => p.id === updated.id ? updated : p));
+    if (selectedLead?.id === leadId) setSelectedLead(null);
+    setCardMenuId(null);
+  };
 
   const openLeadPanel = async (lead: Lead, stage: Stage) => {
     setSelectedLead(lead);
@@ -427,17 +446,35 @@ export default function FunilPage() {
                       key={lead.id}
                       draggable
                       onDragStart={(e) => { e.stopPropagation(); onDragStart(lead, stage.id); }}
-                      onClick={() => openLeadPanel(lead, stage)}
-                      className={`bg-white rounded-2xl p-3.5 border shadow-sm hover:shadow-md transition-all cursor-pointer ${selectedLead?.id === lead.id ? "border-brand-400 ring-1 ring-brand-300" : "border-gray-100 hover:border-gray-200"}`}
+                      onClick={() => { if (cardMenuId !== lead.id) openLeadPanel(lead, stage); }}
+                      className={`relative group bg-white rounded-2xl p-3.5 border shadow-sm hover:shadow-md transition-all cursor-pointer ${selectedLead?.id === lead.id ? "border-brand-400 ring-1 ring-brand-300" : "border-gray-100 hover:border-gray-200"}`}
                     >
                       <div className="flex items-start justify-between gap-1 mb-2">
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 min-w-0">
                           <div className="w-7 h-7 rounded-full bg-brand-100 text-brand-600 font-bold text-xs flex items-center justify-center shrink-0">
                             {lead.contact.name.charAt(0).toUpperCase()}
                           </div>
-                          <span className="text-sm font-semibold text-gray-800 leading-tight">{lead.contact.name}</span>
+                          <span className="text-sm font-semibold text-gray-800 leading-tight truncate">{lead.contact.name}</span>
                         </div>
-                        <GripVertical className="w-3.5 h-3.5 text-gray-300 shrink-0 mt-0.5" />
+                        <div className="relative shrink-0" onClick={(e) => e.stopPropagation()}>
+                          <button
+                            onClick={() => setCardMenuId(cardMenuId === lead.id ? null : lead.id)}
+                            className="opacity-0 group-hover:opacity-100 p-1 rounded-lg hover:bg-gray-100 transition-opacity">
+                            <MoreVertical className="w-3.5 h-3.5 text-gray-400" />
+                          </button>
+                          {cardMenuId === lead.id && (
+                            <div className="absolute right-0 top-6 bg-white rounded-xl shadow-lg border border-gray-100 z-20 w-40 py-1">
+                              <button onClick={() => { openLeadPanel(lead, stage); setCardMenuId(null); }}
+                                className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                                Ver detalhes
+                              </button>
+                              <button onClick={() => deleteLead(lead.id, stage.id)}
+                                className="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2">
+                                <Trash2 className="w-3.5 h-3.5" />Excluir lead
+                              </button>
+                            </div>
+                          )}
+                        </div>
                       </div>
                       {lead.contact.phone && <p className="text-xs text-gray-400 ml-9">{lead.contact.phone}</p>}
                       {lead.value && <div className="ml-9 mt-1"><span className="text-xs font-semibold text-green-600">R$ {lead.value.toLocaleString("pt-BR")}</span></div>}

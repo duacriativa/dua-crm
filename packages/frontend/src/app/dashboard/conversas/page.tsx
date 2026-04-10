@@ -82,6 +82,20 @@ function ConversasInner() {
   // Reply / citação de mensagem
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
 
+  // Menu ⋮ do header do chat
+  const [showChatMenu, setShowChatMenu] = useState(false);
+  const chatMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (chatMenuRef.current && !chatMenuRef.current.contains(e.target as Node)) {
+        setShowChatMenu(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
   // Nova conversa outbound
   const [showNewConv, setShowNewConv] = useState(false);
   const [newConvPhone, setNewConvPhone] = useState("");
@@ -367,7 +381,32 @@ function ConversasInner() {
           <span className={`text-xs px-2 py-1 rounded-full font-medium ${selected.status === "OPEN" ? "bg-green-100 text-green-700" : selected.status === "PENDING" ? "bg-yellow-100 text-yellow-700" : "bg-gray-100 text-gray-500"}`}>
             {selected.status === "OPEN" ? "Aberta" : selected.status === "PENDING" ? "Pendente" : "Resolvida"}
           </span>
-          <button className="p-2 rounded-xl hover:bg-gray-100 text-gray-400"><MoreVertical className="w-4 h-4" /></button>
+          <div className="relative" ref={chatMenuRef}>
+            <button onClick={() => setShowChatMenu((v) => !v)} className="p-2 rounded-xl hover:bg-gray-100 text-gray-400">
+              <MoreVertical className="w-4 h-4" />
+            </button>
+            {showChatMenu && (
+              <div className="absolute right-0 top-9 bg-white rounded-xl shadow-lg border border-gray-100 z-30 w-44 py-1">
+                <button onClick={() => { updateStatus("OPEN"); setShowChatMenu(false); }}
+                  className="w-full text-left px-4 py-2.5 text-sm text-green-700 hover:bg-green-50 flex items-center gap-2">
+                  <CheckCheck className="w-3.5 h-3.5" />Resolver
+                </button>
+                <button onClick={() => { updateStatus("PENDING"); setShowChatMenu(false); }}
+                  className="w-full text-left px-4 py-2.5 text-sm text-yellow-700 hover:bg-yellow-50 flex items-center gap-2">
+                  <Clock className="w-3.5 h-3.5" />Pendente
+                </button>
+                <button onClick={() => { updateStatus("ARCHIVED"); setShowChatMenu(false); }}
+                  className="w-full text-left px-4 py-2.5 text-sm text-gray-600 hover:bg-gray-50 flex items-center gap-2">
+                  <Archive className="w-3.5 h-3.5" />Arquivar
+                </button>
+                <div className="border-t border-gray-100 my-1" />
+                <button onClick={() => { deleteConversation(); setShowChatMenu(false); }}
+                  className="w-full text-left px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2">
+                  <Trash2 className="w-3.5 h-3.5" />Excluir conversa
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
