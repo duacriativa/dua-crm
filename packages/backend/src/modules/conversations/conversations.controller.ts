@@ -67,9 +67,12 @@ export class ConversationsController {
   sendMessage(
     @Request() req: any,
     @Param('id') id: string,
-    @Body('content') content: string,
+    @Body() body: { content: string; quotedExternalId?: string; quotedContent?: string; quotedType?: string },
   ) {
-    return this.conversationsService.sendMessage(req.user.tenantId, id, content);
+    return this.conversationsService.sendMessage(
+      req.user.tenantId, id, body.content,
+      body.quotedExternalId, body.quotedContent, body.quotedType,
+    );
   }
 
   /** DELETE /conversations/:id — exclui conversa e mensagens */

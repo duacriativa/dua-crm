@@ -126,8 +126,31 @@ export class WhatsAppService {
         let content = '';
         let msgType: 'TEXT' | 'IMAGE' | 'VIDEO' | 'AUDIO' | 'DOCUMENT' = 'TEXT';
         let mediaUrl: string | null = null;
+        let quotedContent: string | null = null;
+        let quotedExternalId: string | null = null;
+        let quotedType: string | null = null;
 
         const m = msg.message;
+
+        // Extrai mensagem citada (reply) de qualquer tipo de mensagem
+        const ctx = m?.extendedTextMessage?.contextInfo
+          || m?.imageMessage?.contextInfo
+          || m?.videoMessage?.contextInfo
+          || m?.documentMessage?.contextInfo
+          || m?.audioMessage?.contextInfo;
+        if (ctx?.stanzaId && ctx?.quotedMessage) {
+          quotedExternalId = ctx.stanzaId;
+          const qm = ctx.quotedMessage;
+          quotedContent = qm.conversation || qm.extendedTextMessage?.text
+            || qm.imageMessage?.caption || qm.videoMessage?.caption
+            || qm.documentMessage?.fileName || '[mídia]';
+          if (qm.imageMessage) quotedType = 'IMAGE';
+          else if (qm.videoMessage) quotedType = 'VIDEO';
+          else if (qm.audioMessage) quotedType = 'AUDIO';
+          else if (qm.documentMessage) quotedType = 'DOCUMENT';
+          else quotedType = 'TEXT';
+        }
+
         if (m?.conversation) {
           content = m.conversation;
         } else if (m?.extendedTextMessage?.text) {
@@ -195,6 +218,9 @@ export class WhatsAppService {
             content,
             mediaUrl,
             externalId: msgExternalId,
+            quotedContent,
+            quotedExternalId,
+            quotedType,
           },
         });
 

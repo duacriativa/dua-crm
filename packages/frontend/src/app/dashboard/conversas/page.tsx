@@ -21,6 +21,7 @@ interface Contact {
 interface Message {
   id: string; content: string; direction: "INBOUND" | "OUTBOUND";
   type: string; sentAt: string; mediaUrl?: string | null;
+  quotedContent?: string | null; quotedExternalId?: string | null; quotedType?: string | null;
   deliveredAt?: string | null; readAt?: string | null;
 }
 interface Conversation {
@@ -77,6 +78,9 @@ export default function ConversasPage() {
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const selectedRef = useRef<Conversation | null>(null);
   selectedRef.current = selected;
+
+  // Reply / citação de mensagem
+  const [replyingTo, setReplyingTo] = useState<Message | null>(null);
 
   // Nova conversa outbound
   const [showNewConv, setShowNewConv] = useState(false);
@@ -202,12 +206,17 @@ export default function ConversasPage() {
     if (!newMessage.trim() || !selected || sending) return;
     setSending(true);
     const content = newMessage.trim();
+    const quoted = replyingTo;
     setNewMessage("");
+    setReplyingTo(null);
 
     // Otimista
     const optimistic: Message = {
       id: `opt-${Date.now()}`, content, direction: "OUTBOUND",
       type: "TEXT", sentAt: new Date().toISOString(),
+      quotedContent: quoted?.content ?? null,
+      quotedExternalId: quoted?.externalId ?? null,
+      quotedType: quoted?.type ?? null,
     };
     setMessages((prev) => [...prev, optimistic]);
 
@@ -215,7 +224,12 @@ export default function ConversasPage() {
       await fetch(`${API_URL}/api/v1/conversations/${selected.id}/messages`, {
         method: "POST",
         headers: authHeaders(),
-        body: JSON.stringify({ content }),
+        body: JSON.stringify({
+          content,
+          quotedExternalId: quoted?.externalId ?? undefined,
+          quotedContent: quoted?.content ?? undefined,
+          quotedType: quoted?.type ?? undefined,
+        }),
       });
     } finally {
       setSending(false);
@@ -378,8 +392,26 @@ export default function ConversasPage() {
                     </span>
                   </div>
                 )}
-                <div className={`flex ${isOut ? "justify-end" : "justify-start"}`}>
+                <div className={`flex items-end gap-1 group ${isOut ? "justify-end" : "justify-start"}`}>
+                  {/* Botão reply — aparece no hover */}
+                  {!isOut && (
+                    <button onClick={() => setReplyingTo(msg)}
+                      className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-full bg-gray-100 hover:bg-gray-200 shrink-0 mb-1">
+                      <svg className="w-3.5 h-3.5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+                      </svg>
+                    </button>
+                  )}
                   <div className={`max-w-[75%] rounded-2xl text-sm shadow-sm overflow-hidden ${isOut ? "bg-brand-600 text-white rounded-br-md" : "bg-white text-gray-800 rounded-bl-md border border-gray-100"}`}>
+                    {/* Citação (quoted reply) */}
+                    {msg.quotedContent && (
+                      <div className={`mx-2 mt-2 px-3 py-2 rounded-xl text-xs border-l-4 ${isOut ? "bg-white/20 border-white/60 text-white/90" : "bg-gray-50 border-brand-400 text-gray-600"}`}>
+                        <p className={`font-semibold mb-0.5 text-[10px] uppercase tracking-wide ${isOut ? "text-white/70" : "text-brand-600"}`}>
+                          {msg.quotedType === "IMAGE" ? "📷 Imagem" : msg.quotedType === "VIDEO" ? "🎥 Vídeo" : msg.quotedType === "AUDIO" ? "🎵 Áudio" : msg.quotedType === "DOCUMENT" ? "📄 Documento" : "Mensagem"}
+                        </p>
+                        <p className="truncate">{msg.quotedContent}</p>
+                      </div>
+                    )}
                     {/* Thumbnail de imagem/vídeo */}
                     {(msg.type === "IMAGE" || msg.type === "VIDEO") && msg.mediaUrl && (
                       <div className="relative">
@@ -425,6 +457,15 @@ export default function ConversasPage() {
                       </div>
                     </div>
                   </div>
+                  {/* Botão reply para mensagens outbound */}
+                  {isOut && (
+                    <button onClick={() => setReplyingTo(msg)}
+                      className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-full bg-gray-100 hover:bg-gray-200 shrink-0 mb-1">
+                      <svg className="w-3.5 h-3.5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+                      </svg>
+                    </button>
+                  )}
                 </div>
               </div>
             );
@@ -434,10 +475,26 @@ export default function ConversasPage() {
       </div>
 
       <div className="bg-white border-t border-gray-200 px-3 py-3 shrink-0">
+        {/* Preview de reply */}
+        {replyingTo && (
+          <div className="flex items-center gap-2 mb-2 px-3 py-2 bg-brand-50 border-l-4 border-brand-500 rounded-xl">
+            <div className="flex-1 min-w-0">
+              <p className="text-[10px] font-semibold text-brand-600 uppercase tracking-wide mb-0.5">
+                {replyingTo.type === "IMAGE" ? "📷 Imagem" : replyingTo.type === "VIDEO" ? "🎥 Vídeo" : replyingTo.type === "AUDIO" ? "🎵 Áudio" : replyingTo.type === "DOCUMENT" ? "📄 Documento" : "Responder"}
+              </p>
+              <p className="text-xs text-gray-600 truncate">{replyingTo.content}</p>
+            </div>
+            <button onClick={() => setReplyingTo(null)} className="shrink-0 p-0.5 text-gray-400 hover:text-gray-600">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
         <div className="flex items-end gap-2">
           <button className="p-2 text-gray-400 hover:text-gray-600"><Paperclip className="w-5 h-5" /></button>
           <button className="p-2 text-gray-400 hover:text-gray-600"><Smile className="w-5 h-5" /></button>
-          <textarea value={newMessage} onChange={(e) => setNewMessage(e.target.value)} onKeyDown={handleKeyDown} placeholder="Digite uma mensagem..." rows={1} className="flex-1 resize-none bg-gray-50 border border-gray-200 rounded-2xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 max-h-28" style={{ minHeight: "42px" }} />
+          <textarea value={newMessage} onChange={(e) => setNewMessage(e.target.value)} onKeyDown={handleKeyDown}
+            placeholder={replyingTo ? "Digite sua resposta..." : "Digite uma mensagem..."}
+            rows={1} className="flex-1 resize-none bg-gray-50 border border-gray-200 rounded-2xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 max-h-28" style={{ minHeight: "42px" }} />
           <button onClick={sendMessage} disabled={!newMessage.trim() || sending} className="p-2.5 bg-brand-600 text-white rounded-2xl hover:bg-brand-700 disabled:opacity-40 transition-colors">
             <Send className="w-4 h-4" />
           </button>

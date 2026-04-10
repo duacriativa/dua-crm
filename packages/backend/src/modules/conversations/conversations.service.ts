@@ -133,6 +133,9 @@ export class ConversationsService {
     tenantId: string,
     conversationId: string,
     content: string,
+    quotedExternalId?: string,
+    quotedContent?: string,
+    quotedType?: string,
   ) {
     const conv = await this.prisma.conversation.findFirst({
       where: { id: conversationId, tenantId },
@@ -141,12 +144,28 @@ export class ConversationsService {
     if (!conv) throw new NotFoundException('Conversa não encontrada.');
 
     const phone = conv.externalId.replace(/\D/g, '');
+    const remoteJid = `${phone}@s.whatsapp.net`;
 
     // Envia via Evolution API (instanceName = tenant slug)
     const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { slug: true } });
     const instanceName = tenant?.slug ?? tenantId;
     const evolutionUrl = `${process.env.EVOLUTION_API_URL}/message/sendText/${instanceName}`;
-    const body = { number: phone, textMessage: { text: content } };
+
+    const body: any = { number: phone, textMessage: { text: content } };
+
+    // Adiciona quoted se for reply
+    if (quotedExternalId) {
+      const qmContent = quotedType === 'IMAGE' ? { imageMessage: { caption: quotedContent || '' } }
+        : quotedType === 'VIDEO' ? { videoMessage: { caption: quotedContent || '' } }
+        : quotedType === 'AUDIO' ? { audioMessage: {} }
+        : quotedType === 'DOCUMENT' ? { documentMessage: { fileName: quotedContent || '' } }
+        : { conversation: quotedContent || '' };
+      body.quoted = {
+        key: { id: quotedExternalId, fromMe: false, remoteJid },
+        message: qmContent,
+      };
+    }
+
     console.log('Evolution API send:', evolutionUrl, JSON.stringify(body));
     try {
       const resp = await axios.post(evolutionUrl, body, { headers: this.evolutionHeaders });
@@ -163,6 +182,9 @@ export class ConversationsService {
         type: 'TEXT',
         content,
         sentAt: new Date(),
+        quotedContent: quotedContent || null,
+        quotedExternalId: quotedExternalId || null,
+        quotedType: quotedType || null,
       },
     });
 

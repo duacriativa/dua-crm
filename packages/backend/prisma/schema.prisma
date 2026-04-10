@@ -205,6 +205,9 @@ model Message {
   mediaUrl       String?
   templateName   String?
   externalId     String?          // Meta message ID
+  quotedContent    String?        // texto da mensagem citada (reply)
+  quotedExternalId String?        // externalId da mensagem citada
+  quotedType       String?        // tipo da mensagem citada (TEXT/IMAGE/etc)
   sentAt         DateTime         @default(now())
   deliveredAt    DateTime?
   readAt         DateTime?
