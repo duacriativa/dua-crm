@@ -20,12 +20,18 @@ export class WhatsAppService {
 
   async connect(instanceName: string) {
     try {
-      // Tenta criar instância na Evolution API
+      // Deleta instância antiga para garantir sessão limpa
+      await axios.delete(
+        `${this.evolutionUrl}/instance/delete/${instanceName}`,
+        { headers: this.headers },
+      ).catch(() => {}); // ignora se não existir
+
+      // Cria instância nova
       await axios.post(
         `${this.evolutionUrl}/instance/create`,
         { instanceName, qrcode: true },
         { headers: this.headers },
-      ).catch(() => {}); // ignora se já existir
+      );
 
       // Busca QR code
       const res = await axios.get(
