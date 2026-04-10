@@ -19,7 +19,7 @@ interface Contact {
   tags?: string[]; segment?: string;
 }
 interface Message {
-  id: string; content: string; direction: "INBOUND" | "OUTBOUND";
+  id: string; externalId?: string | null; content: string; direction: "INBOUND" | "OUTBOUND";
   type: string; sentAt: string; mediaUrl?: string | null;
   quotedContent?: string | null; quotedExternalId?: string | null; quotedType?: string | null;
   deliveredAt?: string | null; readAt?: string | null;
