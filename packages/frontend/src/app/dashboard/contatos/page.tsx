@@ -1,10 +1,19 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
-  Search, Plus, Download, Upload, Phone, Mail, Tag,
-  MoreVertical, User, Trash2, Edit, MessageCircle, SlidersHorizontal, X,
+  Search, Plus, Download, Upload, Phone, Mail,
+  MoreVertical, User, Edit, MessageCircle, SlidersHorizontal, X, RefreshCw,
 } from "lucide-react";
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
+
+function getToken() {
+  return typeof window !== "undefined" ? localStorage.getItem("access_token") : "";
+}
+function authHeaders() {
+  return { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` };
+}
 
 type Segment = "ALL" | "NEW" | "ACTIVE" | "VIP" | "AT_RISK" | "DORMANT";
 
@@ -23,16 +32,6 @@ const SEGMENT_COLORS: Record<string, string> = {
   DORMANT: "bg-gray-100 text-gray-500",
 };
 
-const MOCK_CONTACTS: Contact[] = [
-  { id: "1", name: "Ana Lima", phone: "+55 11 99999-0001", email: "ana@email.com", segment: "VIP", tags: ["Varejo", "SP"], createdAt: "2024-01-10", lastContact: "2024-04-08", pipelineStage: "Proposta", saleValue: 1200 },
-  { id: "2", name: "Beatriz Souza", phone: "+55 21 98888-0002", email: "bea@email.com", segment: "ACTIVE", tags: ["Atacado"], createdAt: "2024-02-15", lastContact: "2024-04-07", pipelineStage: "Qualificado", saleValue: 850 },
-  { id: "3", name: "Carla Mendes", phone: "+55 31 97777-0003", segment: "NEW", tags: ["Instagram"], createdAt: "2024-04-01", lastContact: "2024-04-06", pipelineStage: "Novo lead" },
-  { id: "4", name: "Daniela Rocha", phone: "+55 11 96666-0004", email: "dani@email.com", segment: "DORMANT", tags: ["WhatsApp", "SP"], createdAt: "2023-11-20", lastContact: "2024-01-05", pipelineStage: "Perdido" },
-  { id: "5", name: "Fernanda Costa", phone: "+55 85 95555-0005", segment: "AT_RISK", tags: ["Varejo"], createdAt: "2024-03-05", lastContact: "2024-03-20", pipelineStage: "Negociação", saleValue: 2500 },
-  { id: "6", name: "Gabriela Alves", email: "gabi@email.com", segment: "VIP", tags: ["VIP", "Loja BH"], createdAt: "2023-08-01", lastContact: "2024-04-09", pipelineStage: "Fechado", saleValue: 5800 },
-  { id: "7", name: "Helena Martins", phone: "+55 47 94444-0007", segment: "ACTIVE", tags: ["Atacado", "SC"], createdAt: "2024-01-22", lastContact: "2024-04-05", pipelineStage: "Proposta", saleValue: 1750 },
-  { id: "8", name: "Isabela Ferreira", phone: "+55 11 93333-0008", email: "isa@email.com", segment: "NEW", tags: ["Instagram"], createdAt: "2024-04-08", lastContact: "2024-04-08", pipelineStage: "Novo lead" },
-];
 
 const segmentTabs: { label: string; value: Segment }[] = [
   { label: "Todos", value: "ALL" },
@@ -44,24 +43,43 @@ const segmentTabs: { label: string; value: Segment }[] = [
 ];
 
 export default function ContatosPage() {
-  const [contacts, setContacts] = useState<Contact[]>(MOCK_CONTACTS);
+  const [contacts, setContacts] = useState<Contact[]>([]);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [activeSegment, setActiveSegment] = useState<Segment>("ALL");
   const [showNewModal, setShowNewModal] = useState(false);
   const [newContact, setNewContact] = useState({ name: "", phone: "", email: "" });
 
-  const filtered = contacts.filter((c) => {
-    const matchSeg = activeSegment === "ALL" || c.segment === activeSegment;
-    const matchSearch = !search || c.name.toLowerCase().includes(search.toLowerCase()) || (c.phone || "").includes(search) || (c.email || "").toLowerCase().includes(search.toLowerCase());
-    return matchSeg && matchSearch;
-  });
+  const fetchContacts = useCallback(async () => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams({ limit: "100" });
+      if (activeSegment !== "ALL") params.set("segment", activeSegment);
+      if (search) params.set("search", search);
+      const res = await fetch(`${API_URL}/api/v1/contacts?${params}`, { headers: authHeaders() });
+      if (!res.ok) return;
+      const data = await res.json();
+      setContacts(data.contacts ?? []);
+      setTotal(data.total ?? 0);
+    } finally {
+      setLoading(false);
+    }
+  }, [activeSegment, search]);
 
-  const addContact = () => {
+  useEffect(() => { fetchContacts(); }, [fetchContacts]);
+
+  const filtered = contacts; // já filtrado pelo backend
+
+  const addContact = async () => {
     if (!newContact.name.trim()) return;
-    const c: Contact = { id: `local-${Date.now()}`, ...newContact, segment: "NEW", tags: [], createdAt: new Date().toISOString() };
-    setContacts((prev) => [c, ...prev]);
+    await fetch(`${API_URL}/api/v1/contacts`, {
+      method: "POST", headers: authHeaders(),
+      body: JSON.stringify(newContact),
+    });
     setNewContact({ name: "", phone: "", email: "" });
     setShowNewModal(false);
+    fetchContacts();
   };
 
   return (
@@ -72,7 +90,7 @@ export default function ContatosPage() {
         <div className="flex items-center justify-between gap-2 mb-3">
           <div>
             <h1 className="text-lg font-bold text-gray-900">Contatos</h1>
-            <p className="text-xs text-gray-400">{contacts.length} contatos cadastrados</p>
+            <p className="text-xs text-gray-400">{loading ? "Carregando..." : `${total} contatos cadastrados`}</p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
             <button className="hidden sm:flex items-center gap-1.5 px-3 py-2 text-sm text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50">
@@ -198,10 +216,17 @@ export default function ContatosPage() {
           </tbody>
         </table>
 
-        {filtered.length === 0 && (
+        {loading && (
+          <div className="flex flex-col items-center justify-center py-20 text-gray-400">
+            <RefreshCw className="w-6 h-6 animate-spin mb-2 opacity-40" />
+            <p className="text-sm">Carregando...</p>
+          </div>
+        )}
+        {!loading && filtered.length === 0 && (
           <div className="flex flex-col items-center justify-center py-20 text-gray-400">
             <User className="w-10 h-10 mb-3 opacity-30" />
             <p className="text-sm font-medium">Nenhum contato encontrado</p>
+            <p className="text-xs mt-1 opacity-70">Os contatos do WhatsApp aparecem automaticamente ao receber mensagens</p>
           </div>
         )}
       </div>
