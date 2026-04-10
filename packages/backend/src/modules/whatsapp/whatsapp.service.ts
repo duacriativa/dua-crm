@@ -142,13 +142,25 @@ export class WhatsAppService {
           update: { status: 'OPEN', updatedAt: new Date() },
         });
 
+        // Deduplica: ignora se já temos essa mensagem pelo externalId
+        const msgExternalId = msg.key?.id;
+        if (msgExternalId) {
+          const already = await this.prisma.message.findFirst({
+            where: { externalId: msgExternalId },
+          });
+          if (already) {
+            this.logger.log(`Mensagem duplicada ignorada: ${msgExternalId}`);
+            return;
+          }
+        }
+
         await this.prisma.message.create({
           data: {
             conversationId: conversation.id,
             direction: 'INBOUND',
             type: 'TEXT',
             content,
-            externalId: msg.key?.id,
+            externalId: msgExternalId,
           },
         });
 
