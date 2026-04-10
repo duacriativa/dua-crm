@@ -93,7 +93,7 @@ export class WhatsAppService {
     const phone = to.replace(/\D/g, '');
     const res = await axios.post(
       `${this.evolutionUrl}/message/sendText/${instanceName}`,
-      { number: phone, textMessage: { text } },
+      { number: phone, text },
       { headers: this.headers },
     );
     return res.data;
@@ -103,6 +103,7 @@ export class WhatsAppService {
     try {
       const event = payload?.event;
       const instance = payload?.instance;
+      this.logger.log(`Webhook recebido: event=${event} instance=${instance}`);
 
       if (event === 'messages.upsert') {
         const msg = payload?.data?.messages?.[0] || payload?.data;

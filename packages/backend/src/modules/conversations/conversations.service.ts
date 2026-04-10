@@ -150,7 +150,7 @@ export class ConversationsService {
         `${process.env.EVOLUTION_API_URL}/message/sendText/${instanceName}`,
         {
           number: phone,
-          textMessage: { text: content },
+          text: content,
         },
         { headers: this.evolutionHeaders },
       );
