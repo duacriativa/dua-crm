@@ -23,6 +23,8 @@ export default function FunilPage() {
   const [showNewLead, setShowNewLead] = useState<string | null>(null);
   const [newLead, setNewLead] = useState({ name: "", phone: "", value: "" });
   const [draggingLead, setDraggingLead] = useState<{ lead: Lead; fromStageId: string } | null>(null);
+  const [draggingStageId, setDraggingStageId] = useState<string | null>(null);
+  const [dragOverStageId, setDragOverStageId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   // Stage editing
@@ -50,7 +52,6 @@ export default function FunilPage() {
 
   useEffect(() => { fetchPipelines(); }, []);
 
-  // Fecha menu ao clicar fora
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (stageMenuRef.current && !stageMenuRef.current.contains(e.target as Node)) {
@@ -121,6 +122,29 @@ export default function FunilPage() {
     setStageMenuId(null);
   };
 
+  const reorderStage = async (fromId: string, toId: string) => {
+    if (!activePipeline || fromId === toId) return;
+    const stages = [...activePipeline.stages];
+    const fromIdx = stages.findIndex((s) => s.id === fromId);
+    const toIdx = stages.findIndex((s) => s.id === toId);
+    if (fromIdx === -1 || toIdx === -1) return;
+    const [moved] = stages.splice(fromIdx, 1);
+    stages.splice(toIdx, 0, moved);
+    const reordered = stages.map((s, i) => ({ ...s, position: i }));
+    // Optimistic update
+    setActivePipeline({ ...activePipeline, stages: reordered });
+    setPipelines((prev) => prev.map((p) => p.id === activePipeline.id ? { ...p, stages: reordered } : p));
+    // Persist all positions
+    await Promise.all(
+      reordered.map((s) =>
+        fetch(`${API_URL}/api/v1/pipelines/stages/${s.id}`, {
+          method: "PATCH", headers: authHeaders(),
+          body: JSON.stringify({ position: s.position }),
+        })
+      )
+    );
+  };
+
   const addLead = async (stageId: string) => {
     if (!newLead.name.trim() || saving) return;
     setSaving(true);
@@ -143,8 +167,12 @@ export default function FunilPage() {
     });
   };
 
-  const onDragStart = (lead: Lead, fromStageId: string) => setDraggingLead({ lead, fromStageId });
-  const onDrop = async (toStageId: string) => {
+  const onDragStart = (lead: Lead, fromStageId: string) => {
+    setDraggingLead({ lead, fromStageId });
+    setDraggingStageId(null);
+  };
+
+  const onDropLead = async (toStageId: string) => {
     if (!draggingLead || !activePipeline || draggingLead.fromStageId === toStageId) { setDraggingLead(null); return; }
     const updated = { ...activePipeline, stages: activePipeline.stages.map((s) => {
       if (s.id === draggingLead.fromStageId) return { ...s, leads: s.leads.filter((l) => l.id !== draggingLead.lead.id) };
@@ -265,12 +293,33 @@ export default function FunilPage() {
           {activePipeline.stages.map((stage) => {
             const stageValue = stage.leads.reduce((a, l) => a + (l.value || 0), 0);
             const isEditing = editingStageId === stage.id;
+            const isDragOver = dragOverStageId === stage.id && draggingStageId && draggingStageId !== stage.id;
             return (
-              <div key={stage.id} className="w-56 sm:w-64 shrink-0 flex flex-col"
-                onDragOver={(e) => e.preventDefault()} onDrop={() => onDrop(stage.id)}>
-
+              <div
+                key={stage.id}
+                className={`w-56 sm:w-64 shrink-0 flex flex-col transition-all duration-150 ${isDragOver ? "ring-2 ring-brand-400 rounded-2xl opacity-80" : ""} ${draggingStageId === stage.id ? "opacity-40" : ""}`}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  if (draggingStageId) setDragOverStageId(stage.id);
+                }}
+                onDragLeave={() => { if (draggingStageId) setDragOverStageId(null); }}
+                onDrop={() => {
+                  if (draggingStageId) {
+                    reorderStage(draggingStageId, stage.id);
+                    setDraggingStageId(null);
+                    setDragOverStageId(null);
+                  } else {
+                    onDropLead(stage.id);
+                  }
+                }}
+              >
                 {/* Stage header */}
-                <div className="flex items-center justify-between mb-3 gap-1">
+                <div
+                  className={`flex items-center justify-between mb-3 gap-1 ${!isEditing ? "cursor-grab active:cursor-grabbing" : ""}`}
+                  draggable={!isEditing}
+                  onDragStart={() => { setDraggingStageId(stage.id); setDraggingLead(null); }}
+                  onDragEnd={() => { setDraggingStageId(null); setDragOverStageId(null); }}
+                >
                   {isEditing ? (
                     <div className="flex-1 flex flex-col gap-2">
                       <input autoFocus value={editingStageName} onChange={(e) => setEditingStageName(e.target.value)}
@@ -295,12 +344,14 @@ export default function FunilPage() {
                   ) : (
                     <>
                       <div className="flex items-center gap-2 min-w-0">
+                        <GripVertical className="w-3 h-3 text-gray-300 shrink-0" />
                         <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: stage.color }} />
                         <span className="text-sm font-semibold text-gray-700 truncate">{stage.name}</span>
                         <span className="text-xs text-gray-400 bg-gray-100 rounded-full px-1.5 py-0.5 shrink-0">{stage.leads.length}</span>
                       </div>
                       <div className="relative shrink-0" ref={stageMenuId === stage.id ? stageMenuRef : null}>
-                        <button onClick={() => setStageMenuId(stageMenuId === stage.id ? null : stage.id)}
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setStageMenuId(stageMenuId === stage.id ? null : stage.id); }}
                           className="p-1 rounded-lg hover:bg-gray-100">
                           <MoreVertical className="w-3.5 h-3.5 text-gray-400" />
                         </button>

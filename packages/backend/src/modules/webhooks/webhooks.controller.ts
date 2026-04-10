@@ -23,6 +23,7 @@ export class WebhooksController {
     utmSource?: string;
     utmMedium?: string;
     utmCampaign?: string;
+    stageName?: string;
   }) {
     try {
       const slug = body.clientSlug || 'dua-criativa';
@@ -69,19 +70,25 @@ export class WebhooksController {
         });
       });
 
-      // Busca o primeiro pipeline do tenant
+      // Busca o pipeline e a etapa correta
       const pipeline = await this.prisma.pipeline.findFirst({
         where: { tenantId: tenant.id },
-        include: { stages: { orderBy: { position: 'asc' }, take: 1 } },
+        include: { stages: { orderBy: { position: 'asc' } } },
       });
 
       if (pipeline && pipeline.stages.length > 0) {
-        const firstStage = pipeline.stages[0];
-        const count = await this.prisma.pipelineLead.count({ where: { stageId: firstStage.id } });
+        // Tenta encontrar a etapa pelo nome (case-insensitive), senão usa a primeira
+        const targetStage = body.stageName
+          ? (pipeline.stages.find(
+              (s) => s.name.toLowerCase() === body.stageName!.toLowerCase(),
+            ) ?? pipeline.stages[0])
+          : pipeline.stages[0];
+
+        const count = await this.prisma.pipelineLead.count({ where: { stageId: targetStage.id } });
 
         await this.prisma.pipelineLead.create({
           data: {
-            stageId: firstStage.id,
+            stageId: targetStage.id,
             contactId: contact.id,
             position: count,
             notes: [

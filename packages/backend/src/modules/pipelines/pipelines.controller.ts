@@ -66,7 +66,7 @@ export class PipelinesController {
   }
 
   @Patch('stages/:stageId')
-  async updateStage(@Param('stageId') stageId: string, @Body() body: { name?: string; color?: string }) {
+  async updateStage(@Param('stageId') stageId: string, @Body() body: { name?: string; color?: string; position?: number }) {
     return this.prisma.pipelineStage.update({ where: { id: stageId }, data: body });
   }
 
