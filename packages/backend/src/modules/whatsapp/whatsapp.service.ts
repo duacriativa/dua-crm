@@ -19,19 +19,32 @@ export class WhatsAppService {
   }
 
   async connect(instanceName: string) {
+    const timeout = 20000; // 20s timeout por chamada
+    this.logger.log(`[connect] Iniciando conexão para instância: ${instanceName}`);
+    this.logger.log(`[connect] Evolution URL: ${this.evolutionUrl}`);
     try {
       // Deleta instância antiga para garantir sessão limpa
+      this.logger.log(`[connect] Deletando instância antiga...`);
       await axios.delete(
         `${this.evolutionUrl}/instance/delete/${instanceName}`,
-        { headers: this.headers },
-      ).catch(() => {}); // ignora se não existir
+        { headers: this.headers, timeout },
+      ).catch((e) => this.logger.warn(`[connect] Delete ignorado: ${e?.response?.status ?? e.message}`));
 
       // Cria instância nova
-      await axios.post(
+      this.logger.log(`[connect] Criando instância...`);
+      const createRes = await axios.post(
         `${this.evolutionUrl}/instance/create`,
         { instanceName, qrcode: true },
-        { headers: this.headers },
+        { headers: this.headers, timeout },
       );
+      this.logger.log(`[connect] Instância criada. Status: ${createRes.status}`);
+
+      // Verifica se o QR já veio na resposta de criação
+      const createQr = createRes.data?.qrcode?.base64 || createRes.data?.base64;
+      if (createQr) {
+        this.logger.log('[connect] QR code obtido na criação da instância');
+        return { qrCode: createQr.startsWith('data:') ? createQr : `data:image/png;base64,${createQr}` };
+      }
 
       // Configura webhook na instância recém criada
       const webhookUrl = process.env.WEBHOOK_URL ||
@@ -42,30 +55,35 @@ export class WhatsAppService {
         webhook_base64: false,
         events: ['MESSAGES_UPSERT', 'CONNECTION_UPDATE'],
       };
-      this.logger.log(`Configurando webhook: ${this.evolutionUrl}/webhook/set/${instanceName} -> ${webhookUrl}`);
+      this.logger.log(`[connect] Configurando webhook -> ${webhookUrl}`);
       await axios.post(
         `${this.evolutionUrl}/webhook/set/${instanceName}`,
         webhookBody,
-        { headers: this.headers },
-      ).then(() => this.logger.log('Webhook configurado com sucesso'))
-       .catch((e) => this.logger.error('Webhook set falhou:', JSON.stringify(e?.response?.data ?? e.message)));
+        { headers: this.headers, timeout },
+      ).then(() => this.logger.log('[connect] Webhook configurado'))
+       .catch((e) => this.logger.error('[connect] Webhook falhou:', JSON.stringify(e?.response?.data ?? e.message)));
 
       // Busca QR code
+      this.logger.log(`[connect] Buscando QR code via /instance/connect/${instanceName}...`);
       const res = await axios.get(
         `${this.evolutionUrl}/instance/connect/${instanceName}`,
-        { headers: this.headers },
+        { headers: this.headers, timeout },
       );
+      this.logger.log(`[connect] Resposta /instance/connect: ${JSON.stringify(res.data)?.substring(0, 200)}`);
 
       const qrCode = res.data?.base64 || res.data?.qrcode?.base64;
       if (qrCode) {
+        this.logger.log('[connect] QR code obtido com sucesso');
         return { qrCode: qrCode.startsWith('data:') ? qrCode : `data:image/png;base64,${qrCode}` };
       }
 
       // Se já está conectado
+      this.logger.log('[connect] Nenhum QR code - instância já conectada');
       return { connected: true };
     } catch (err: any) {
-      this.logger.error('Erro ao conectar Evolution API:', err.message);
-      throw new Error('Não foi possível gerar o QR code. Verifique a Evolution API.');
+      this.logger.error(`[connect] Erro: ${err.message}`);
+      this.logger.error(`[connect] Detalhes: ${JSON.stringify(err?.response?.data ?? '')}`);
+      throw new Error(`Não foi possível gerar o QR code: ${err.message}`);
     }
   }
 
