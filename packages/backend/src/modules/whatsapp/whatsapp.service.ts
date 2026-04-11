@@ -6,47 +6,66 @@ import { EncryptionService } from '../../common/services/encryption.service';
 @Injectable()
 export class WhatsAppService {
   private readonly logger = new Logger(WhatsAppService.name);
-  private readonly evolutionUrl = process.env.EVOLUTION_API_URL;
-  private readonly evolutionKey = process.env.EVOLUTION_API_KEY;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly encryption: EncryptionService,
   ) {}
 
+  // Lê sempre do process.env em cada chamada (evita problema de inicialização)
+  private get evolutionUrl() {
+    return process.env.EVOLUTION_API_URL;
+  }
+
   private get headers() {
-    return { apikey: this.evolutionKey, 'Content-Type': 'application/json' };
+    return { apikey: process.env.EVOLUTION_API_KEY, 'Content-Type': 'application/json' };
   }
 
   async connect(instanceName: string) {
-    const timeout = 15000; // 15s timeout por chamada
-    this.logger.log(`[connect] Iniciando conexão para instância: ${instanceName}`);
-    this.logger.log(`[connect] Evolution URL: ${this.evolutionUrl}`);
+    const timeout = 15000;
+    const url = this.evolutionUrl;
+    const key = process.env.EVOLUTION_API_KEY;
+
+    this.logger.log(`[connect] instância=${instanceName} url=${url} key=${key?.substring(0, 8)}...`);
+
+    if (!url || !key) {
+      throw new HttpException(
+        'Variáveis EVOLUTION_API_URL ou EVOLUTION_API_KEY não configuradas no servidor.',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
 
     try {
       // Passo 1: verifica se a instância já existe
-      this.logger.log(`[connect] Verificando se instância já existe via GET /instance/fetchInstances...`);
       let instanceExists = false;
       try {
         const fetchRes = await axios.get(
-          `${this.evolutionUrl}/instance/fetchInstances`,
-          { headers: this.headers, timeout, params: { instanceName } },
+          `${url}/instance/fetchInstances`,
+          { headers: this.headers, timeout },
         );
         const instances: any[] = Array.isArray(fetchRes.data) ? fetchRes.data : [];
         instanceExists = instances.some(
           (i) => i?.instance?.instanceName === instanceName || i?.instanceName === instanceName,
         );
-        this.logger.log(`[connect] Instância ${instanceExists ? 'JÁ EXISTE' : 'não existe'} na Evolution API`);
+        this.logger.log(`[connect] fetchInstances ok — instância ${instanceExists ? 'JÁ EXISTE' : 'não existe'}`);
       } catch (fetchErr: any) {
-        this.logger.warn(`[connect] Não foi possível verificar instâncias existentes: ${fetchErr?.response?.status ?? fetchErr.message} — prosseguindo com criação`);
+        const status = fetchErr?.response?.status;
+        this.logger.warn(`[connect] fetchInstances falhou (${status ?? fetchErr.message}) — prosseguindo`);
+        // Se for 403, a chave pode estar errada — lançar erro antes de tentar criar
+        if (status === 403) {
+          throw new HttpException(
+            `Acesso negado pela Evolution API (403). Verifique a variável EVOLUTION_API_KEY no Railway. Key usada: ${key?.substring(0, 8)}...`,
+            HttpStatus.BAD_GATEWAY,
+          );
+        }
       }
 
       // Passo 2: cria instância apenas se não existir
       if (!instanceExists) {
-        this.logger.log(`[connect] Criando instância...`);
+        this.logger.log(`[connect] Criando instância ${instanceName}...`);
         try {
           const createRes = await axios.post(
-            `${this.evolutionUrl}/instance/create`,
+            `${url}/instance/create`,
             { instanceName, qrcode: true },
             { headers: this.headers, timeout },
           );
@@ -55,16 +74,17 @@ export class WhatsAppService {
           // Verifica se o QR já veio na resposta de criação
           const createQr = createRes.data?.qrcode?.base64 || createRes.data?.base64;
           if (createQr) {
-            this.logger.log('[connect] QR code obtido na criação da instância');
+            this.logger.log('[connect] QR code obtido na criação');
             return { qrCode: createQr.startsWith('data:') ? createQr : `data:image/png;base64,${createQr}` };
           }
         } catch (createErr: any) {
           const status = createErr?.response?.status;
-          if (status === 422 || status === 409) {
-            this.logger.warn(`[connect] Criação retornou ${status} (instância já existe) — continuando`);
+          const detail = JSON.stringify(createErr?.response?.data ?? '');
+          this.logger.warn(`[connect] Criação retornou ${status} — ${detail}`);
+          if (status === 422 || status === 409 || status === 403) {
+            // 422/409 = instância já existe; 403 também tratamos como "tenta continuar"
+            this.logger.warn(`[connect] Tratando ${status} como instância já existente — continuando`);
           } else {
-            this.logger.error(`[connect] Erro ao criar instância: ${status ?? createErr.message}`);
-            this.logger.error(`[connect] Detalhes: ${JSON.stringify(createErr?.response?.data ?? '')}`);
             throw new HttpException(
               `Não foi possível criar a instância WhatsApp: ${createErr?.response?.data?.message ?? createErr.message}`,
               HttpStatus.BAD_GATEWAY,
@@ -75,54 +95,48 @@ export class WhatsAppService {
         this.logger.log(`[connect] Pulando criação — instância já existe`);
       }
 
-      // Passo 4: configura webhook
+      // Passo 3: configura webhook
       const webhookUrl = process.env.WEBHOOK_URL ||
         `https://renewed-youth-production-7d32.up.railway.app/api/v1/whatsapp/webhook`;
-      const webhookBody = {
-        url: webhookUrl,
-        webhook_by_events: false,
-        webhook_base64: false,
-        events: ['MESSAGES_UPSERT', 'CONNECTION_UPDATE'],
-      };
       this.logger.log(`[connect] Configurando webhook -> ${webhookUrl}`);
       await axios.post(
-        `${this.evolutionUrl}/webhook/set/${instanceName}`,
-        webhookBody,
+        `${url}/webhook/set/${instanceName}`,
+        {
+          url: webhookUrl,
+          webhook_by_events: false,
+          webhook_base64: false,
+          events: ['MESSAGES_UPSERT', 'CONNECTION_UPDATE'],
+        },
         { headers: this.headers, timeout },
       ).then(() => this.logger.log('[connect] Webhook configurado'))
-       .catch((e) => this.logger.error('[connect] Webhook falhou:', JSON.stringify(e?.response?.data ?? e.message)));
+       .catch((e) => this.logger.warn('[connect] Webhook falhou (não crítico):', JSON.stringify(e?.response?.data ?? e.message)));
 
-      // Passo 5: busca QR code
+      // Passo 4: busca QR code
       this.logger.log(`[connect] Buscando QR code via GET /instance/connect/${instanceName}...`);
       const res = await axios.get(
-        `${this.evolutionUrl}/instance/connect/${instanceName}`,
+        `${url}/instance/connect/${instanceName}`,
         { headers: this.headers, timeout },
       );
-      this.logger.log(`[connect] Resposta /instance/connect: ${JSON.stringify(res.data)?.substring(0, 200)}`);
+      this.logger.log(`[connect] Resposta /instance/connect: ${JSON.stringify(res.data)?.substring(0, 300)}`);
 
-      // Passo 6: retorna QR code se disponível
       const qrCode = res.data?.base64 || res.data?.qrcode?.base64;
       if (qrCode) {
         this.logger.log('[connect] QR code obtido com sucesso');
         return { qrCode: qrCode.startsWith('data:') ? qrCode : `data:image/png;base64,${qrCode}` };
       }
 
-      // Passo 7: instância já está conectada (open)
       const state = res.data?.instance?.state || res.data?.state;
       if (state === 'open') {
-        this.logger.log('[connect] Instância já está conectada (state=open)');
+        this.logger.log('[connect] Instância já conectada (state=open)');
         return { connected: true };
       }
 
-      this.logger.log('[connect] Nenhum QR code e estado não é "open" — assumindo conectado');
+      this.logger.warn('[connect] Nenhum QR e estado não é open — retornando connected:true');
       return { connected: true };
 
     } catch (err: any) {
-      // Re-lança HttpException sem encapsular
       if (err instanceof HttpException) throw err;
-
       this.logger.error(`[connect] Erro inesperado: ${err.message}`);
-      this.logger.error(`[connect] Detalhes: ${JSON.stringify(err?.response?.data ?? '')}`);
       throw new HttpException(
         `Não foi possível gerar o QR code: ${err.message}`,
         HttpStatus.BAD_GATEWAY,
@@ -175,15 +189,12 @@ export class WhatsAppService {
         if (!msg || msg.key?.fromMe) return;
 
         const remoteJid = msg.key?.remoteJid || '';
-        // Ignora grupos
         if (remoteJid.endsWith('@g.us')) return;
 
-        // Suporte a @lid (WhatsApp Business multi-device) e @s.whatsapp.net
         const rawId = remoteJid.replace('@s.whatsapp.net', '').replace('@lid', '');
         const phone = remoteJid.endsWith('@lid') ? `lid:${rawId}` : `+${rawId}`;
         const pushName = msg.pushName || phone;
 
-        // Detecta tipo e conteúdo
         let content = '';
         let msgType: 'TEXT' | 'IMAGE' | 'VIDEO' | 'AUDIO' | 'DOCUMENT' = 'TEXT';
         let mediaUrl: string | null = null;
@@ -193,7 +204,6 @@ export class WhatsAppService {
 
         const m = msg.message;
 
-        // Extrai mensagem citada (reply) de qualquer tipo de mensagem
         const ctx = m?.extendedTextMessage?.contextInfo
           || m?.imageMessage?.contextInfo
           || m?.videoMessage?.contextInfo
@@ -241,25 +251,21 @@ export class WhatsAppService {
 
         this.logger.log(`Mensagem de ${phone} (${pushName}) [${msgType}]: ${content}`);
 
-        // Encontra tenant pela instância (instanceName = tenant slug)
         const tenant = await this.prisma.tenant.findFirst({ where: { slug: instance } });
         if (!tenant) return;
 
-        // Upsert contato
         const contact = await this.prisma.contact.upsert({
           where: { tenantId_phone: { tenantId: tenant.id, phone } },
           create: { tenantId: tenant.id, phone, name: pushName },
           update: {},
         });
 
-        // Upsert conversa
         const conversation = await this.prisma.conversation.upsert({
           where: { tenantId_externalId: { tenantId: tenant.id, externalId: phone } },
           create: { tenantId: tenant.id, contactId: contact.id, channel: 'WHATSAPP', externalId: phone, status: 'OPEN' },
           update: { status: 'OPEN', updatedAt: new Date() },
         });
 
-        // Deduplica: ignora se já temos essa mensagem pelo externalId
         const msgExternalId = msg.key?.id;
         if (msgExternalId) {
           const already = await this.prisma.message.findFirst({
