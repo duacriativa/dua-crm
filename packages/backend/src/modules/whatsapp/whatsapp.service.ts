@@ -111,28 +111,47 @@ export class WhatsAppService {
       ).then(() => this.logger.log('[connect] Webhook configurado'))
        .catch((e) => this.logger.warn('[connect] Webhook falhou (não crítico):', JSON.stringify(e?.response?.data ?? e.message)));
 
-      // Passo 4: busca QR code
-      this.logger.log(`[connect] Buscando QR code via GET /instance/connect/${instanceName}...`);
-      const res = await axios.get(
-        `${url}/instance/connect/${instanceName}`,
-        { headers: this.headers, timeout },
-      );
-      this.logger.log(`[connect] Resposta /instance/connect: ${JSON.stringify(res.data)?.substring(0, 300)}`);
+      // Passo 4: busca QR code com polling (v2.x demora alguns segundos para gerar)
+      this.logger.log(`[connect] Buscando QR via polling /instance/connect/${instanceName}...`);
+      for (let attempt = 1; attempt <= 10; attempt++) {
+        await new Promise((r) => setTimeout(r, 3000));
+        try {
+          const res = await axios.get(
+            `${url}/instance/connect/${instanceName}`,
+            { headers: this.headers, timeout },
+          );
+          const raw = JSON.stringify(res.data)?.substring(0, 200);
+          this.logger.log(`[connect] Attempt ${attempt}: ${raw}`);
 
-      const qrCode = res.data?.base64 || res.data?.qrcode?.base64;
-      if (qrCode) {
-        this.logger.log('[connect] QR code obtido com sucesso');
-        return { qrCode: qrCode.startsWith('data:') ? qrCode : `data:image/png;base64,${qrCode}` };
+          // v2.x: { base64, code, count } | v1.x: { base64 } | ambos: qrcode.base64
+          const qrCode =
+            res.data?.base64 ||
+            res.data?.qrcode?.base64 ||
+            res.data?.qrCode;
+
+          if (qrCode) {
+            this.logger.log('[connect] QR code obtido com sucesso');
+            return { qrCode: qrCode.startsWith('data:') ? qrCode : `data:image/png;base64,${qrCode}` };
+          }
+
+          const state = res.data?.instance?.state || res.data?.state;
+          if (state === 'open') {
+            this.logger.log('[connect] Instância já conectada (state=open)');
+            return { connected: true };
+          }
+
+          // count=0 significa QR ainda não gerado — continua polling
+          const count = res.data?.count;
+          if (count !== undefined && count > 0) {
+            this.logger.warn(`[connect] count=${count} mas sem base64 — continuando`);
+          }
+        } catch (pollErr: any) {
+          this.logger.warn(`[connect] Attempt ${attempt} falhou: ${pollErr.message}`);
+        }
       }
 
-      const state = res.data?.instance?.state || res.data?.state;
-      if (state === 'open') {
-        this.logger.log('[connect] Instância já conectada (state=open)');
-        return { connected: true };
-      }
-
-      this.logger.warn('[connect] Nenhum QR e estado não é open — retornando connected:true');
-      return { connected: true };
+      this.logger.warn('[connect] QR não obtido após 10 tentativas — retornando connected:false');
+      return { connected: false, message: 'QR code não gerado. Tente novamente.' };
 
     } catch (err: any) {
       if (err instanceof HttpException) throw err;
