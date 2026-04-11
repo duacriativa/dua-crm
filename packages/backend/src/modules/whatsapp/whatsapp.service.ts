@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, HttpException, HttpStatus } from '@nestjs/common';
 import axios from 'axios';
 import { PrismaService } from '../../prisma/prisma.service';
 import { EncryptionService } from '../../common/services/encryption.service';
@@ -19,34 +19,63 @@ export class WhatsAppService {
   }
 
   async connect(instanceName: string) {
-    const timeout = 20000; // 20s timeout por chamada
+    const timeout = 15000; // 15s timeout por chamada
     this.logger.log(`[connect] Iniciando conexão para instância: ${instanceName}`);
     this.logger.log(`[connect] Evolution URL: ${this.evolutionUrl}`);
+
     try {
-      // Deleta instância antiga para garantir sessão limpa
-      this.logger.log(`[connect] Deletando instância antiga...`);
-      await axios.delete(
-        `${this.evolutionUrl}/instance/delete/${instanceName}`,
-        { headers: this.headers, timeout },
-      ).catch((e) => this.logger.warn(`[connect] Delete ignorado: ${e?.response?.status ?? e.message}`));
-
-      // Cria instância nova
-      this.logger.log(`[connect] Criando instância...`);
-      const createRes = await axios.post(
-        `${this.evolutionUrl}/instance/create`,
-        { instanceName, qrcode: true },
-        { headers: this.headers, timeout },
-      );
-      this.logger.log(`[connect] Instância criada. Status: ${createRes.status}`);
-
-      // Verifica se o QR já veio na resposta de criação
-      const createQr = createRes.data?.qrcode?.base64 || createRes.data?.base64;
-      if (createQr) {
-        this.logger.log('[connect] QR code obtido na criação da instância');
-        return { qrCode: createQr.startsWith('data:') ? createQr : `data:image/png;base64,${createQr}` };
+      // Passo 1: verifica se a instância já existe
+      this.logger.log(`[connect] Verificando se instância já existe via GET /instance/fetchInstances...`);
+      let instanceExists = false;
+      try {
+        const fetchRes = await axios.get(
+          `${this.evolutionUrl}/instance/fetchInstances`,
+          { headers: this.headers, timeout, params: { instanceName } },
+        );
+        const instances: any[] = Array.isArray(fetchRes.data) ? fetchRes.data : [];
+        instanceExists = instances.some(
+          (i) => i?.instance?.instanceName === instanceName || i?.instanceName === instanceName,
+        );
+        this.logger.log(`[connect] Instância ${instanceExists ? 'JÁ EXISTE' : 'não existe'} na Evolution API`);
+      } catch (fetchErr: any) {
+        this.logger.warn(`[connect] Não foi possível verificar instâncias existentes: ${fetchErr?.response?.status ?? fetchErr.message} — prosseguindo com criação`);
       }
 
-      // Configura webhook na instância recém criada
+      // Passo 2: cria instância apenas se não existir
+      if (!instanceExists) {
+        this.logger.log(`[connect] Criando instância...`);
+        try {
+          const createRes = await axios.post(
+            `${this.evolutionUrl}/instance/create`,
+            { instanceName, qrcode: true },
+            { headers: this.headers, timeout },
+          );
+          this.logger.log(`[connect] Instância criada. Status: ${createRes.status}`);
+
+          // Verifica se o QR já veio na resposta de criação
+          const createQr = createRes.data?.qrcode?.base64 || createRes.data?.base64;
+          if (createQr) {
+            this.logger.log('[connect] QR code obtido na criação da instância');
+            return { qrCode: createQr.startsWith('data:') ? createQr : `data:image/png;base64,${createQr}` };
+          }
+        } catch (createErr: any) {
+          const status = createErr?.response?.status;
+          if (status === 422 || status === 409) {
+            this.logger.warn(`[connect] Criação retornou ${status} (instância já existe) — continuando`);
+          } else {
+            this.logger.error(`[connect] Erro ao criar instância: ${status ?? createErr.message}`);
+            this.logger.error(`[connect] Detalhes: ${JSON.stringify(createErr?.response?.data ?? '')}`);
+            throw new HttpException(
+              `Não foi possível criar a instância WhatsApp: ${createErr?.response?.data?.message ?? createErr.message}`,
+              HttpStatus.BAD_GATEWAY,
+            );
+          }
+        }
+      } else {
+        this.logger.log(`[connect] Pulando criação — instância já existe`);
+      }
+
+      // Passo 4: configura webhook
       const webhookUrl = process.env.WEBHOOK_URL ||
         `https://renewed-youth-production-7d32.up.railway.app/api/v1/whatsapp/webhook`;
       const webhookBody = {
@@ -63,27 +92,41 @@ export class WhatsAppService {
       ).then(() => this.logger.log('[connect] Webhook configurado'))
        .catch((e) => this.logger.error('[connect] Webhook falhou:', JSON.stringify(e?.response?.data ?? e.message)));
 
-      // Busca QR code
-      this.logger.log(`[connect] Buscando QR code via /instance/connect/${instanceName}...`);
+      // Passo 5: busca QR code
+      this.logger.log(`[connect] Buscando QR code via GET /instance/connect/${instanceName}...`);
       const res = await axios.get(
         `${this.evolutionUrl}/instance/connect/${instanceName}`,
         { headers: this.headers, timeout },
       );
       this.logger.log(`[connect] Resposta /instance/connect: ${JSON.stringify(res.data)?.substring(0, 200)}`);
 
+      // Passo 6: retorna QR code se disponível
       const qrCode = res.data?.base64 || res.data?.qrcode?.base64;
       if (qrCode) {
         this.logger.log('[connect] QR code obtido com sucesso');
         return { qrCode: qrCode.startsWith('data:') ? qrCode : `data:image/png;base64,${qrCode}` };
       }
 
-      // Se já está conectado
-      this.logger.log('[connect] Nenhum QR code - instância já conectada');
+      // Passo 7: instância já está conectada (open)
+      const state = res.data?.instance?.state || res.data?.state;
+      if (state === 'open') {
+        this.logger.log('[connect] Instância já está conectada (state=open)');
+        return { connected: true };
+      }
+
+      this.logger.log('[connect] Nenhum QR code e estado não é "open" — assumindo conectado');
       return { connected: true };
+
     } catch (err: any) {
-      this.logger.error(`[connect] Erro: ${err.message}`);
+      // Re-lança HttpException sem encapsular
+      if (err instanceof HttpException) throw err;
+
+      this.logger.error(`[connect] Erro inesperado: ${err.message}`);
       this.logger.error(`[connect] Detalhes: ${JSON.stringify(err?.response?.data ?? '')}`);
-      throw new Error(`Não foi possível gerar o QR code: ${err.message}`);
+      throw new HttpException(
+        `Não foi possível gerar o QR code: ${err.message}`,
+        HttpStatus.BAD_GATEWAY,
+      );
     }
   }
 
