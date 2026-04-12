@@ -111,10 +111,10 @@ export class WhatsAppService {
       ).then(() => this.logger.log('[connect] Webhook configurado'))
        .catch((e) => this.logger.warn('[connect] Webhook falhou (não crítico):', JSON.stringify(e?.response?.data ?? e.message)));
 
-      // Passo 4: busca QR code com polling (v2.x demora alguns segundos para gerar)
-      this.logger.log(`[connect] Buscando QR via polling /instance/connect/${instanceName}...`);
-      for (let attempt = 1; attempt <= 10; attempt++) {
-        await new Promise((r) => setTimeout(r, 3000));
+      // Passo 4: busca QR code — v1.8.x retorna imediatamente, tentar até 4x com 1s de intervalo
+      this.logger.log(`[connect] Buscando QR via /instance/connect/${instanceName}...`);
+      for (let attempt = 1; attempt <= 4; attempt++) {
+        if (attempt > 1) await new Promise((r) => setTimeout(r, 1000));
         try {
           const res = await axios.get(
             `${url}/instance/connect/${instanceName}`,
@@ -123,7 +123,6 @@ export class WhatsAppService {
           const raw = JSON.stringify(res.data)?.substring(0, 200);
           this.logger.log(`[connect] Attempt ${attempt}: ${raw}`);
 
-          // v2.x: { base64, code, count } | v1.x: { base64 } | ambos: qrcode.base64
           const qrCode =
             res.data?.base64 ||
             res.data?.qrcode?.base64 ||
@@ -139,18 +138,12 @@ export class WhatsAppService {
             this.logger.log('[connect] Instância já conectada (state=open)');
             return { connected: true };
           }
-
-          // count=0 significa QR ainda não gerado — continua polling
-          const count = res.data?.count;
-          if (count !== undefined && count > 0) {
-            this.logger.warn(`[connect] count=${count} mas sem base64 — continuando`);
-          }
         } catch (pollErr: any) {
           this.logger.warn(`[connect] Attempt ${attempt} falhou: ${pollErr.message}`);
         }
       }
 
-      this.logger.warn('[connect] QR não obtido após 10 tentativas — retornando connected:false');
+      this.logger.warn('[connect] QR não obtido após 4 tentativas — retornando connected:false');
       return { connected: false, message: 'QR code não gerado. Tente novamente.' };
 
     } catch (err: any) {

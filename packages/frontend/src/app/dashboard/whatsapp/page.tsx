@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Smartphone, Wifi, WifiOff, RefreshCw, CheckCircle2, AlertCircle } from "lucide-react";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
+const QR_EXPIRY_SECONDS = 18;
 
 type ConnectionStatus = "disconnected" | "connecting" | "connected" | "loading";
 
@@ -13,6 +14,8 @@ export default function WhatsAppPage() {
   const [instanceName, setInstanceName] = useState("dua-criativa");
   const [polling, setPolling] = useState(false);
   const [error, setError] = useState("");
+  const [qrCountdown, setQrCountdown] = useState(QR_EXPIRY_SECONDS);
+  const qrRefreshRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
 
@@ -54,9 +57,17 @@ export default function WhatsAppPage() {
     return () => clearInterval(interval);
   }, [polling]);
 
-  const connectWhatsApp = async () => {
-    setError("");
-    setStatus("connecting");
+  const stopQrRefresh = useCallback(() => {
+    if (qrRefreshRef.current) {
+      clearInterval(qrRefreshRef.current);
+      qrRefreshRef.current = null;
+    }
+  }, []);
+
+  const connectWhatsApp = useCallback(async (silent = false) => {
+    if (!silent) setError("");
+    if (!silent) setStatus("connecting");
+    stopQrRefresh();
     try {
       const res = await fetch(`${API_URL}/api/v1/whatsapp/connect`, {
         method: "POST",
@@ -66,19 +77,36 @@ export default function WhatsAppPage() {
       const data = await res.json();
       if (data.qrCode) {
         setQrCode(data.qrCode);
+        setQrCountdown(QR_EXPIRY_SECONDS);
         setPolling(true);
+        // Auto-refresh QR antes de expirar
+        qrRefreshRef.current = setInterval(() => {
+          setQrCountdown((c) => {
+            if (c <= 1) {
+              connectWhatsApp(true);
+              return QR_EXPIRY_SECONDS;
+            }
+            return c - 1;
+          });
+        }, 1000);
       } else if (data.connected) {
         setStatus("connected");
+        stopQrRefresh();
       } else {
         throw new Error(data.message || "Erro ao gerar QR code");
       }
     } catch (err: any) {
-      setError(err.message || "Não foi possível conectar. Tente novamente.");
-      setStatus("disconnected");
+      if (!silent) {
+        setError(err.message || "Não foi possível conectar. Tente novamente.");
+        setStatus("disconnected");
+      }
     }
-  };
+  }, [instanceName, stopQrRefresh]);
+
+  useEffect(() => () => stopQrRefresh(), [stopQrRefresh]);
 
   const disconnectWhatsApp = async () => {
+    stopQrRefresh();
     try {
       await fetch(`${API_URL}/api/v1/whatsapp/disconnect`, { method: "POST", headers });
       setStatus("disconnected");
@@ -161,10 +189,10 @@ export default function WhatsAppPage() {
             </div>
             <p className="text-xs text-gray-400 mt-4 flex items-center justify-center gap-1">
               <RefreshCw className="w-3 h-3 animate-spin" />
-              Verificando conexão automaticamente...
+              QR renova automaticamente em {qrCountdown}s
             </p>
             <button
-              onClick={connectWhatsApp}
+              onClick={() => connectWhatsApp(false)}
               className="mt-4 px-4 py-2 text-sm font-medium text-orange-600 border border-orange-200 rounded-xl hover:bg-orange-50 transition-colors flex items-center gap-2 mx-auto"
             >
               <RefreshCw className="w-4 h-4" />
