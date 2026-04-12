@@ -16,6 +16,7 @@ export default function WhatsAppPage() {
   const [error, setError] = useState("");
   const [qrCountdown, setQrCountdown] = useState(QR_EXPIRY_SECONDS);
   const qrRefreshRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const connectRef = useRef<(silent?: boolean) => Promise<void>>(() => Promise.resolve());
 
   const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
 
@@ -79,11 +80,11 @@ export default function WhatsAppPage() {
         setQrCode(data.qrCode);
         setQrCountdown(QR_EXPIRY_SECONDS);
         setPolling(true);
-        // Auto-refresh QR antes de expirar
+        // Auto-refresh QR antes de expirar — usa ref para evitar closure stale
         qrRefreshRef.current = setInterval(() => {
           setQrCountdown((c) => {
             if (c <= 1) {
-              connectWhatsApp(true);
+              connectRef.current(true);
               return QR_EXPIRY_SECONDS;
             }
             return c - 1;
@@ -102,6 +103,9 @@ export default function WhatsAppPage() {
       }
     }
   }, [instanceName, stopQrRefresh]);
+
+  // Mantém a ref sempre atualizada com a versão mais recente da função
+  useEffect(() => { connectRef.current = connectWhatsApp; }, [connectWhatsApp]);
 
   useEffect(() => () => stopQrRefresh(), [stopQrRefresh]);
 
