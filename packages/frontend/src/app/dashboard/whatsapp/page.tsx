@@ -170,7 +170,7 @@ export default function WhatsAppPage() {
               </button>
             ) : status !== "connecting" && status !== "loading" ? (
               <button
-                onClick={connectWhatsApp}
+                onClick={() => connectWhatsApp(false)}
                 className="px-4 py-2 text-sm font-semibold text-white bg-brand-600 rounded-xl hover:bg-brand-700 transition-colors"
               >
                 Conectar
