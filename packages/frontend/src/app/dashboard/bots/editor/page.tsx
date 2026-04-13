@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, Suspense } from "react";
 import ReactFlow, {
   Background,
   Controls,
@@ -496,7 +496,7 @@ const initialEdges: Edge[] = [
 
 // ─── Main editor ──────────────────────────────────────────────────────────────
 
-export default function BotEditorPage() {
+function BotEditorInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const botName = searchParams?.get("name") || "Novo Bot";
@@ -674,5 +674,13 @@ export default function BotEditorPage() {
         />
       )}
     </div>
+  );
+}
+
+export default function BotEditorPage() {
+  return (
+    <Suspense fallback={<div className="flex h-screen items-center justify-center text-gray-400 text-sm">Carregando...</div>}>
+      <BotEditorInner />
+    </Suspense>
   );
 }
