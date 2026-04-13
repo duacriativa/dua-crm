@@ -56,13 +56,27 @@ export class ContactsController {
 
   /** PATCH /contacts/:id */
   @Patch(':id')
-  update(
+  async update(
     @Request() req: any,
     @Param('id') id: string,
     @Body() body: { name?: string; phone?: string; email?: string; tags?: string[]; notes?: string },
   ) {
+    const tenantId = req.user.tenantId;
+
+    // Se o telefone está sendo atualizado, busca o telefone antigo para sincronizar a conversa
+    if (body.phone) {
+      const existing = await this.prisma.contact.findFirst({ where: { id, tenantId } });
+      if (existing?.phone && existing.phone !== body.phone) {
+        // Atualiza externalId de todas as conversas do contato que usavam o telefone antigo
+        await this.prisma.conversation.updateMany({
+          where: { tenantId, contactId: id, externalId: existing.phone },
+          data: { externalId: body.phone },
+        });
+      }
+    }
+
     return this.prisma.contact.updateMany({
-      where: { id, tenantId: req.user.tenantId },
+      where: { id, tenantId },
       data: {
         ...(body.name !== undefined && { name: body.name }),
         ...(body.phone !== undefined && { phone: body.phone }),

@@ -102,6 +102,40 @@ function ConversasInner() {
   const [newConvName, setNewConvName] = useState("");
   const [newConvMessage, setNewConvMessage] = useState("");
   const [startingConv, setStartingConv] = useState(false);
+  const [editingContact, setEditingContact] = useState(false);
+  const [editName, setEditName] = useState("");
+  const [editPhone, setEditPhone] = useState("");
+  const [savingContact, setSavingContact] = useState(false);
+
+  // Limpa LID e formatos estranhos para exibição
+  const displayPhone = (phone?: string | null) => {
+    if (!phone) return "";
+    if (phone.startsWith("lid:")) return "LID: " + phone.replace("lid:", "").substring(0, 8) + "…";
+    if (phone.includes("@lid")) return "LID";
+    return phone;
+  };
+
+  const saveContact = async () => {
+    if (!selected) return;
+    setSavingContact(true);
+    try {
+      await fetch(`${API_URL}/api/v1/contacts/${selected.contact.id}`, {
+        method: "PATCH",
+        headers: { ...authHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({ name: editName, phone: editPhone }),
+      });
+      // Atualiza local
+      setConversations((prev) => prev.map((c) =>
+        c.id === selected.id
+          ? { ...c, contact: { ...c.contact, name: editName, phone: editPhone }, externalId: editPhone }
+          : c
+      ));
+      setSelected((prev) => prev ? { ...prev, contact: { ...prev.contact, name: editName, phone: editPhone }, externalId: editPhone } : prev);
+      setEditingContact(false);
+    } finally {
+      setSavingContact(false);
+    }
+  };
   const phoneParamUsed = useRef(false);
 
   // ── Busca lista de conversas ──────────────────────────────────────────────
@@ -361,7 +395,7 @@ function ConversasInner() {
               <p className="font-semibold text-gray-900 text-sm leading-tight">{selected.contact.name}</p>
               <div className="flex items-center gap-1">
                 {channelIcon(selected.channel)}
-                <span className="text-xs text-gray-400">{selected.contact.phone ?? selected.externalId}</span>
+                <span className="text-xs text-gray-400">{displayPhone(selected.contact.phone) || displayPhone(selected.externalId)}</span>
               </div>
             </div>
           </button>
@@ -558,10 +592,13 @@ function ConversasInner() {
       <div className="p-4 border-b border-gray-100 text-center">
         <div className="w-12 h-12 rounded-full bg-brand-100 text-brand-600 font-bold text-lg flex items-center justify-center mx-auto mb-2">{selected.contact.name.charAt(0)}</div>
         <h2 className="font-bold text-gray-900 text-sm">{selected.contact.name}</h2>
-        {selected.contact.phone && <p className="text-xs text-gray-400 mt-0.5">{selected.contact.phone}</p>}
+        {selected.contact.phone && <p className="text-xs text-gray-400 mt-0.5">{displayPhone(selected.contact.phone)}</p>}
         <div className="flex gap-2 mt-3">
           <button className="flex-1 py-1.5 text-xs font-semibold text-brand-600 border border-brand-200 rounded-lg hover:bg-brand-50">Ver Perfil</button>
-          <button className="flex-1 py-1.5 text-xs font-semibold text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50">Editar</button>
+          <button
+            onClick={() => { setEditName(selected.contact.name); setEditPhone(selected.contact.phone ?? ""); setEditingContact(true); }}
+            className="flex-1 py-1.5 text-xs font-semibold text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50"
+          >Editar</button>
         </div>
       </div>
       {(selected.contact.tags?.length ?? 0) > 0 && (
@@ -601,6 +638,47 @@ function ConversasInner() {
         {mobileView === "chat" && ChatPanel}
         {mobileView === "info" && InfoPanel}
       </div>
+
+      {/* Modal Editar Contato */}
+      {editingContact && selected && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-6">
+            <h2 className="text-base font-bold text-gray-900 mb-4">Editar contato</h2>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Nome</label>
+                <input
+                  type="text"
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Telefone (com DDI, ex: +5592985672491)</label>
+                <input
+                  type="text"
+                  value={editPhone}
+                  onChange={(e) => setEditPhone(e.target.value)}
+                  placeholder="+5585989011558"
+                  className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-500"
+                />
+                {(editPhone.startsWith("lid:") || editPhone.includes("@lid")) && (
+                  <p className="text-xs text-orange-600 mt-1">⚠️ Digite o número real para poder enviar mensagens</p>
+                )}
+              </div>
+            </div>
+            <div className="flex gap-2 mt-5">
+              <button onClick={() => setEditingContact(false)} className="flex-1 py-2 text-sm text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50">Cancelar</button>
+              <button
+                onClick={saveContact}
+                disabled={savingContact || !editName.trim()}
+                className="flex-1 py-2 text-sm font-semibold text-white bg-brand-600 rounded-xl hover:bg-brand-700 disabled:opacity-50"
+              >{savingContact ? "Salvando..." : "Salvar"}</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal Nova Conversa */}
       {showNewConv && (
