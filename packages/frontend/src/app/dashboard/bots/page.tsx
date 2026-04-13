@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   Plus,
   Bot,
@@ -8,11 +9,9 @@ import {
   Pause,
   MoreVertical,
   Zap,
-  MessageCircle,
   TrendingUp,
   Users,
   X,
-  ChevronRight,
   Settings,
   Copy,
   Trash2,
@@ -79,48 +78,12 @@ const MOCK_BOTS: BotFlow[] = [
 ];
 
 const TEMPLATES = [
-  {
-    id: "t1",
-    name: "Boas-vindas",
-    description: "Receba novos contatos com uma mensagem automática",
-    icon: "👋",
-    color: "bg-blue-50 border-blue-200",
-  },
-  {
-    id: "t2",
-    name: "Qualificação de Leads",
-    description: "Perguntas automáticas para qualificar prospects",
-    icon: "🎯",
-    color: "bg-purple-50 border-purple-200",
-  },
-  {
-    id: "t3",
-    name: "Suporte / FAQ",
-    description: "Responde dúvidas frequentes automaticamente",
-    icon: "💬",
-    color: "bg-green-50 border-green-200",
-  },
-  {
-    id: "t4",
-    name: "Pós-venda",
-    description: "Acompanhamento e NPS após compra finalizada",
-    icon: "⭐",
-    color: "bg-yellow-50 border-yellow-200",
-  },
-  {
-    id: "t5",
-    name: "Recuperação",
-    description: "Reengaja leads que sumiram ou abandonaram carrinho",
-    icon: "🔄",
-    color: "bg-red-50 border-red-200",
-  },
-  {
-    id: "t6",
-    name: "Do zero",
-    description: "Crie seu fluxo personalizado do início",
-    icon: "✨",
-    color: "bg-gray-50 border-gray-200",
-  },
+  { id: "t1", name: "Boas-vindas", description: "Receba novos contatos com uma mensagem automática", icon: "👋", color: "bg-blue-50 border-blue-200" },
+  { id: "t2", name: "Qualificação de Leads", description: "Perguntas automáticas para qualificar prospects", icon: "🎯", color: "bg-purple-50 border-purple-200" },
+  { id: "t3", name: "Suporte / FAQ", description: "Responde dúvidas frequentes automaticamente", icon: "💬", color: "bg-green-50 border-green-200" },
+  { id: "t4", name: "Pós-venda", description: "Acompanhamento e NPS após compra finalizada", icon: "⭐", color: "bg-yellow-50 border-yellow-200" },
+  { id: "t5", name: "Recuperação", description: "Reengaja leads que sumiram ou abandonaram carrinho", icon: "🔄", color: "bg-red-50 border-red-200" },
+  { id: "t6", name: "Do zero", description: "Crie seu fluxo personalizado do início", icon: "✨", color: "bg-gray-50 border-gray-200" },
 ];
 
 const statusConfig = {
@@ -130,17 +93,14 @@ const statusConfig = {
 };
 
 export default function BotsPage() {
+  const router = useRouter();
   const [bots, setBots] = useState<BotFlow[]>(MOCK_BOTS);
   const [showNew, setShowNew] = useState(false);
   const [openMenu, setOpenMenu] = useState<string | null>(null);
 
   const toggleStatus = (id: string) => {
     setBots((prev) =>
-      prev.map((b) =>
-        b.id === id
-          ? { ...b, status: b.status === "active" ? "paused" : "active" }
-          : b
-      )
+      prev.map((b) => b.id === id ? { ...b, status: b.status === "active" ? "paused" : "active" } : b)
     );
   };
 
@@ -153,11 +113,7 @@ export default function BotsPage() {
   const totalSessions = bots.reduce((a, b) => a + b.sessions, 0);
   const avgConversion =
     bots.filter((b) => b.totalSent > 0).length > 0
-      ? Math.round(
-          (bots.reduce((a, b) => a + b.conversions, 0) /
-            bots.reduce((a, b) => a + b.totalSent, 0)) *
-            100
-        )
+      ? Math.round((bots.reduce((a, b) => a + b.conversions, 0) / bots.reduce((a, b) => a + b.totalSent, 0)) * 100)
       : 0;
 
   return (
@@ -202,18 +158,12 @@ export default function BotsPage() {
             const convRate = bot.totalSent > 0 ? Math.round((bot.conversions / bot.totalSent) * 100) : 0;
 
             return (
-              <div
-                key={bot.id}
-                className="bg-white rounded-2xl border border-gray-100 p-5 hover:border-gray-200 hover:shadow-sm transition-all"
-              >
+              <div key={bot.id} className="bg-white rounded-2xl border border-gray-100 p-5 hover:border-gray-200 hover:shadow-sm transition-all">
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex items-start gap-4 flex-1 min-w-0">
-                    {/* Icon */}
                     <div className="p-2.5 bg-brand-50 rounded-xl shrink-0">
                       <Bot className="w-5 h-5 text-brand-600" />
                     </div>
-
-                    {/* Info */}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
                         <h3 className="font-semibold text-gray-900 text-sm">{bot.name}</h3>
@@ -222,9 +172,7 @@ export default function BotsPage() {
                           {st.label}
                         </span>
                       </div>
-                      {bot.description && (
-                        <p className="text-xs text-gray-400 mt-0.5">{bot.description}</p>
-                      )}
+                      {bot.description && <p className="text-xs text-gray-400 mt-0.5">{bot.description}</p>}
                       <div className="flex items-center gap-1.5 mt-2">
                         <Zap className="w-3 h-3 text-gray-400" />
                         <span className="text-xs text-gray-400">{bot.trigger}</span>
@@ -232,7 +180,6 @@ export default function BotsPage() {
                     </div>
                   </div>
 
-                  {/* Stats */}
                   <div className="flex items-center gap-6 shrink-0">
                     <div className="text-center">
                       <p className="text-xs text-gray-400 mb-0.5">Sessões</p>
@@ -247,7 +194,6 @@ export default function BotsPage() {
                       <p className="text-sm font-bold text-gray-800">{bot.totalSent}</p>
                     </div>
 
-                    {/* Actions */}
                     <div className="flex items-center gap-1.5 ml-2">
                       <button
                         onClick={() => toggleStatus(bot.id)}
@@ -260,7 +206,11 @@ export default function BotsPage() {
                       >
                         {bot.status === "active" ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
                       </button>
-                      <button className="p-2 rounded-xl bg-gray-50 text-gray-500 hover:bg-gray-100 transition-colors" title="Editar">
+                      <button
+                        onClick={() => router.push(`/dashboard/bots/editor?id=${bot.id}&name=${encodeURIComponent(bot.name)}`)}
+                        className="p-2 rounded-xl bg-gray-50 text-gray-500 hover:bg-gray-100 transition-colors"
+                        title="Editar fluxo"
+                      >
                         <Settings className="w-4 h-4" />
                       </button>
                       <div className="relative">
@@ -298,7 +248,7 @@ export default function BotsPage() {
             <p className="text-sm font-medium">Nenhum bot criado ainda</p>
             <p className="text-xs mt-1 opacity-70">Crie seu primeiro fluxo automático</p>
             <button
-              onClick={() => setShowNew(true)}
+              onClick={() => router.push("/dashboard/bots/editor?name=Novo+Bot")}
               className="mt-4 flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-brand-600 rounded-xl hover:bg-brand-700 transition-colors"
             >
               <Plus className="w-4 h-4" />
@@ -321,12 +271,14 @@ export default function BotsPage() {
                 <X className="w-4 h-4 text-gray-400" />
               </button>
             </div>
-
             <div className="grid grid-cols-2 gap-3">
               {TEMPLATES.map((tpl) => (
                 <button
                   key={tpl.id}
-                  onClick={() => setShowNew(false)}
+                  onClick={() => {
+                    setShowNew(false);
+                    router.push(`/dashboard/bots/editor?name=${encodeURIComponent(tpl.name)}`);
+                  }}
                   className={`flex items-start gap-3 p-4 rounded-2xl border text-left hover:shadow-md transition-all group ${tpl.color}`}
                 >
                   <span className="text-2xl">{tpl.icon}</span>
