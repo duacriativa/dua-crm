@@ -204,7 +204,8 @@ export class WhatsAppService {
         if (remoteJid.endsWith('@g.us')) return;
 
         const rawId = remoteJid.replace('@s.whatsapp.net', '').replace('@lid', '');
-        const phone = remoteJid.endsWith('@lid') ? `lid:${rawId}` : `+${rawId}`;
+        const isLid = remoteJid.endsWith('@lid');
+        const phone = isLid ? `lid:${rawId}` : `+${rawId}`;
         const pushName = msg.pushName || phone;
 
         let content = '';
@@ -266,15 +267,28 @@ export class WhatsAppService {
         const tenant = await this.prisma.tenant.findFirst({ where: { slug: instance } });
         if (!tenant) return;
 
+        // Se veio LID, tenta aproveitar contato existente pelo nome (pushName)
+        // para não criar conversa duplicada quando o mesmo contato oscila entre @lid e @s.whatsapp.net
+        let resolvedPhone = phone;
+        if (isLid && pushName && !pushName.startsWith('lid:')) {
+          const existing = await this.prisma.contact.findFirst({
+            where: { tenantId: tenant.id, name: pushName, NOT: { phone: { startsWith: 'lid:' } } },
+          });
+          if (existing) {
+            resolvedPhone = existing.phone;
+            this.logger.log(`[webhook] LID ${phone} mapeado para contato existente ${existing.phone} (${pushName})`);
+          }
+        }
+
         const contact = await this.prisma.contact.upsert({
-          where: { tenantId_phone: { tenantId: tenant.id, phone } },
-          create: { tenantId: tenant.id, phone, name: pushName },
+          where: { tenantId_phone: { tenantId: tenant.id, phone: resolvedPhone } },
+          create: { tenantId: tenant.id, phone: resolvedPhone, name: pushName },
           update: {},
         });
 
         const conversation = await this.prisma.conversation.upsert({
-          where: { tenantId_externalId: { tenantId: tenant.id, externalId: phone } },
-          create: { tenantId: tenant.id, contactId: contact.id, channel: 'WHATSAPP', externalId: phone, status: 'OPEN' },
+          where: { tenantId_externalId: { tenantId: tenant.id, externalId: resolvedPhone } },
+          create: { tenantId: tenant.id, contactId: contact.id, channel: 'WHATSAPP', externalId: resolvedPhone, status: 'OPEN' },
           update: { status: 'OPEN', updatedAt: new Date() },
         });
 
