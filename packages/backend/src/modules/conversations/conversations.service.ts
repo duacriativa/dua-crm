@@ -147,15 +147,26 @@ export class ConversationsService {
     });
     if (!conv) throw new NotFoundException('Conversa não encontrada.');
 
-    const phone = conv.externalId.replace(/\D/g, '');
-    const remoteJid = `${phone}@s.whatsapp.net`;
+    // Suporte a LID (lid:123456) e número normal (+5521...)
+    const externalId = conv.externalId;
+    let number: string;
+    let remoteJid: string;
+    if (externalId.startsWith('lid:')) {
+      const lid = externalId.replace('lid:', '');
+      number = `${lid}@lid`;
+      remoteJid = `${lid}@lid`;
+    } else {
+      const phone = externalId.replace(/\D/g, '');
+      number = phone;
+      remoteJid = `${phone}@s.whatsapp.net`;
+    }
 
     // Envia via Evolution API (instanceName = tenant slug)
     const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { slug: true } });
     const instanceName = tenant?.slug ?? tenantId;
     const evolutionUrl = `${process.env.EVOLUTION_API_URL}/message/sendText/${instanceName}`;
 
-    const body: any = { number: phone, textMessage: { text: content } };
+    const body: any = { number, textMessage: { text: content } };
 
     // Adiciona quoted se for reply
     if (quotedExternalId) {
