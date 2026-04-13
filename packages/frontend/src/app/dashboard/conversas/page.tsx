@@ -106,6 +106,7 @@ function ConversasInner() {
   const [editName, setEditName] = useState("");
   const [editPhone, setEditPhone] = useState("");
   const [savingContact, setSavingContact] = useState(false);
+  const [resolvingLids, setResolvingLids] = useState(false);
 
   // Limpa LID e formatos estranhos para exibição
   const displayPhone = (phone?: string | null) => {
@@ -318,8 +319,24 @@ function ConversasInner() {
               className="p-1.5 text-brand-600 hover:bg-brand-50 rounded-xl" title="Nova conversa">
               <Plus className="w-4 h-4" />
             </button>
-            <button onClick={fetchConversations} className="p-1.5 text-gray-400 hover:text-gray-700 rounded-xl hover:bg-gray-100">
+            <button onClick={fetchConversations} className="p-1.5 text-gray-400 hover:text-gray-700 rounded-xl hover:bg-gray-100" title="Atualizar">
               <RefreshCw className="w-4 h-4" />
+            </button>
+            <button
+              onClick={async () => {
+                setResolvingLids(true);
+                try {
+                  const res = await fetch(`${API_URL}/api/v1/contacts/resolve-lids`, { method: 'POST', headers: authHeaders() });
+                  const data = await res.json();
+                  if (data.resolved > 0) { alert(`✅ ${data.resolved} contato(s) resolvido(s) de ${data.total}!`); fetchConversations(); }
+                  else alert(`Nenhum contato LID pôde ser resolvido automaticamente (${data.total} encontrados).\nUse "Editar" para inserir o número manualmente.`);
+                } finally { setResolvingLids(false); }
+              }}
+              disabled={resolvingLids}
+              className="p-1.5 text-gray-400 hover:text-orange-600 rounded-xl hover:bg-orange-50 disabled:opacity-40"
+              title="Resolver números LID automaticamente"
+            >
+              {resolvingLids ? <RefreshCw className="w-4 h-4 animate-spin" /> : <span className="text-xs font-bold">LID</span>}
             </button>
           </div>
         </div>
