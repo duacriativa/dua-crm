@@ -172,11 +172,12 @@ export class WhatsAppService {
   async disconnect(instanceName: string) {
     try {
       await axios.delete(
-        `${this.evolutionUrl}/instance/logout/${instanceName}`,
+        `${this.evolutionUrl}/instance/delete/${instanceName}`,
         { headers: this.headers },
       );
+      this.logger.log(`Instância ${instanceName} deletada com sucesso para recriar na próxima conexão.`);
     } catch (err: any) {
-      this.logger.error('Erro ao desconectar:', err.message);
+      this.logger.error('Erro ao desconectar/deletar:', err.message);
     }
   }
 
