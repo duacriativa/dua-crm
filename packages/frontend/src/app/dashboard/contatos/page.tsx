@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import {
   Search, Plus, Download, Upload, Phone, Mail,
   MoreVertical, User, Edit, MessageCircle, SlidersHorizontal, X, RefreshCw,
@@ -43,6 +44,7 @@ const segmentTabs: { label: string; value: Segment }[] = [
 ];
 
 export default function ContatosPage() {
+  const router = useRouter();
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
