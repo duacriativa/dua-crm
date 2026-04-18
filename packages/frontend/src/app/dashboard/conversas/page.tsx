@@ -535,9 +535,14 @@ function ConversasInner() {
                     {/* Thumbnail de imagem/vídeo */}
                     {(msg.type === "IMAGE" || msg.type === "VIDEO") && msg.mediaUrl && (
                       <div className="relative">
-                        <img src={msg.mediaUrl} alt="mídia" className="w-full max-w-[280px] object-cover rounded-t-2xl" style={{ maxHeight: 200 }} />
+                        <img
+                          src={msg.mediaUrl} alt="mídia"
+                          className="w-full max-w-[280px] object-cover rounded-t-2xl cursor-pointer hover:opacity-90 transition-opacity"
+                          style={{ maxHeight: 200 }}
+                          onClick={() => window.open(msg.mediaUrl!, "_blank")}
+                        />
                         {msg.type === "VIDEO" && (
-                          <div className="absolute inset-0 flex items-center justify-center bg-black/30 rounded-t-2xl">
+                          <div className="absolute inset-0 flex items-center justify-center bg-black/30 rounded-t-2xl pointer-events-none">
                             <div className="w-10 h-10 rounded-full bg-white/80 flex items-center justify-center">
                               <svg className="w-5 h-5 text-gray-800 ml-0.5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
                             </div>
@@ -554,9 +559,15 @@ function ConversasInner() {
                       </div>
                     )}
                     {msg.type === "AUDIO" && (
-                      <div className={`flex items-center gap-2 px-4 pt-3 ${isOut ? "text-white/80" : "text-gray-400"}`}>
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4M8 23h8"/></svg>
-                        <span className="text-xs font-medium">Áudio</span>
+                      <div className="px-3 pt-3">
+                        {msg.mediaUrl ? (
+                          <audio controls src={msg.mediaUrl} className="w-full max-w-[240px] h-8" style={{ colorScheme: isOut ? "dark" : "light" }} />
+                        ) : (
+                          <div className={`flex items-center gap-2 ${isOut ? "text-white/80" : "text-gray-400"}`}>
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4M8 23h8"/></svg>
+                            <span className="text-xs font-medium">Áudio</span>
+                          </div>
+                        )}
                       </div>
                     )}
                     {msg.type === "DOCUMENT" && (
