@@ -182,9 +182,11 @@ export class ConversationsService {
     }
 
     console.log('Evolution API send:', evolutionUrl, JSON.stringify(body));
+    let evolutionMsgId: string | null = null;
     try {
       const resp = await axios.post(evolutionUrl, body, { headers: this.evolutionHeaders });
       console.log('Evolution API send ok:', resp.status);
+      evolutionMsgId = resp.data?.key?.id ?? null;
     } catch (err: any) {
       console.error('Evolution API send error:', JSON.stringify(err?.response?.data ?? err.message));
     }
@@ -197,6 +199,7 @@ export class ConversationsService {
         type: 'TEXT',
         content,
         sentAt: new Date(),
+        externalId: evolutionMsgId,
         quotedContent: quotedContent || null,
         quotedExternalId: quotedExternalId || null,
         quotedType: quotedType || null,

@@ -229,8 +229,9 @@ export class WhatsAppService {
 
       if (event === 'messages.upsert') {
         const msg = payload?.data?.messages?.[0] || payload?.data;
-        if (!msg || msg.key?.fromMe) return;
+        if (!msg) return;
 
+        const isFromMe = msg.key?.fromMe === true;
         const remoteJid = msg.key?.remoteJid || '';
         if (remoteJid.endsWith('@g.us')) return;
 
@@ -337,7 +338,7 @@ export class WhatsAppService {
         await this.prisma.message.create({
           data: {
             conversationId: conversation.id,
-            direction: 'INBOUND',
+            direction: isFromMe ? 'OUTBOUND' : 'INBOUND',
             type: msgType,
             content,
             mediaUrl,

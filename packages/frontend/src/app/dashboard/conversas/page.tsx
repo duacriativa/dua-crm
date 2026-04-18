@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback, Suspense } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import {
   Search, Send, Phone, MoreVertical, Clock, CheckCheck, Check,
@@ -75,6 +75,8 @@ function ConversasInner() {
   const [sending, setSending] = useState(false);
   const [mobileView, setMobileView] = useState<MobileView>("list");
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const prevSelectedIdRef = useRef<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const selectedRef = useRef<Conversation | null>(null);
   selectedRef.current = selected;
@@ -249,11 +251,23 @@ function ConversasInner() {
 
   // ── Auto scroll ───────────────────────────────────────────────────────────
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+    if (!messagesEndRef.current) return;
+    const isNewConversation = selected?.id !== prevSelectedIdRef.current;
+    if (isNewConversation) {
+      prevSelectedIdRef.current = selected?.id ?? null;
+      messagesEndRef.current.scrollIntoView({ behavior: "auto" });
+      return;
+    }
+    const container = messagesContainerRef.current;
+    if (!container) return;
+    const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
+    if (distanceFromBottom < 150) {
+      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [messages, selected?.id]);
 
   // ── Enviar mensagem ───────────────────────────────────────────────────────
-  const sendMessage = async () => {
+  const sendMessage = useCallback(async () => {
     if (!newMessage.trim() || !selected || sending) return;
     setSending(true);
     const content = newMessage.trim();
@@ -285,11 +299,15 @@ function ConversasInner() {
     } finally {
       setSending(false);
     }
-  };
+  }, [newMessage, selected, sending, replyingTo]);
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); }
-  };
+  }, [sendMessage]);
+
+  const handleMessageChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setNewMessage(e.target.value);
+  }, []);
 
   const updateStatus = async (status: string) => {
     if (!selected) return;
@@ -463,7 +481,7 @@ function ConversasInner() {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-2">
+      <div ref={messagesContainerRef} className="flex-1 overflow-y-auto px-4 py-4 space-y-2">
         {loadingMsgs && messages.length === 0 ? (
           <div className="flex justify-center py-10"><RefreshCw className="w-5 h-5 animate-spin text-gray-300" /></div>
         ) : messages.length === 0 ? (
@@ -584,7 +602,7 @@ function ConversasInner() {
         <div className="flex items-end gap-2">
           <button className="p-2 text-gray-400 hover:text-gray-600"><Paperclip className="w-5 h-5" /></button>
           <button className="p-2 text-gray-400 hover:text-gray-600"><Smile className="w-5 h-5" /></button>
-          <textarea value={newMessage} onChange={(e) => setNewMessage(e.target.value)} onKeyDown={handleKeyDown}
+          <textarea value={newMessage} onChange={handleMessageChange} onKeyDown={handleKeyDown}
             placeholder={replyingTo ? "Digite sua resposta..." : "Digite uma mensagem..."}
             rows={1} className="flex-1 resize-none bg-gray-50 border border-gray-200 rounded-2xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 max-h-28" style={{ minHeight: "42px" }} />
           <button onClick={sendMessage} disabled={!newMessage.trim() || sending} className="p-2.5 bg-brand-600 text-white rounded-2xl hover:bg-brand-700 disabled:opacity-40 transition-colors">

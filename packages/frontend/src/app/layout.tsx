@@ -4,6 +4,9 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "Dua CRM",
   description: "CRM inteligente para marcas de moda",
+  icons: {
+    icon: "/favicon.svg",
+  },
 };
 
 export const viewport: Viewport = {
