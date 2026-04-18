@@ -105,7 +105,7 @@ export class ConversationsService {
     const skip = (page - 1) * limit;
     const messages = await this.prisma.message.findMany({
       where: { conversationId },
-      orderBy: { sentAt: 'asc' },
+      orderBy: { sentAt: 'desc' },
       skip,
       take: limit,
       select: {
@@ -130,7 +130,7 @@ export class ConversationsService {
       data: { readAt: new Date() },
     });
 
-    return messages;
+    return messages.reverse();
   }
 
   async sendMessage(

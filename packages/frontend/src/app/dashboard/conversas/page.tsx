@@ -76,7 +76,7 @@ function ConversasInner() {
   const [mobileView, setMobileView] = useState<MobileView>("list");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
-  const prevSelectedIdRef = useRef<string | null>(null);
+  const isInitialLoadRef = useRef(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const selectedRef = useRef<Conversation | null>(null);
   selectedRef.current = selected;
@@ -115,6 +115,16 @@ function ConversasInner() {
     if (!phone) return "";
     if (phone.startsWith("lid:")) return "LID: " + phone.replace("lid:", "").substring(0, 8) + "…";
     if (phone.includes("@lid")) return "LID";
+    // Formata número BR: +55 (DD) 9XXXX-XXXX
+    const digits = phone.replace(/\D/g, "");
+    if (digits.startsWith("55") && digits.length === 12) {
+      // Faltou o 9 do celular — insere após o DDD
+      const fixed = digits.slice(0, 4) + "9" + digits.slice(4);
+      return `+${fixed.slice(0,2)} (${fixed.slice(2,4)}) ${fixed.slice(4,9)}-${fixed.slice(9)}`;
+    }
+    if (digits.startsWith("55") && digits.length === 13) {
+      return `+${digits.slice(0,2)} (${digits.slice(2,4)}) ${digits.slice(4,9)}-${digits.slice(9)}`;
+    }
     return phone;
   };
 
@@ -232,6 +242,7 @@ function ConversasInner() {
   }, []);
 
   const selectConversation = (conv: Conversation) => {
+    isInitialLoadRef.current = true;
     setSelected(conv);
     setMobileView("chat");
     fetchMessages(conv.id);
@@ -251,10 +262,9 @@ function ConversasInner() {
 
   // ── Auto scroll ───────────────────────────────────────────────────────────
   useEffect(() => {
-    if (!messagesEndRef.current) return;
-    const isNewConversation = selected?.id !== prevSelectedIdRef.current;
-    if (isNewConversation) {
-      prevSelectedIdRef.current = selected?.id ?? null;
+    if (!messagesEndRef.current || messages.length === 0) return;
+    if (isInitialLoadRef.current) {
+      isInitialLoadRef.current = false;
       messagesEndRef.current.scrollIntoView({ behavior: "auto" });
       return;
     }
@@ -264,7 +274,7 @@ function ConversasInner() {
     if (distanceFromBottom < 150) {
       messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
-  }, [messages, selected?.id]);
+  }, [messages]);
 
   // ── Enviar mensagem ───────────────────────────────────────────────────────
   const sendMessage = useCallback(async () => {
