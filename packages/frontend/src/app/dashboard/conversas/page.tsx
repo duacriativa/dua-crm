@@ -283,18 +283,23 @@ function ConversasInner() {
   }, [selected, fetchMessages]);
 
   // ── Auto scroll ───────────────────────────────────────────────────────────
-  useLayoutEffect(() => {
+  useEffect(() => {
     if (messages.length === 0) return;
+
     if (isInitialLoadRef.current) {
       isInitialLoadRef.current = false;
-      const container = messagesContainerRef.current;
-      if (container) container.scrollTop = container.scrollHeight;
+      // setTimeout garante que o browser terminou o layout antes de scrollar
+      setTimeout(() => {
+        const container = messagesContainerRef.current;
+        if (container) container.scrollTop = container.scrollHeight;
+      }, 50);
       return;
     }
+
     const container = messagesContainerRef.current;
     if (!container) return;
     const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
-    if (distanceFromBottom < 150) {
+    if (distanceFromBottom < 200) {
       container.scrollTop = container.scrollHeight;
     }
   }, [messages]);
