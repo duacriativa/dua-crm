@@ -61,11 +61,19 @@ export class LeadsService {
       `Origem: ${dto.origem ?? 'trafegopago-form'}`,
     ].join('\n');
 
-    const contact = await this.prisma.contact.create({
-      data: {
+    // upsert: evita erro P2002 se o mesmo telefone já existir no tenant
+    const contact = await this.prisma.contact.upsert({
+      where: { tenantId_phone: { tenantId, phone: dto.whatsapp } },
+      create: {
         tenantId,
         name: dto.nome,
         phone: dto.whatsapp,
+        instagramHandle: dto.instagram,
+        tags: ['trafego-pago', `interesse:${dto.interesse}`],
+        notes,
+      },
+      update: {
+        name: dto.nome,
         instagramHandle: dto.instagram,
         tags: ['trafego-pago', `interesse:${dto.interesse}`],
         notes,
