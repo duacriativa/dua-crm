@@ -1,14 +1,31 @@
 import { Injectable, Logger, InternalServerErrorException } from '@nestjs/common';
+import { IsString, IsIn, IsOptional } from 'class-validator';
 import { PrismaService } from '../../prisma/prisma.service';
 
 export class CreatePublicLeadDto {
+  @IsString()
   nome: string;
+
+  @IsString()
   whatsapp: string;
+
+  @IsString()
   instagram: string;
+
+  @IsString()
   investimento_atual: string;
+
+  @IsString()
   faturamento: string;
+
+  @IsString()
   atendimento_leads: string;
+
+  @IsIn(['combo', 'trafego', 'frio'])
   interesse: 'combo' | 'trafego' | 'frio';
+
+  @IsOptional()
+  @IsString()
   origem?: string;
 }
 
