@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { Smartphone, Wifi, WifiOff, RefreshCw, CheckCircle2, AlertCircle } from "lucide-react";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
-const QR_EXPIRY_SECONDS = 18;
+const QR_EXPIRY_SECONDS = 40;
 
 type ConnectionStatus = "disconnected" | "connecting" | "connected" | "loading";
 
@@ -80,12 +80,12 @@ export default function WhatsAppPage() {
         setQrCode(data.qrCode);
         setQrCountdown(QR_EXPIRY_SECONDS);
         setPolling(true);
-        // Auto-refresh QR antes de expirar — usa ref para evitar closure stale
+        // Auto-refresh removido para evitar que a requisição cancele o pareamento
         qrRefreshRef.current = setInterval(() => {
           setQrCountdown((c) => {
             if (c <= 1) {
-              connectRef.current(true);
-              return QR_EXPIRY_SECONDS;
+              if (qrRefreshRef.current) clearInterval(qrRefreshRef.current);
+              return 0;
             }
             return c - 1;
           });

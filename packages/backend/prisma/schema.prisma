@@ -161,7 +161,8 @@ model Contact {
   totalSpent      Float          @default(0)
   orderCount      Int            @default(0)
   lastPurchaseAt  DateTime?
-  notes           String?
+  notes               String?
+  analysisInstagram   String?
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
 
