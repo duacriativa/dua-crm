@@ -75,6 +75,23 @@ export class ConversationsController {
     );
   }
 
+  /** POST /conversations/:id/media — envia mídia (imagem/vídeo/documento) */
+  @Post(':id/media')
+  sendMedia(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body() body: { base64: string; mediatype: string; filename: string; caption: string },
+  ) {
+    return this.conversationsService.sendMedia(
+      req.user.tenantId,
+      id,
+      body.base64,
+      body.mediatype as any,
+      body.filename,
+      body.caption || '',
+    );
+  }
+
   /** DELETE /conversations/:id — exclui conversa e mensagens */
   @Delete(':id')
   remove(@Request() req: any, @Param('id') id: string) {

@@ -215,6 +215,59 @@ export class ConversationsService {
     return message;
   }
 
+  async sendMedia(
+    tenantId: string,
+    conversationId: string,
+    base64: string,
+    mediatype: 'image' | 'video' | 'document' | 'audio',
+    filename: string,
+    caption: string,
+  ) {
+    const conv = await this.prisma.conversation.findFirst({
+      where: { id: conversationId, tenantId },
+      include: { contact: { select: { phone: true } } },
+    });
+    if (!conv) throw new NotFoundException('Conversa não encontrada.');
+
+    const phone = conv.contact.phone?.replace(/\D/g, '') || conv.externalId.replace(/\D/g, '');
+    const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { slug: true } });
+    const instanceName = tenant?.slug ?? tenantId;
+    const evolutionUrl = `${process.env.EVOLUTION_API_URL}/message/sendMedia/${instanceName}`;
+
+    let evolutionMsgId: string | null = null;
+    try {
+      const resp = await axios.post(evolutionUrl, {
+        number: phone,
+        mediatype,
+        caption,
+        media: base64,
+        fileName: filename,
+      }, { headers: this.evolutionHeaders });
+      evolutionMsgId = resp.data?.key?.id ?? null;
+    } catch (err: any) {
+      console.error('Evolution sendMedia error:', JSON.stringify(err?.response?.data ?? err.message));
+    }
+
+    const msgType = mediatype === 'image' ? 'IMAGE' : mediatype === 'video' ? 'VIDEO' : mediatype === 'audio' ? 'AUDIO' : 'DOCUMENT';
+    const message = await this.prisma.message.create({
+      data: {
+        conversationId,
+        direction: 'OUTBOUND',
+        type: msgType,
+        content: caption || filename,
+        sentAt: new Date(),
+        externalId: evolutionMsgId,
+      },
+    });
+
+    await this.prisma.conversation.update({
+      where: { id: conversationId },
+      data: { updatedAt: new Date() },
+    });
+
+    return message;
+  }
+
   async remove(tenantId: string, conversationId: string) {
     await this.prisma.conversation.deleteMany({
       where: { id: conversationId, tenantId },

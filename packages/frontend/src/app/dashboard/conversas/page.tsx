@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback, useMemo, Suspense } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import {
   Search, Send, Phone, MoreVertical, Clock, CheckCheck, Check,
@@ -84,6 +84,17 @@ function ConversasInner() {
   // Reply / citação de mensagem
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
 
+  // Lightbox
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+
+  // Emoji picker
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const emojiPickerRef = useRef<HTMLDivElement>(null);
+
+  // File attachment
+  const [sendingMedia, setSendingMedia] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   // Menu ⋮ do header do chat
   const [showChatMenu, setShowChatMenu] = useState(false);
   const chatMenuRef = useRef<HTMLDivElement>(null);
@@ -92,6 +103,16 @@ function ConversasInner() {
     const handler = (e: MouseEvent) => {
       if (chatMenuRef.current && !chatMenuRef.current.contains(e.target as Node)) {
         setShowChatMenu(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (emojiPickerRef.current && !emojiPickerRef.current.contains(e.target as Node)) {
+        setShowEmojiPicker(false);
       }
     };
     document.addEventListener("mousedown", handler);
@@ -261,18 +282,19 @@ function ConversasInner() {
   }, [selected, fetchMessages]);
 
   // ── Auto scroll ───────────────────────────────────────────────────────────
-  useEffect(() => {
-    if (!messagesEndRef.current || messages.length === 0) return;
+  useLayoutEffect(() => {
+    if (messages.length === 0) return;
     if (isInitialLoadRef.current) {
       isInitialLoadRef.current = false;
-      messagesEndRef.current.scrollIntoView({ behavior: "auto" });
+      const container = messagesContainerRef.current;
+      if (container) container.scrollTop = container.scrollHeight;
       return;
     }
     const container = messagesContainerRef.current;
     if (!container) return;
     const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
     if (distanceFromBottom < 150) {
-      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+      container.scrollTop = container.scrollHeight;
     }
   }, [messages]);
 
@@ -294,6 +316,10 @@ function ConversasInner() {
       quotedType: quoted?.type ?? null,
     };
     setMessages((prev) => [...prev, optimistic]);
+    setTimeout(() => {
+      const container = messagesContainerRef.current;
+      if (container) container.scrollTop = container.scrollHeight;
+    }, 50);
 
     try {
       await fetch(`${API_URL}/api/v1/conversations/${selected.id}/messages`, {
@@ -318,6 +344,55 @@ function ConversasInner() {
   const handleMessageChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setNewMessage(e.target.value);
   }, []);
+
+  const COMMON_EMOJIS = [
+    '😀','😂','🥰','😍','😎','🤔','😅','😭','😱','🥳',
+    '👍','👎','❤️','🔥','✨','🎉','🙏','💯','😊','😢',
+    '😡','🤣','😴','🤗','😬','🤩','🥺','😤','🤯','😇',
+    '👋','🤝','💪','🙌','👏','🫶','❤️‍🔥','💔','💬','📸',
+  ];
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !selected || sendingMedia) return;
+    setSendingMedia(true);
+
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const base64 = (reader.result as string).split(',')[1];
+      const mediatype = file.type.startsWith('image/') ? 'image'
+        : file.type === 'application/pdf' ? 'document'
+        : file.type.startsWith('video/') ? 'video'
+        : 'document';
+
+      // Optimistic message
+      const optimistic: Message = {
+        id: `opt-${Date.now()}`,
+        content: file.name,
+        direction: 'OUTBOUND',
+        type: mediatype === 'image' ? 'IMAGE' : mediatype === 'video' ? 'VIDEO' : 'DOCUMENT',
+        sentAt: new Date().toISOString(),
+        mediaUrl: mediatype === 'image' ? `data:${file.type};base64,${base64}` : null,
+      };
+      setMessages(prev => [...prev, optimistic]);
+      setTimeout(() => {
+        const container = messagesContainerRef.current;
+        if (container) container.scrollTop = container.scrollHeight;
+      }, 50);
+
+      try {
+        await fetch(`${API_URL}/api/v1/conversations/${selected.id}/media`, {
+          method: 'POST',
+          headers: authHeaders(),
+          body: JSON.stringify({ base64, mediatype, filename: file.name, caption: '' }),
+        });
+      } finally {
+        setSendingMedia(false);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+      }
+    };
+    reader.readAsDataURL(file);
+  };
 
   const updateStatus = async (status: string) => {
     if (!selected) return;
@@ -539,7 +614,7 @@ function ConversasInner() {
                           src={msg.mediaUrl} alt="mídia"
                           className="w-full max-w-[280px] object-cover rounded-t-2xl cursor-pointer hover:opacity-90 transition-opacity"
                           style={{ maxHeight: 200 }}
-                          onClick={() => window.open(msg.mediaUrl!, "_blank")}
+                          onClick={() => setLightboxUrl(msg.mediaUrl!)}
                         />
                         {msg.type === "VIDEO" && (
                           <div className="absolute inset-0 flex items-center justify-center bg-black/30 rounded-t-2xl pointer-events-none">
@@ -621,8 +696,43 @@ function ConversasInner() {
           </div>
         )}
         <div className="flex items-end gap-2">
-          <button className="p-2 text-gray-400 hover:text-gray-600"><Paperclip className="w-5 h-5" /></button>
-          <button className="p-2 text-gray-400 hover:text-gray-600"><Smile className="w-5 h-5" /></button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*,video/*,application/pdf,.doc,.docx,.xls,.xlsx"
+            className="hidden"
+            onChange={handleFileChange}
+          />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={sendingMedia}
+            className="p-2 text-gray-400 hover:text-gray-600 disabled:opacity-40"
+          >
+            <Paperclip className="w-5 h-5" />
+          </button>
+          <div className="relative" ref={emojiPickerRef}>
+            <button
+              onClick={() => setShowEmojiPicker(v => !v)}
+              className="p-2 text-gray-400 hover:text-gray-600"
+            >
+              <Smile className="w-5 h-5" />
+            </button>
+            {showEmojiPicker && (
+              <div className="absolute bottom-12 left-0 bg-white rounded-2xl shadow-xl border border-gray-100 p-3 z-20 w-64">
+                <div className="grid grid-cols-8 gap-1">
+                  {COMMON_EMOJIS.map((emoji) => (
+                    <button
+                      key={emoji}
+                      onClick={() => { setNewMessage(prev => prev + emoji); setShowEmojiPicker(false); }}
+                      className="text-xl hover:bg-gray-100 rounded-lg p-1 transition-colors"
+                    >
+                      {emoji}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
           <textarea value={newMessage} onChange={handleMessageChange} onKeyDown={handleKeyDown}
             placeholder={replyingTo ? "Digite sua resposta..." : "Digite uma mensagem..."}
             rows={1} className="flex-1 resize-none bg-gray-50 border border-gray-200 rounded-2xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 max-h-28" style={{ minHeight: "42px" }} />
@@ -735,6 +845,24 @@ function ConversasInner() {
               >{savingContact ? "Salvando..." : "Salvar"}</button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Lightbox */}
+      {lightboxUrl && (
+        <div
+          className="fixed inset-0 bg-black/95 z-50 flex items-center justify-center p-4"
+          onClick={() => setLightboxUrl(null)}
+        >
+          <button className="absolute top-4 right-4 text-white/70 hover:text-white p-2" onClick={() => setLightboxUrl(null)}>
+            <X className="w-6 h-6" />
+          </button>
+          <img
+            src={lightboxUrl}
+            alt="imagem"
+            className="max-w-full max-h-full object-contain rounded-xl"
+            onClick={(e) => e.stopPropagation()}
+          />
         </div>
       )}
 
