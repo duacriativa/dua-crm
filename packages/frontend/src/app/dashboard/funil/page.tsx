@@ -359,7 +359,7 @@ export default function FunilPage() {
       </div>
 
       <div className="flex-1 overflow-x-auto overflow-y-hidden" style={{ WebkitOverflowScrolling: "touch" } as React.CSSProperties}>
-        <div className="flex gap-3 p-4 h-full items-start" style={{ minWidth: `${(activePipeline.stages.length + 1) * 240 + 32}px` }}>
+        <div className="flex gap-3 p-4 h-full items-stretch" style={{ minWidth: `${(activePipeline.stages.length + 1) * 240 + 32}px` }}>
           {activePipeline.stages.map((stage) => {
             const stageValue = stage.leads.reduce((a, l) => a + (l.value || 0), 0);
             const isEditing = editingStageId === stage.id;
@@ -367,7 +367,7 @@ export default function FunilPage() {
             return (
               <div
                 key={stage.id}
-                className={`w-56 sm:w-64 shrink-0 flex flex-col transition-all duration-150 ${isDragOver ? "ring-2 ring-brand-400 rounded-2xl opacity-80" : ""} ${draggingStageId === stage.id ? "opacity-40" : ""}`}
+                className={`w-56 sm:w-64 shrink-0 flex flex-col transition-all duration-150 h-full ${isDragOver ? "ring-2 ring-brand-400 rounded-2xl opacity-80" : ""} ${draggingStageId === stage.id ? "opacity-40" : ""}`}
                 onDragOver={(e) => { e.preventDefault(); if (draggingStageId) setDragOverStageId(stage.id); }}
                 onDragLeave={() => { if (draggingStageId) setDragOverStageId(null); }}
                 onDrop={() => {
@@ -440,7 +440,7 @@ export default function FunilPage() {
 
                 {stageValue > 0 && <p className="text-xs text-gray-400 mb-2">R$ {stageValue.toLocaleString("pt-BR")}</p>}
 
-                <div className="flex-1 flex flex-col gap-2 overflow-y-auto pr-1">
+                <div className="flex-1 flex flex-col gap-2 overflow-y-auto pr-1" style={{ minHeight: 0 }}>
                   {stage.leads.map((lead) => (
                     <div
                       key={lead.id}
@@ -711,7 +711,7 @@ export default function FunilPage() {
             <div className="px-5 py-4 border-t border-gray-100 shrink-0 space-y-2">
               {contact?.phone && (
                 <button
-                  onClick={() => router.push(`/dashboard/conversas?phone=${encodeURIComponent(contact.phone || "")}`)}
+                  onClick={() => router.push(`/dashboard/conversas?phone=${encodeURIComponent(contact.phone || "")}&name=${encodeURIComponent(contact.name || "")}`)}
                   className="w-full flex items-center justify-center gap-2 py-2.5 text-sm font-semibold text-white bg-brand-600 rounded-xl hover:bg-brand-700 transition-colors">
                   <MessageCircle className="w-4 h-4" />
                   Abrir Chat

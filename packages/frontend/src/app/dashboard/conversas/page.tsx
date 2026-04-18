@@ -172,6 +172,7 @@ function ConversasInner() {
   // ── Auto-seleciona conversa pelo ?phone= param ────────────────────────────
   useEffect(() => {
     if (!phoneParam || loading || phoneParamUsed.current) return;
+    const nameParam = searchParams.get("name");
     const digits = phoneParam.replace(/\D/g, "");
     const match = conversations.find((c) =>
       c.contact.phone?.replace(/\D/g, "") === digits
@@ -182,9 +183,10 @@ function ConversasInner() {
     } else if (!loading) {
       phoneParamUsed.current = true;
       setNewConvPhone(phoneParam);
+      if (nameParam) setNewConvName(nameParam);
       setShowNewConv(true);
     }
-  }, [phoneParam, conversations, loading]);
+  }, [phoneParam, conversations, loading, searchParams]);
 
   // ── Inicia conversa outbound ──────────────────────────────────────────────
   const startConversation = async () => {
