@@ -14,8 +14,8 @@ function authHeaders() { return { "Content-Type": "application/json", Authorizat
 
 const COLORS = ["#6366F1", "#E8501F", "#10B981", "#F59E0B", "#3B82F6", "#8B5CF6", "#EF4444", "#EC4899", "#14B8A6"];
 
-interface Contact { id: string; name: string; phone?: string | null; email?: string | null; tags?: string[]; notes?: string | null; }
-interface Lead { id: string; contactId: string; contact: Contact; value?: number; notes?: string | null; position: number; stageId: string; }
+interface Contact { id: string; name: string; phone?: string | null; email?: string | null; tags?: string[]; notes?: string | null; createdAt?: string; }
+interface Lead { id: string; contactId: string; contact: Contact; value?: number; notes?: string | null; position: number; stageId: string; createdAt?: string; }
 interface Stage { id: string; name: string; color: string; position: number; leads: Lead[]; }
 interface Pipeline { id: string; name: string; stages: Stage[]; }
 
@@ -581,7 +581,22 @@ export default function FunilPage() {
             </div>
 
             {/* Body */}
-            <div className="flex-1 overflow-y-auto p-5 space-y-5">
+            <div className="flex-1 overflow-y-auto px-5 py-6 space-y-7">
+              {/* Informações de Cadastro */}
+              {selectedLead.createdAt && (
+                <div className="bg-brand-50/50 border border-brand-100/50 rounded-2xl p-3.5 flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <div className="p-1.5 bg-brand-100 rounded-lg">
+                      <Clock className="w-3.5 h-3.5 text-brand-600" />
+                    </div>
+                    <span className="text-[11px] font-semibold text-brand-900 uppercase tracking-wider">Cadastrado em</span>
+                  </div>
+                  <span className="text-xs font-medium text-brand-700">
+                    {new Date(selectedLead.createdAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                  </span>
+                </div>
+              )}
+
               {loadingContact ? (
                 <div className="flex items-center justify-center py-10 text-gray-400">
                   <RefreshCw className="w-5 h-5 animate-spin" />

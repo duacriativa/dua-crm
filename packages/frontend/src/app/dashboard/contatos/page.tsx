@@ -137,7 +137,9 @@ export default function ContatosPage() {
         {/* Mobile: card list */}
         <div className="block sm:hidden divide-y divide-gray-100 bg-white">
           {filtered.map((contact) => (
-            <div key={contact.id} className="flex items-center gap-3 px-4 py-3.5">
+            <div key={contact.id} 
+              onClick={() => router.push(`/dashboard/contatos/${contact.id}`)}
+              className="flex items-center gap-3 px-4 py-3.5 cursor-pointer hover:bg-gray-50 transition-colors">
               <div className="w-10 h-10 rounded-full bg-brand-100 text-brand-600 font-bold text-sm flex items-center justify-center shrink-0">
                 {contact.name.charAt(0)}
               </div>
@@ -181,7 +183,9 @@ export default function ContatosPage() {
           </thead>
           <tbody className="divide-y divide-gray-100">
             {filtered.map((contact) => (
-              <tr key={contact.id} className="bg-white hover:bg-gray-50 transition-colors group">
+              <tr key={contact.id} 
+                onClick={() => router.push(`/dashboard/contatos/${contact.id}`)}
+                className="bg-white hover:bg-gray-50 transition-colors group cursor-pointer">
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-3">
                     <div className="w-8 h-8 rounded-full bg-brand-100 text-brand-600 font-bold text-sm flex items-center justify-center shrink-0">{contact.name.charAt(0)}</div>
@@ -206,7 +210,11 @@ export default function ContatosPage() {
                 <td className="px-4 py-3 hidden lg:table-cell"><span className="text-sm font-medium text-gray-700">{contact.saleValue ? `R$ ${contact.saleValue.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}` : "—"}</span></td>
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-700"><MessageCircle className="w-4 h-4" /></button>
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); router.push(`/dashboard/conversas?phone=${encodeURIComponent(contact.phone || "")}&name=${encodeURIComponent(contact.name || "")}`); }}
+                      className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-700" title="Abrir Chat">
+                      <MessageCircle className="w-4 h-4" />
+                    </button>
                     <button className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-700"><Edit className="w-4 h-4" /></button>
                     <button className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-700"><MoreVertical className="w-4 h-4" /></button>
                   </div>
