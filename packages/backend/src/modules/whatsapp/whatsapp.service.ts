@@ -21,6 +21,36 @@ export class WhatsAppService {
     return { apikey: process.env.EVOLUTION_API_KEY, 'Content-Type': 'application/json' };
   }
 
+  /**
+   * Normaliza o número de telefone para o padrão internacional (E.164).
+   * Se for um número brasileiro (10 ou 11 dígitos) sem DDI, adiciona +55.
+   */
+  static formatPhone(phone: string): string {
+    if (!phone) return '';
+    
+    // Remove tudo que não é dígito
+    let cleaned = phone.replace(/\D/g, '');
+
+    // Se estiver no formato lid:..., não mexe
+    if (phone.startsWith('lid:')) return phone;
+
+    // Se começar com 0, remove o zero inicial (comum em alguns cadastros)
+    if (cleaned.startsWith('0') && cleaned.length > 10) {
+      cleaned = cleaned.substring(1);
+    }
+
+    // Regra para Brasil: se tem 10 ou 11 dígitos e não começa com 55, assume que é BR
+    // Caso especial: se começa com 55 mas tem apenas 10/11 dígitos no total, 
+    // pode ser um DDD 55 (interior RS). Mas o padrão mais seguro é checar o tamanho.
+    if ((cleaned.length === 10 || cleaned.length === 11) && !cleaned.startsWith('55')) {
+      cleaned = '55' + cleaned;
+    }
+
+    // Se não tem o +, adiciona por padrão para o DB, 
+    // mas a Evolution API costuma preferir sem o + no body do number.
+    return cleaned;
+  }
+
   async connect(instanceName: string) {
     const timeout = 15000;
     const url = this.evolutionUrl;
@@ -182,7 +212,7 @@ export class WhatsAppService {
   }
 
   async sendTextMessage(instanceName: string, to: string, text: string) {
-    const phone = to.replace(/\D/g, '');
+    const phone = WhatsAppService.formatPhone(to);
     const res = await axios.post(
       `${this.evolutionUrl}/message/sendText/${instanceName}`,
       { number: phone, text },

@@ -1,6 +1,7 @@
 import { Injectable, Logger, InternalServerErrorException } from '@nestjs/common';
 import { IsString, IsIn, IsOptional } from 'class-validator';
 import { PrismaService } from '../../prisma/prisma.service';
+import { WhatsAppService } from '../whatsapp/whatsapp.service';
 
 export class CreatePublicLeadDto {
   @IsString()
@@ -51,6 +52,7 @@ export class LeadsService {
 
   async createPublicLead(dto: CreatePublicLeadDto) {
     const tenantId = await this.resolveTenantId();
+    const formattedPhone = WhatsAppService.formatPhone(dto.whatsapp);
 
     const notes = [
       '[Formulário Tráfego Pago]',
@@ -63,11 +65,11 @@ export class LeadsService {
 
     // upsert: evita erro P2002 se o mesmo telefone já existir no tenant
     const contact = await this.prisma.contact.upsert({
-      where: { tenantId_phone: { tenantId, phone: dto.whatsapp } },
+      where: { tenantId_phone: { tenantId, phone: formattedPhone } },
       create: {
         tenantId,
         name: dto.nome,
-        phone: dto.whatsapp,
+        phone: formattedPhone,
         instagramHandle: dto.instagram,
         tags: ['trafego-pago', `interesse:${dto.interesse}`],
         notes,
