@@ -98,7 +98,7 @@ export class ContactsController {
 
   /**
    * POST /contacts/:id/analyze-instagram
-   * Chama a API da Anthropic com web_search para analisar o perfil do Instagram do contato.
+   * Chama a API da OpenAI (GPT-4o) para analisar o perfil do Instagram do contato.
    */
   @Post(':id/analyze-instagram')
   async analyzeInstagram(@Request() req: any, @Param('id') id: string) {
@@ -112,52 +112,49 @@ export class ContactsController {
     if (!contact) throw new BadRequestException('Contato não encontrado.');
     if (!contact.instagramHandle) throw new BadRequestException('Contato sem Instagram cadastrado.');
 
-    const apiKey = process.env.ANTHROPIC_API_KEY;
-    if (!apiKey) throw new InternalServerErrorException('ANTHROPIC_API_KEY não configurada.');
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey) throw new InternalServerErrorException('OPENAI_API_KEY não configurada.');
 
     const instagram = contact.instagramHandle.replace('@', '');
     const prompt =
       `Você é especialista em marketing digital para moda brasileira da agência Dua Criativa (Fortaleza). ` +
-      `Analise o perfil @${instagram} no Instagram. Busque informações públicas disponíveis. ` +
-      `Retorne JSON com: score (0-100), resumo (2-3 frases), pontos_fortes (array), oportunidades (array), ` +
+      `Analise o perfil @${instagram} no Instagram. Use todo o conhecimento disponível sobre essa marca/perfil. ` +
+      `Retorne APENAS um JSON válido (sem markdown, sem explicação extra) com: score (0-100), resumo (2-3 frases), pontos_fortes (array), oportunidades (array), ` +
       `alertas (array), estrategia_recomendada (parágrafo), mensagem_whatsapp (mensagem casual e personalizada, ` +
       `máx 4 linhas, assine como Equipe Dua Criativa).`;
 
-    let anthropicRes: Response;
+    let openaiRes: any;
     try {
-      anthropicRes = await fetch('https://api.anthropic.com/v1/messages', {
+      openaiRes = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
-          'x-api-key': apiKey,
-          'anthropic-version': '2023-06-01',
-          'anthropic-beta': 'web-search-2025-03-05',
-          'content-type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514',
-          max_tokens: 4096,
-          tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 5 }],
-          messages: [{ role: 'user', content: prompt }],
+          model: 'gpt-4o',
+          max_tokens: 2048,
+          response_format: { type: 'json_object' },
+          messages: [
+            {
+              role: 'system',
+              content: 'Você é um especialista em marketing digital para marcas de moda brasileira. Retorne sempre JSON válido.',
+            },
+            { role: 'user', content: prompt },
+          ],
         }),
       });
     } catch (err: any) {
-      throw new InternalServerErrorException(`Erro ao conectar na Anthropic API: ${err.message}`);
+      throw new InternalServerErrorException(`Erro ao conectar na OpenAI API: ${err.message}`);
     }
 
-    if (!anthropicRes.ok) {
-      const errBody = await anthropicRes.text();
-      throw new InternalServerErrorException(`Anthropic API retornou ${anthropicRes.status}: ${errBody}`);
+    if (!openaiRes.ok) {
+      const errBody = await openaiRes.text();
+      throw new InternalServerErrorException(`OpenAI API retornou ${openaiRes.status}: ${errBody}`);
     }
 
-    const data: any = await anthropicRes.json();
-
-    // Extrai o texto do último bloco de conteúdo retornado
-    let analysisText = '';
-    if (Array.isArray(data.content)) {
-      for (const block of data.content) {
-        if (block.type === 'text') analysisText += block.text;
-      }
-    }
+    const data: any = await openaiRes.json();
+    const analysisText: string = data.choices?.[0]?.message?.content ?? '';
 
     // Tenta extrair o JSON embutido no texto
     let parsed: any = null;
