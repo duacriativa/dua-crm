@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   Plus, MoreVertical, ChevronRight, Kanban, DollarSign, Users,
   GripVertical, X, RefreshCw, Check, Phone, Mail, Instagram,
-  MessageCircle, Tag, FileText, ExternalLink, TrendingUp, Trash2
+  MessageCircle, Tag, FileText, ExternalLink, TrendingUp, Trash2, Clock
 } from "lucide-react";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
