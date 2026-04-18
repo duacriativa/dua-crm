@@ -264,6 +264,7 @@ function ConversasInner() {
 
   const selectConversation = (conv: Conversation) => {
     isInitialLoadRef.current = true;
+    setMessages([]);
     setSelected(conv);
     setMobileView("chat");
     fetchMessages(conv.id);
@@ -635,9 +636,7 @@ function ConversasInner() {
                     )}
                     {msg.type === "AUDIO" && (
                       <div className="px-3 pt-3">
-                        {msg.mediaUrl ? (
-                          <audio controls src={msg.mediaUrl} className="w-full max-w-[240px] h-8" style={{ colorScheme: isOut ? "dark" : "light" }} />
-                        ) : (
+                        {false ? null : (
                           <div className={`flex items-center gap-2 ${isOut ? "text-white/80" : "text-gray-400"}`}>
                             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4M8 23h8"/></svg>
                             <span className="text-xs font-medium">Áudio</span>
