@@ -3,7 +3,7 @@ import {
   UseGuards, Request,
 } from '@nestjs/common';
 import { ContractsService } from './contracts.service';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CreateContractDto } from './dto/create-contract.dto';
 
 @Controller('contracts')
