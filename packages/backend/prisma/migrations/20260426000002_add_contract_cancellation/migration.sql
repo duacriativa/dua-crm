@@ -1,0 +1,2 @@
+ALTER TABLE "Contract" ADD COLUMN IF NOT EXISTS "cancellationReason" TEXT;
+ALTER TABLE "Contract" ADD COLUMN IF NOT EXISTS "cancelledAt" TIMESTAMP(3);

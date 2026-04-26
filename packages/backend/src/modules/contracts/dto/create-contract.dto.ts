@@ -15,4 +15,5 @@ export class CreateContractDto {
   endsAt?: string;
   clicksignDocId?: string;
   notes?: string;
+  cancellationReason?: string;
 }

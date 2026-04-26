@@ -53,6 +53,18 @@ export class ContractsService {
     });
   }
 
+  async cancel(tenantId: string, id: string, reason: string) {
+    await this.findOne(tenantId, id);
+    return this.prisma.contract.update({
+      where: { id },
+      data: {
+        status: 'CANCELLED',
+        cancellationReason: reason,
+        cancelledAt: new Date(),
+      },
+    });
+  }
+
   async update(tenantId: string, id: string, dto: Partial<CreateContractDto>) {
     await this.findOne(tenantId, id);
     return this.prisma.contract.update({

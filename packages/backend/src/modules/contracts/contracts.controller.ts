@@ -39,4 +39,13 @@ export class ContractsController {
   ) {
     return this.contractsService.update(req.user.tenantId, id, dto);
   }
+
+  @Patch(':id/cancel')
+  cancel(
+    @Param('id') id: string,
+    @Body() body: { reason: string },
+    @Request() req: any,
+  ) {
+    return this.contractsService.cancel(req.user.tenantId, id, body.reason);
+  }
 }

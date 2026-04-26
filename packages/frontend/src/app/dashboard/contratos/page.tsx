@@ -52,7 +52,7 @@ interface Contract {
 export default function ContratosPage() {
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<"ALL" | "ACTIVE" | "FINISHED">("ALL");
+  const [filter, setFilter] = useState<"ALL" | "ACTIVE" | "FINISHED" | "CANCELLED">("ALL");
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({
     clientName: "", serviceType: "SOCIAL_MEDIA", monthlyValue: "",
@@ -60,6 +60,9 @@ export default function ContratosPage() {
     notes: "", clicksignDocId: "",
   });
   const [saving, setSaving] = useState(false);
+  const [cancelModal, setCancelModal] = useState<{ id: string; name: string } | null>(null);
+  const [cancelReason, setCancelReason] = useState("");
+  const [cancelling, setCancelling] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -85,6 +88,17 @@ export default function ContratosPage() {
       setForm({ clientName: "", serviceType: "SOCIAL_MEDIA", monthlyValue: "", totalValue: "", installments: "1", signedAt: "", startsAt: "", endsAt: "", notes: "", clicksignDocId: "" });
       load();
     } catch { } finally { setSaving(false); }
+  };
+
+  const cancelContract = async () => {
+    if (!cancelModal || !cancelReason.trim()) return;
+    setCancelling(true);
+    try {
+      await api.patch(`/contracts/${cancelModal.id}/cancel`, { reason: cancelReason });
+      setCancelModal(null);
+      setCancelReason("");
+      load();
+    } catch { } finally { setCancelling(false); }
   };
 
   const filtered = contracts.filter((c) => filter === "ALL" || c.status === filter);
@@ -200,13 +214,44 @@ export default function ContratosPage() {
 
       {/* Filtros */}
       <div className="flex gap-2">
-        {(["ALL", "ACTIVE", "FINISHED"] as const).map((f) => (
+        {(["ALL", "ACTIVE", "FINISHED", "CANCELLED"] as const).map((f) => (
           <button key={f} onClick={() => setFilter(f)}
             className={`text-xs font-medium px-3 py-1.5 rounded-lg border transition-colors ${filter === f ? "bg-brand-600 text-white border-brand-600" : "bg-white text-gray-500 border-gray-200 hover:bg-gray-50"}`}>
-            {f === "ALL" ? "Todos" : f === "ACTIVE" ? "Ativos" : "Encerrados"}
+            {f === "ALL" ? "Todos" : f === "ACTIVE" ? "Ativos" : f === "FINISHED" ? "Encerrados" : "Cancelados"}
           </button>
         ))}
       </div>
+
+      {/* Modal de cancelamento */}
+      {cancelModal && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl border border-gray-200 p-6 w-full max-w-md shadow-xl">
+            <h2 className="text-sm font-semibold text-gray-900 mb-1">Cancelar contrato</h2>
+            <p className="text-xs text-gray-500 mb-4">{cancelModal.name}</p>
+            <label className="block text-xs text-gray-500 mb-1">Motivo do cancelamento</label>
+            <textarea
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mb-1"
+              rows={3}
+              placeholder="Ex: Cliente faliu, problema pessoal, inadimplência, rescisão..."
+              value={cancelReason}
+              onChange={e => setCancelReason(e.target.value)}
+            />
+            <p className="text-xs text-gray-400 mb-4">O contrato ficará registrado como cancelado com este motivo. Não será apagado.</p>
+            <div className="flex gap-2">
+              <button
+                onClick={cancelContract}
+                disabled={!cancelReason.trim() || cancelling}
+                className="bg-red-600 text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-red-700 transition-colors disabled:opacity-40"
+              >
+                {cancelling ? "Cancelando..." : "Confirmar cancelamento"}
+              </button>
+              <button onClick={() => { setCancelModal(null); setCancelReason(""); }} className="text-sm text-gray-500 px-4 py-2 rounded-lg border border-gray-200 hover:bg-gray-50">
+                Voltar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Lista de contratos */}
       {loading ? (
@@ -277,6 +322,23 @@ export default function ContratosPage() {
                 )}
                 {c.notes && (
                   <p className="mt-2 text-xs text-gray-400 bg-gray-50 rounded-lg px-3 py-2">{c.notes}</p>
+                )}
+                {c.status === "CANCELLED" && (c as any).cancellationReason && (
+                  <div className="mt-2 text-xs bg-red-50 border border-red-100 rounded-lg px-3 py-2">
+                    <span className="font-medium text-red-600">Motivo: </span>
+                    <span className="text-red-500">{(c as any).cancellationReason}</span>
+                    {(c as any).cancelledAt && (
+                      <span className="text-red-400 ml-2">· {new Date((c as any).cancelledAt).toLocaleDateString("pt-BR")}</span>
+                    )}
+                  </div>
+                )}
+                {c.status === "ACTIVE" && (
+                  <button
+                    onClick={() => setCancelModal({ id: c.id, name: c.clientName })}
+                    className="mt-3 text-xs text-red-500 hover:text-red-700 hover:underline transition-colors"
+                  >
+                    Cancelar contrato
+                  </button>
                 )}
               </div>
             );

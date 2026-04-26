@@ -396,6 +396,8 @@ model Contract {
   endsAt          DateTime?           // null = recorrente sem fim
   clicksignDocId  String?             // ID do doc no Clicksign (futuro)
   notes           String?
+  cancellationReason String?          // motivo do cancelamento
+  cancelledAt     DateTime?           // quando foi cancelado
   createdAt       DateTime            @default(now())
   updatedAt       DateTime            @updatedAt
 
