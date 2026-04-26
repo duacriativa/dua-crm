@@ -1,250 +1,140 @@
 "use client";
 
-import React from "react";
+import React, { useEffect, useState } from "react";
 import {
-  MessageCircle,
-  Users,
-  Bot,
-  Bell,
-  TrendingUp,
-  TrendingDown,
-  ShoppingBag,
-  Zap,
-  RefreshCw,
-  Calendar,
-  MoreHorizontal,
-  Phone,
-  Instagram,
-  CheckCircle2,
-  AlertCircle,
-  Search,
-  Package,
-  ArrowUpRight,
+  MessageCircle, Users, Bot, Bell, TrendingUp, TrendingDown,
+  ShoppingBag, Zap, RefreshCw, Calendar, MoreHorizontal, Phone,
+  Instagram, CheckCircle2, AlertCircle, Search, Package,
+  ArrowUpRight, DollarSign, Star, Activity, UserCheck,
 } from "lucide-react";
+import api from "@/lib/api";
+import { useRouter } from "next/navigation";
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-type KpiCard = {
-  label: string;
-  value: string;
-  change: number;
-  icon: React.ElementType;
-  iconBg: string;
-  iconColor: string;
-};
+function fmt(val: number) {
+  return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 }).format(val ?? 0);
+}
 
 type Lead = {
-  name: string;
-  handle: string;
-  channel: "whatsapp" | "instagram";
-  status: "open" | "in_progress" | "resolved";
-  lastMessage: string;
-  time: string;
-  agent?: string;
+  name: string; handle: string; channel: "whatsapp" | "instagram";
+  status: "open" | "in_progress" | "resolved"; lastMessage: string; time: string; agent?: string;
 };
-
 type AIAgent = {
-  name: string;
-  description: string;
-  status: "active" | "online" | "paused";
-  icon: React.ElementType;
+  name: string; description: string; status: "active" | "online" | "paused"; icon: React.ElementType;
 };
-
-type TopProduct = {
-  name: string;
-  ref: string;
-  units: number;
-  emoji: string;
-};
-
-// ─── Mock Data ────────────────────────────────────────────────────────────────
-
-const kpis: KpiCard[] = [
-  {
-    label: "Vendas/mês",
-    value: "R$ 284k",
-    change: 42,
-    icon: ShoppingBag,
-    iconBg: "bg-brand-50",
-    iconColor: "text-brand-600",
-  },
-  {
-    label: "Conversas IA",
-    value: "3.847",
-    change: 128,
-    icon: MessageCircle,
-    iconBg: "bg-violet-50",
-    iconColor: "text-violet-600",
-  },
-  {
-    label: "Conversão",
-    value: "34%",
-    change: 18,
-    icon: TrendingUp,
-    iconBg: "bg-emerald-50",
-    iconColor: "text-emerald-600",
-  },
-  {
-    label: "Ticket Médio",
-    value: "R$ 890",
-    change: 12,
-    icon: Zap,
-    iconBg: "bg-amber-50",
-    iconColor: "text-amber-600",
-  },
-];
 
 const recentLeads: Lead[] = [
-  {
-    name: "Amiche®",
-    handle: "@amiche",
-    channel: "instagram",
-    status: "open",
-    lastMessage: "Olá! Vi vocês no Instagram e quero saber mais sobre os planos",
-    time: "2 min",
-  },
-  {
-    name: "Luiza Modas",
-    handle: "+55 11 99999-0001",
-    channel: "whatsapp",
-    status: "in_progress",
-    lastMessage: "Ta vou analisar com meu esposo",
-    time: "18 min",
-    agent: "Duda",
-  },
-  {
-    name: "Over Limit Fitness",
-    handle: "+55 11 99999-0002",
-    channel: "whatsapp",
-    status: "in_progress",
-    lastMessage: "Salesbot: Tem mais algu...",
-    time: "1h",
-  },
-  {
-    name: "Cris Alves",
-    handle: "+55 11 99999-0003",
-    channel: "whatsapp",
-    status: "open",
-    lastMessage: "Salesbot: No dia 24/04...",
-    time: "2h",
-  },
-  {
-    name: "Dani Botelho",
-    handle: "+55 11 99999-0004",
-    channel: "whatsapp",
-    status: "resolved",
-    lastMessage: "Perfeito, estou à disposi...",
-    time: "4h",
-    agent: "Duda",
-  },
+  { name: "Amiche®", handle: "@amiche", channel: "instagram", status: "open", lastMessage: "Olá! Vi vocês no Instagram e quero saber mais sobre os planos", time: "2 min" },
+  { name: "Luiza Modas", handle: "+55 85 99999-0001", channel: "whatsapp", status: "in_progress", lastMessage: "Ta vou analisar com meu esposo", time: "18 min", agent: "Duda" },
+  { name: "Over Limit Fitness", handle: "+55 85 99999-0002", channel: "whatsapp", status: "in_progress", lastMessage: "Salesbot: Tem mais algu...", time: "1h" },
+  { name: "Cris Alves", handle: "+55 85 99999-0003", channel: "whatsapp", status: "open", lastMessage: "Salesbot: No dia 24/04...", time: "2h" },
+  { name: "Dani Botelho", handle: "+55 85 99999-0004", channel: "whatsapp", status: "resolved", lastMessage: "Perfeito, estou à disposi...", time: "4h", agent: "Duda" },
 ];
 
 const aiAgents: AIAgent[] = [
-  { name: "Atendimento",  description: "12 conversas ativas",  status: "active", icon: MessageCircle },
-  { name: "Qualificação", description: "8 leads na fila",      status: "online", icon: Users },
-  { name: "Reativação",   description: "23 clientes inativos", status: "active", icon: RefreshCw },
-  { name: "Follow-up",    description: "47 tarefas hoje",      status: "paused", icon: Calendar },
+  { name: "Atendimento", description: "12 conversas ativas", status: "active", icon: MessageCircle },
+  { name: "Qualificação", description: "8 leads na fila", status: "online", icon: UserCheck },
+  { name: "Reativação", description: "23 clientes inativos", status: "active", icon: RefreshCw },
+  { name: "Follow-up", description: "47 tarefas hoje", status: "paused", icon: Calendar },
 ];
 
-const topProducts: TopProduct[] = [
-  { name: "Conjunto Verão",  ref: "CV-2024", units: 847, emoji: "👗" },
-  { name: "Blusa Cropped",   ref: "BC-1122", units: 623, emoji: "👕" },
-  { name: "Calça Pantalona", ref: "CP-0987", units: 412, emoji: "👖" },
-  { name: "Vestido Linho",   ref: "VL-0456", units: 298, emoji: "👘" },
-];
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function statusLabel(s: Lead["status"]) {
-  if (s === "open")        return { label: "Aberta",       cls: "bg-amber-100 text-amber-700" };
-  if (s === "in_progress") return { label: "Em andamento", cls: "bg-blue-100 text-blue-700" };
-  return                          { label: "Resolvida",    cls: "bg-emerald-100 text-emerald-700" };
-}
-
-function agentStatusConfig(s: AIAgent["status"]) {
-  if (s === "active") return { label: "Ativo",   cls: "bg-brand-100 text-brand-700",    dot: "bg-brand-500" };
-  if (s === "online") return { label: "Online",  cls: "bg-emerald-100 text-emerald-700", dot: "bg-emerald-500" };
-  return                     { label: "Pausado", cls: "bg-gray-100 text-gray-500",       dot: "bg-gray-400" };
-}
-
-// ─── KPI Card ─────────────────────────────────────────────────────────────────
-
-function KpiCard({ card }: { card: KpiCard }) {
-  const { icon: Icon, label, value, change, iconBg, iconColor } = card;
-  const positive = change >= 0;
-  return (
-    <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
-      <div className="flex items-start justify-between mb-4">
-        <div className={`p-2.5 rounded-xl ${iconBg}`}>
-          <Icon className={`h-5 w-5 ${iconColor}`} />
-        </div>
-        <div className={`flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-full
-          ${positive ? "bg-emerald-50 text-emerald-600" : "bg-red-50 text-red-500"}`}>
-          {positive ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
-          {positive ? "+" : ""}{change}%
-        </div>
-      </div>
-      <p className="text-xs text-gray-500 font-medium mb-1">{label}</p>
-      <p className="text-2xl font-bold text-gray-900">{value}</p>
-    </div>
-  );
-}
-
-// ─── AI Agent Row ─────────────────────────────────────────────────────────────
-
-function AgentRow({ agent }: { agent: AIAgent }) {
-  const { icon: Icon, name, description, status } = agent;
-  const cfg = agentStatusConfig(status);
-  return (
-    <div className="flex items-center gap-3 py-3 px-1">
-      <div className="flex items-center justify-center w-9 h-9 rounded-xl bg-gray-50 border border-gray-100 shrink-0">
-        <Icon className="h-4 w-4 text-gray-600" />
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-semibold text-gray-800 truncate">{name}</p>
-        <p className="text-xs text-gray-400 truncate">{description}</p>
-      </div>
-      <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${cfg.cls}`}>
-        <span className={`h-1.5 w-1.5 rounded-full ${cfg.dot}`} />
-        {cfg.label}
-      </div>
-    </div>
-  );
-}
-
-// ─── Lead Row ─────────────────────────────────────────────────────────────────
+const statusMap = {
+  open: { label: "Aberta", cls: "bg-amber-50 text-amber-700" },
+  in_progress: { label: "Em andamento", cls: "bg-brand-50 text-brand-700" },
+  resolved: { label: "Resolvida", cls: "bg-emerald-50 text-emerald-700" },
+};
+const agentStatusMap = {
+  active: { dot: "bg-brand-500", label: "Ativo" },
+  online: { dot: "bg-emerald-500", label: "Online" },
+  paused: { dot: "bg-gray-300", label: "Pausado" },
+};
 
 function LeadRow({ lead }: { lead: Lead }) {
-  const st = statusLabel(lead.status);
+  const s = statusMap[lead.status];
   return (
-    <div className="flex items-start gap-3 py-3 px-2 rounded-xl hover:bg-gray-50 cursor-pointer transition-colors group">
-      {/* Avatar */}
-      <div className="w-9 h-9 rounded-full bg-gradient-to-br from-brand-400 to-brand-600 flex items-center justify-center shrink-0 text-white text-sm font-bold">
+    <div className="flex items-start gap-3 py-3 px-2 rounded-xl hover:bg-gray-50 transition-colors group cursor-pointer">
+      <div className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold shrink-0 ${lead.channel === "instagram" ? "bg-pink-100 text-pink-600" : "bg-emerald-100 text-emerald-600"}`}>
         {lead.name.charAt(0)}
       </div>
       <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 mb-0.5">
+        <div className="flex items-center gap-2">
           <p className="text-sm font-semibold text-gray-800 truncate">{lead.name}</p>
-          {lead.channel === "whatsapp"
-            ? <Phone className="h-3 w-3 text-emerald-500 shrink-0" />
-            : <Instagram className="h-3 w-3 text-pink-500 shrink-0" />}
+          {lead.channel === "instagram" ? <Instagram className="h-3 w-3 text-pink-400 shrink-0" /> : <Phone className="h-3 w-3 text-emerald-400 shrink-0" />}
         </div>
-        <p className="text-xs text-gray-400 truncate">{lead.lastMessage}</p>
-        {lead.agent && (
-          <p className="text-xs text-brand-500 mt-0.5">→ {lead.agent}</p>
-        )}
+        <p className="text-xs text-gray-400 truncate mt-0.5">{lead.lastMessage}</p>
+        {lead.agent && <p className="text-xs text-brand-500 mt-0.5">→ {lead.agent}</p>}
       </div>
-      <div className="flex flex-col items-end gap-1.5 shrink-0">
-        <span className="text-xs text-gray-400">{lead.time}</span>
-        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${st.cls}`}>{st.label}</span>
+      <div className="text-right shrink-0">
+        <p className="text-xs text-gray-400">{lead.time}</p>
+        <span className={`inline-block text-xs px-2 py-0.5 rounded-full font-medium mt-1 ${s.cls}`}>{s.label}</span>
       </div>
     </div>
   );
 }
 
-// ─── Main Dashboard Content ───────────────────────────────────────────────────
+function AgentRow({ agent }: { agent: AIAgent }) {
+  const s = agentStatusMap[agent.status];
+  return (
+    <div className="flex items-center gap-3 py-3">
+      <div className="w-8 h-8 rounded-xl bg-gray-50 border border-gray-100 flex items-center justify-center shrink-0">
+        <agent.icon className="h-4 w-4 text-gray-500" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-semibold text-gray-800">{agent.name}</p>
+        <p className="text-xs text-gray-400">{agent.description}</p>
+      </div>
+      <div className="flex items-center gap-1.5 shrink-0">
+        <div className={`w-2 h-2 rounded-full ${s.dot}`} />
+        <span className="text-xs text-gray-500">{s.label}</span>
+      </div>
+    </div>
+  );
+}
 
+// ─── Metric Card ──────────────────────────────────────────────────────────────
+function MetricCard({ label, value, sub, badge, badgeGreen, highlight }: {
+  label: string; value: string; sub: string; badge?: string; badgeGreen?: boolean; highlight?: boolean;
+}) {
+  return (
+    <div className={`bg-white rounded-2xl border p-4 ${highlight ? "border-teal-200 bg-teal-50/30" : "border-gray-100"}`}>
+      <p className="text-xs text-gray-500 mb-1">{label}</p>
+      <p className={`text-2xl font-bold leading-tight ${highlight ? "text-teal-700" : "text-gray-900"}`}>{value}</p>
+      <p className="text-xs text-gray-400 mt-0.5">{sub}</p>
+      {badge && (
+        <span className={`inline-block text-xs font-medium px-2 py-0.5 rounded-full mt-2 ${badgeGreen ? "bg-emerald-50 text-emerald-700" : "bg-gray-100 text-gray-500"}`}>
+          {badge}
+        </span>
+      )}
+    </div>
+  );
+}
+
+// ─── Dashboard Content ────────────────────────────────────────────────────────
 function DashboardContent() {
+  const router = useRouter();
+  const [financial, setFinancial] = useState<any>(null);
+  const [contacts, setContacts] = useState<number>(0);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    Promise.all([
+      api.get("/financial/dashboard").catch(() => null),
+      api.get("/contacts").catch(() => null),
+    ]).then(([fin, cont]) => {
+      if (fin?.data) setFinancial(fin.data);
+      if (cont?.data) setContacts(Array.isArray(cont.data) ? cont.data.length : cont.data?.total ?? 0);
+    }).finally(() => setLoading(false));
+  }, []);
+
+  const ticketMedio = financial?.ticketMedio ?? 0;
+  const ltv = financial?.ltv ?? 0;
+  const cac = financial?.cac ?? 0;
+  const ltvCac = financial?.ltvCacRatio ?? 0;
+  const received = financial?.received ?? 0;
+  const pending = financial?.pending ?? 0;
+  const overdue = financial?.overdue ?? 0;
+  const inadimplencia = financial?.inadimplencyRate ?? 0;
+  const activeContracts = financial?.activeContracts ?? 0;
+
   return (
     <div className="flex-1 min-h-screen bg-gray-50 overflow-y-auto">
       {/* Header */}
@@ -257,47 +147,107 @@ function DashboardContent() {
           <div className="flex items-center gap-3">
             <div className="relative hidden sm:block">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Buscar leads..."
-                className="pl-9 pr-4 py-2 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-300 w-48"
-              />
+              <input type="text" placeholder="Buscar leads..." className="pl-9 pr-4 py-2 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-300 w-48" />
             </div>
             <button className="relative p-2 rounded-xl bg-gray-50 border border-gray-200 text-gray-500 hover:text-gray-700 transition-colors">
               <Bell className="h-4.5 w-4.5" />
               <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-brand-500" />
             </button>
-            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-brand-400 to-brand-600 flex items-center justify-center text-white text-sm font-bold">
-              D
-            </div>
+            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-brand-400 to-brand-600 flex items-center justify-center text-white text-sm font-bold">D</div>
           </div>
         </div>
       </header>
 
       <main className="p-6 space-y-6">
-        {/* KPIs */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          {kpis.map((kpi) => <KpiCard key={kpi.label} card={kpi} />)}
+
+        {/* ── Bloco 1: Aquisição de leads ── */}
+        <div>
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-3">Aquisição de leads</p>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <MetricCard label="Leads recebidos" value={String(contacts || "—")} sub="total na base" badge="este mês" badgeGreen />
+            <MetricCard label="Leads ultra qualificados" value="—" sub="dentro do ICP" badge="tag ICP" highlight />
+            <MetricCard label="Leads qualificados" value="—" sub="potencial médio" badge="a configurar" />
+            <MetricCard label="Leads frios" value="—" sub="pouco qualificados" badge="a configurar" />
+          </div>
         </div>
 
-        {/* Middle row */}
+        {/* ── Bloco 2: Vendas e conversão ── */}
+        <div>
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-3">Vendas e conversão</p>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <MetricCard
+              label="Faturamento do mês"
+              value={loading ? "..." : fmt(received + pending)}
+              sub="contratado em abril"
+              badge={loading ? "" : `${fmt(received)} recebido`}
+              badgeGreen
+            />
+            <MetricCard
+              label="Já recebido"
+              value={loading ? "..." : fmt(received)}
+              sub={`${financial?.receivedCount ?? 0} pagamentos`}
+              badge={loading ? "" : `${Math.round((received / (received + pending + overdue || 1)) * 100)}% do total`}
+              badgeGreen
+            />
+            <MetricCard
+              label="Ticket médio"
+              value={loading ? "..." : fmt(ticketMedio)}
+              sub="por cliente/mês"
+              badge={activeContracts ? `${activeContracts} contratos ativos` : undefined}
+              badgeGreen
+            />
+            <MetricCard
+              label="CAC"
+              value={loading ? "..." : fmt(cac)}
+              sub="custo de aquisição"
+              badge={cac ? "R$1.200 ads ÷ novos clientes" : "sem clientes novos"}
+            />
+          </div>
+        </div>
+
+        {/* ── Bloco 3: Retenção e valor ── */}
+        <div>
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-3">Retenção e valor do cliente</p>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <MetricCard label="LTV estimado" value={loading ? "..." : fmt(ltv)} sub="por cliente (~8 meses)" badge="ticket × retenção" badgeGreen={ltv > 0} />
+            <MetricCard label="LTV / CAC" value={loading ? "..." : `${ltvCac}x`} sub="retorno por real investido" badge={ltvCac >= 3 ? "Saudável (meta: >3x)" : "Atenção"} badgeGreen={ltvCac >= 3} />
+            <div className="bg-white rounded-2xl border border-gray-100 p-4">
+              <p className="text-xs text-gray-500 mb-1">Inadimplência</p>
+              <p className={`text-2xl font-bold ${inadimplencia > 15 ? "text-red-600" : "text-emerald-700"}`}>
+                {loading ? "..." : `${Math.round(inadimplencia)}%`}
+              </p>
+              <p className="text-xs text-gray-400 mt-0.5">cobranças vencidas</p>
+              <div className="mt-2 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                <div className={`h-full rounded-full ${inadimplencia > 15 ? "bg-red-500" : "bg-emerald-500"}`} style={{ width: `${Math.min(inadimplencia, 100)}%` }} />
+              </div>
+              <span className={`inline-block text-xs font-medium px-2 py-0.5 rounded-full mt-2 ${inadimplencia <= 15 ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"}`}>
+                {inadimplencia <= 15 ? "Saudável" : "Acima da meta"}
+              </span>
+            </div>
+            <MetricCard
+              label="Em atraso"
+              value={loading ? "..." : fmt(overdue)}
+              sub={`${financial?.overdueCount ?? 0} cobranças vencidas`}
+              badge={overdue > 0 ? "ação necessária" : "tudo em dia"}
+              badgeGreen={overdue === 0}
+            />
+          </div>
+        </div>
+
+        {/* ── Linha do meio: Conversas + Agentes ── */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Conversas recentes */}
           <div className="lg:col-span-2 bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
             <div className="flex items-center justify-between px-5 py-4 border-b border-gray-50">
               <h2 className="font-semibold text-gray-800">Conversas recentes</h2>
-              <button className="flex items-center gap-1 text-xs text-brand-600 font-semibold hover:text-brand-700">
+              <button onClick={() => router.push("/dashboard/conversas")} className="flex items-center gap-1 text-xs text-brand-600 font-semibold hover:text-brand-700">
                 Ver todas <ArrowUpRight className="h-3.5 w-3.5" />
               </button>
             </div>
             <div className="px-3 py-1 divide-y divide-gray-50">
-              {recentLeads.map((lead) => (
-                <LeadRow key={lead.name} lead={lead} />
-              ))}
+              {recentLeads.map((lead) => <LeadRow key={lead.name} lead={lead} />)}
             </div>
           </div>
 
-          {/* Agentes de IA */}
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
             <div className="flex items-center justify-between px-5 py-4 border-b border-gray-50">
               <h2 className="font-semibold text-gray-800">Agentes de IA</h2>
@@ -306,32 +256,19 @@ function DashboardContent() {
               </button>
             </div>
             <div className="px-4 divide-y divide-gray-50">
-              {aiAgents.map((agent) => (
-                <AgentRow key={agent.name} agent={agent} />
-              ))}
+              {aiAgents.map((agent) => <AgentRow key={agent.name} agent={agent} />)}
             </div>
-
-            {/* IA respondendo */}
             <div className="mx-4 mb-4 mt-3 p-3.5 rounded-xl bg-brand-50 border border-brand-100">
               <div className="flex items-center gap-2 mb-2">
                 <Bot className="h-4 w-4 text-brand-600" />
                 <p className="text-sm font-semibold text-brand-700">IA respondendo agora</p>
               </div>
               <div className="space-y-1.5">
-                {[
-                  { label: "Qualificação", pct: 92 },
-                  { label: "Reativação",   pct: 78 },
-                  { label: "Follow-up",    pct: 54 },
-                ].map(({ label, pct }) => (
+                {[{ label: "Qualificação", pct: 92 }, { label: "Reativação", pct: 78 }, { label: "Follow-up", pct: 54 }].map(({ label, pct }) => (
                   <div key={label}>
-                    <div className="flex justify-between text-xs text-brand-600 mb-0.5">
-                      <span>{label}</span><span>{pct}%</span>
-                    </div>
+                    <div className="flex justify-between text-xs text-brand-600 mb-0.5"><span>{label}</span><span>{pct}%</span></div>
                     <div className="h-1.5 bg-brand-100 rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-brand-500 rounded-full transition-all"
-                        style={{ width: `${pct}%` }}
-                      />
+                      <div className="h-full bg-brand-500 rounded-full" style={{ width: `${pct}%` }} />
                     </div>
                   </div>
                 ))}
@@ -340,104 +277,57 @@ function DashboardContent() {
           </div>
         </div>
 
-        {/* Bottom row */}
+        {/* ── Linha inferior: Funil + Integrações ── */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Mais vendidos */}
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-50">
-              <div className="flex items-center gap-2">
-                <Package className="h-4 w-4 text-gray-500" />
-                <h2 className="font-semibold text-gray-800">Mais vendidos</h2>
-              </div>
-              <button className="flex items-center gap-1 text-xs text-brand-600 font-semibold hover:text-brand-700">
-                Ver catálogo <ArrowUpRight className="h-3.5 w-3.5" />
-              </button>
-            </div>
-            <div className="p-4 space-y-3">
-              {topProducts.map((p, i) => (
-                <div key={p.ref} className="flex items-center gap-3 p-2.5 rounded-xl hover:bg-gray-50 transition-colors">
-                  <div className="w-8 h-8 rounded-lg bg-gray-50 border border-gray-100 flex items-center justify-center text-lg shrink-0">
-                    {p.emoji}
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+            <h2 className="font-semibold text-gray-800 mb-4">Funil de vendas</h2>
+            <div className="space-y-2">
+              {[
+                { stage: "Novos leads", count: contacts || 0, pct: 100, color: "bg-gray-200" },
+                { stage: "Qualificando", count: Math.round((contacts || 0) * 0.53), pct: 53, color: "bg-brand-200" },
+                { stage: "Proposta enviada", count: Math.round((contacts || 0) * 0.19), pct: 19, color: "bg-brand-400" },
+                { stage: "Fechado", count: activeContracts, pct: activeContracts && contacts ? Math.round((activeContracts / contacts) * 100) : 0, color: "bg-brand-600" },
+              ].map(({ stage, count, pct, color }) => (
+                <div key={stage}>
+                  <div className="flex justify-between text-xs text-gray-500 mb-1">
+                    <span className="font-medium">{stage}</span>
+                    <span className="font-semibold text-gray-700">{count}</span>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-gray-800 truncate">{p.name}</p>
-                    <p className="text-xs text-gray-400">REF: {p.ref}</p>
+                  <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                    <div className={`h-full ${color} rounded-full`} style={{ width: `${pct}%` }} />
                   </div>
-                  <div className="text-right">
-                    <p className="text-sm font-bold text-brand-600">{p.units.toLocaleString("pt-BR")}</p>
-                    <p className="text-xs text-gray-400">unidades</p>
-                  </div>
-                  {i === 0 && (
-                    <span className="text-xs px-2 py-0.5 rounded-full bg-amber-50 text-amber-600 font-semibold shrink-0">
-                      #1
-                    </span>
-                  )}
                 </div>
               ))}
             </div>
           </div>
 
-          {/* Funil de qualificação + status */}
-          <div className="space-y-4">
-            {/* Funil */}
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
-              <h2 className="font-semibold text-gray-800 mb-4">Funil de vendas</h2>
-              <div className="space-y-2">
-                {[
-                  { stage: "Novos leads",     count: 346, pct: 100, color: "bg-gray-200" },
-                  { stage: "Qualificando",    count: 184, pct: 53,  color: "bg-brand-200" },
-                  { stage: "Proposta enviada", count: 67, pct: 19,  color: "bg-brand-400" },
-                  { stage: "Fechado",          count: 23, pct: 7,   color: "bg-brand-600" },
-                ].map(({ stage, count, pct, color }) => (
-                  <div key={stage}>
-                    <div className="flex justify-between text-xs text-gray-500 mb-1">
-                      <span className="font-medium">{stage}</span>
-                      <span className="font-semibold text-gray-700">{count}</span>
-                    </div>
-                    <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                      <div className={`h-full ${color} rounded-full`} style={{ width: `${pct}%` }} />
-                    </div>
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+            <h2 className="font-semibold text-gray-800 mb-3">Integrações</h2>
+            <div className="space-y-2.5">
+              {[
+                { name: "WhatsApp Business", status: true, info: "Conectado via QR", icon: Phone },
+                { name: "Instagram", status: true, info: "Página vinculada", icon: Instagram },
+                { name: "Asaas", status: true, info: "Financeiro em tempo real", icon: DollarSign },
+              ].map(({ name, status, info, icon: Icon }) => (
+                <div key={name} className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50">
+                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${status ? "bg-emerald-50" : "bg-gray-50"}`}>
+                    <Icon className={`h-4 w-4 ${status ? "text-emerald-600" : "text-gray-400"}`} />
                   </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Integrações */}
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
-              <h2 className="font-semibold text-gray-800 mb-3">Integrações</h2>
-              <div className="space-y-2.5">
-                {[
-                  { name: "WhatsApp Business", status: true,  info: "Conectado via QR",   icon: Phone },
-                  { name: "Instagram",          status: true,  info: "Página vinculada",    icon: Instagram },
-                  { name: "Nuvemshop",          status: false, info: "Não configurado",     icon: Package },
-                ].map(({ name, status, info, icon: Icon }) => (
-                  <div key={name} className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50">
-                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${status ? "bg-emerald-50" : "bg-gray-50"}`}>
-                      <Icon className={`h-4 w-4 ${status ? "text-emerald-600" : "text-gray-400"}`} />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-gray-800">{name}</p>
-                      <p className="text-xs text-gray-400">{info}</p>
-                    </div>
-                    {status
-                      ? <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" />
-                      : <AlertCircle className="h-4 w-4 text-gray-300 shrink-0" />
-                    }
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-800">{name}</p>
+                    <p className="text-xs text-gray-400">{info}</p>
                   </div>
-                ))}
-              </div>
+                  {status ? <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" /> : <AlertCircle className="h-4 w-4 text-gray-300 shrink-0" />}
+                </div>
+              ))}
             </div>
           </div>
         </div>
+
       </main>
     </div>
   );
 }
 
-// ─── Root Export ──────────────────────────────────────────────────────────────
-
-export function CRMDashboard() {
-  return <DashboardContent />;
-}
-
+export function CRMDashboard() { return <DashboardContent />; }
 export default CRMDashboard;
