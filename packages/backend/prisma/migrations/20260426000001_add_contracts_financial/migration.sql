@@ -1,6 +1,4 @@
--- Resolve migration travada — usa IF NOT EXISTS em tudo
-
--- CreateEnum (seguro se já existir)
+-- CreateEnum (safe - ignora se já existir)
 DO $$ BEGIN
   CREATE TYPE "ContractStatus" AS ENUM ('ACTIVE', 'FINISHED', 'CANCELLED');
 EXCEPTION WHEN duplicate_object THEN NULL;
@@ -16,7 +14,7 @@ DO $$ BEGIN
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 
--- CreateTable
+-- CreateTable (safe)
 CREATE TABLE IF NOT EXISTS "Contract" (
     "id" TEXT NOT NULL,
     "tenantId" TEXT NOT NULL,
@@ -38,11 +36,9 @@ CREATE TABLE IF NOT EXISTS "Contract" (
     "notes" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
-
     CONSTRAINT "Contract_pkey" PRIMARY KEY ("id")
 );
 
--- CreateTable
 CREATE TABLE IF NOT EXISTS "FinancialEntry" (
     "id" TEXT NOT NULL,
     "tenantId" TEXT NOT NULL,
@@ -58,11 +54,10 @@ CREATE TABLE IF NOT EXISTS "FinancialEntry" (
     "installmentNum" INTEGER,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
-
     CONSTRAINT "FinancialEntry_pkey" PRIMARY KEY ("id")
 );
 
--- CreateIndex
+-- Indexes (safe)
 CREATE INDEX IF NOT EXISTS "Contract_tenantId_idx" ON "Contract"("tenantId");
 CREATE INDEX IF NOT EXISTS "Contract_tenantId_status_idx" ON "Contract"("tenantId", "status");
 CREATE INDEX IF NOT EXISTS "FinancialEntry_tenantId_idx" ON "FinancialEntry"("tenantId");
@@ -70,7 +65,7 @@ CREATE INDEX IF NOT EXISTS "FinancialEntry_tenantId_status_idx" ON "FinancialEnt
 CREATE INDEX IF NOT EXISTS "FinancialEntry_tenantId_dueDate_idx" ON "FinancialEntry"("tenantId", "dueDate");
 CREATE UNIQUE INDEX IF NOT EXISTS "FinancialEntry_asaasPaymentId_key" ON "FinancialEntry"("asaasPaymentId");
 
--- AddForeignKey
+-- ForeignKeys (safe)
 DO $$ BEGIN
   ALTER TABLE "Contract" ADD CONSTRAINT "Contract_tenantId_fkey"
     FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id") ON DELETE CASCADE ON UPDATE CASCADE;
