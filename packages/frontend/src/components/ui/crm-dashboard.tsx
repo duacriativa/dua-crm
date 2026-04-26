@@ -302,24 +302,33 @@ function DashboardContent() {
           </div>
 
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
-            <h2 className="font-semibold text-gray-800 mb-3">Integrações</h2>
+            <h2 className="font-semibold text-gray-800 mb-3">Integrações ativas</h2>
             <div className="space-y-2.5">
-              {[
-                { name: "WhatsApp Business", status: true, info: "Conectado via QR", icon: Phone },
-                { name: "Instagram", status: true, info: "Página vinculada", icon: Instagram },
-                { name: "Asaas", status: true, info: "Financeiro em tempo real", icon: DollarSign },
-              ].map(({ name, status, info, icon: Icon }) => (
-                <div key={name} className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50">
-                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${status ? "bg-emerald-50" : "bg-gray-50"}`}>
-                    <Icon className={`h-4 w-4 ${status ? "text-emerald-600" : "text-gray-400"}`} />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-800">{name}</p>
-                    <p className="text-xs text-gray-400">{info}</p>
-                  </div>
-                  {status ? <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" /> : <AlertCircle className="h-4 w-4 text-gray-300 shrink-0" />}
+              <div className="flex items-center gap-3 p-3 rounded-xl bg-emerald-50 border border-emerald-100">
+                <div className="w-9 h-9 rounded-xl bg-white flex items-center justify-center">
+                  <Phone className="h-4 w-4 text-emerald-600" />
                 </div>
-              ))}
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-emerald-800">WhatsApp Business</p>
+                  <p className="text-xs text-emerald-600">Conectado via QR · Evolution API v1.8.7</p>
+                </div>
+                <CheckCircle2 className="h-5 w-5 text-emerald-500 shrink-0" />
+              </div>
+              <div className="flex items-center gap-3 p-3 rounded-xl bg-gray-50 border border-gray-100">
+                <div className="w-9 h-9 rounded-xl bg-white flex items-center justify-center">
+                  <DollarSign className="h-4 w-4 text-emerald-600" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-gray-800">Asaas</p>
+                  <p className="text-xs text-gray-500">Financeiro em tempo real</p>
+                </div>
+                <CheckCircle2 className="h-5 w-5 text-emerald-500 shrink-0" />
+              </div>
+            </div>
+            <div className="mt-4 p-3 rounded-xl bg-blue-50 border border-blue-100">
+              <p className="text-xs font-medium text-blue-700 mb-1">Canais de entrada de leads</p>
+              <p className="text-xs text-blue-600">Landing page duacriativa.com/trafegopago → CRM automaticamente</p>
+              <p className="text-xs text-blue-600 mt-0.5">WhatsApp direto → inbox de conversas</p>
             </div>
           </div>
         </div>
