@@ -12,22 +12,29 @@ export class AsaasService {
   }
 
   private get apiKey() {
-    return this.config.get<string>('ASAAS_API_KEY');
+    return this.config.get<string>('ASAAS_API_KEY') ?? '';
   }
 
   private async fetch<T>(path: string): Promise<T> {
-    const res = await fetch(`${this.baseUrl}${path}`, {
+    const url = `${this.baseUrl}${path}`;
+    this.logger.debug(`Asaas GET ${url}`);
+    const res = await fetch(url, {
       headers: {
         access_token: this.apiKey,
         'Content-Type': 'application/json',
+        'User-Agent': 'dua-crm/1.0',
       },
     });
+    const text = await res.text();
     if (!res.ok) {
-      const text = await res.text();
-      this.logger.error(`Asaas API error ${res.status}: ${text}`);
-      throw new Error(`Asaas API error: ${res.status}`);
+      this.logger.error(`Asaas API ${res.status}: ${text}`);
+      throw new Error(`Asaas retornou ${res.status}: ${text.slice(0, 200)}`);
     }
-    return res.json() as Promise<T>;
+    try {
+      return JSON.parse(text) as T;
+    } catch {
+      throw new Error(`Asaas resposta inválida: ${text.slice(0, 200)}`);
+    }
   }
 
   async getCustomers(limit = 100) {

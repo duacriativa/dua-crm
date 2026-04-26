@@ -1,16 +1,29 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { AsaasService } from '../asaas/asaas.service';
 import { PrismaService } from '../../prisma/prisma.service';
 
 @Injectable()
 export class FinancialService {
+  private readonly logger = new Logger(FinancialService.name);
   constructor(
     private asaas: AsaasService,
     private prisma: PrismaService,
   ) {}
 
   async getSummary(tenantId: string) {
-    const summary = await this.asaas.getMonthlySummary();
+    let summary: any;
+    try {
+      summary = await this.asaas.getMonthlySummary();
+    } catch (err: any) {
+      this.logger.error('Erro Asaas: ' + err.message);
+      // Retorna zeros se Asaas falhar — não quebra a tela
+      summary = {
+        month: new Date().toISOString().slice(0, 7),
+        paid: { total: 0, count: 0, items: [] },
+        pending: { total: 0, count: 0, items: [] },
+        overdue: { total: 0, count: 0, items: [] },
+      };
+    }
 
     // Enriquecer com dados locais (parcelas, comissões)
     const now = new Date();
