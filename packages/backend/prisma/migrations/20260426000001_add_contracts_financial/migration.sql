@@ -1,14 +1,23 @@
--- CreateEnum
-CREATE TYPE "ContractStatus" AS ENUM ('ACTIVE', 'FINISHED', 'CANCELLED');
+-- Resolve migration travada — usa IF NOT EXISTS em tudo
 
--- CreateEnum
-CREATE TYPE "ContractServiceType" AS ENUM ('SOCIAL_MEDIA', 'PAID_TRAFFIC', 'CRM_SETUP', 'CONSULTING', 'OTHER');
+-- CreateEnum (seguro se já existir)
+DO $$ BEGIN
+  CREATE TYPE "ContractStatus" AS ENUM ('ACTIVE', 'FINISHED', 'CANCELLED');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
--- CreateEnum
-CREATE TYPE "PaymentStatus" AS ENUM ('PENDING', 'PAID', 'OVERDUE', 'CANCELLED');
+DO $$ BEGIN
+  CREATE TYPE "ContractServiceType" AS ENUM ('SOCIAL_MEDIA', 'PAID_TRAFFIC', 'CRM_SETUP', 'CONSULTING', 'OTHER');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  CREATE TYPE "PaymentStatus" AS ENUM ('PENDING', 'PAID', 'OVERDUE', 'CANCELLED');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 -- CreateTable
-CREATE TABLE "Contract" (
+CREATE TABLE IF NOT EXISTS "Contract" (
     "id" TEXT NOT NULL,
     "tenantId" TEXT NOT NULL,
     "clientName" TEXT NOT NULL,
@@ -34,7 +43,7 @@ CREATE TABLE "Contract" (
 );
 
 -- CreateTable
-CREATE TABLE "FinancialEntry" (
+CREATE TABLE IF NOT EXISTS "FinancialEntry" (
     "id" TEXT NOT NULL,
     "tenantId" TEXT NOT NULL,
     "contractId" TEXT,
@@ -54,18 +63,28 @@ CREATE TABLE "FinancialEntry" (
 );
 
 -- CreateIndex
-CREATE INDEX "Contract_tenantId_idx" ON "Contract"("tenantId");
-CREATE INDEX "Contract_tenantId_status_idx" ON "Contract"("tenantId", "status");
-CREATE INDEX "FinancialEntry_tenantId_idx" ON "FinancialEntry"("tenantId");
-CREATE INDEX "FinancialEntry_tenantId_status_idx" ON "FinancialEntry"("tenantId", "status");
-CREATE INDEX "FinancialEntry_tenantId_dueDate_idx" ON "FinancialEntry"("tenantId", "dueDate");
-CREATE UNIQUE INDEX "FinancialEntry_asaasPaymentId_key" ON "FinancialEntry"("asaasPaymentId");
+CREATE INDEX IF NOT EXISTS "Contract_tenantId_idx" ON "Contract"("tenantId");
+CREATE INDEX IF NOT EXISTS "Contract_tenantId_status_idx" ON "Contract"("tenantId", "status");
+CREATE INDEX IF NOT EXISTS "FinancialEntry_tenantId_idx" ON "FinancialEntry"("tenantId");
+CREATE INDEX IF NOT EXISTS "FinancialEntry_tenantId_status_idx" ON "FinancialEntry"("tenantId", "status");
+CREATE INDEX IF NOT EXISTS "FinancialEntry_tenantId_dueDate_idx" ON "FinancialEntry"("tenantId", "dueDate");
+CREATE UNIQUE INDEX IF NOT EXISTS "FinancialEntry_asaasPaymentId_key" ON "FinancialEntry"("asaasPaymentId");
 
 -- AddForeignKey
-ALTER TABLE "Contract" ADD CONSTRAINT "Contract_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ BEGIN
+  ALTER TABLE "Contract" ADD CONSTRAINT "Contract_tenantId_fkey"
+    FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
--- AddForeignKey
-ALTER TABLE "FinancialEntry" ADD CONSTRAINT "FinancialEntry_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ BEGIN
+  ALTER TABLE "FinancialEntry" ADD CONSTRAINT "FinancialEntry_tenantId_fkey"
+    FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
--- AddForeignKey
-ALTER TABLE "FinancialEntry" ADD CONSTRAINT "FinancialEntry_contractId_fkey" FOREIGN KEY ("contractId") REFERENCES "Contract"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+DO $$ BEGIN
+  ALTER TABLE "FinancialEntry" ADD CONSTRAINT "FinancialEntry_contractId_fkey"
+    FOREIGN KEY ("contractId") REFERENCES "Contract"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
