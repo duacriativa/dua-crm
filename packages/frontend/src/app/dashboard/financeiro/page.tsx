@@ -1,19 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import api from "@/lib/api";
 import {
-  DollarSign, TrendingUp, TrendingDown, AlertCircle,
+  TrendingUp, TrendingDown, AlertCircle,
   CheckCircle2, Clock, RefreshCw, ChevronDown, ChevronUp,
 } from "lucide-react";
 
-const API = process.env.NEXT_PUBLIC_API_URL ?? "https://renewed-youth-production-7d32.up.railway.app/api/v1";
-
 function fmt(val: number) {
-  return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(val);
-}
-
-function pct(val: number) {
-  return `${Math.round(val)}%`;
+  return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(val ?? 0);
 }
 
 interface PendingClient {
@@ -51,16 +46,12 @@ export default function FinanceiroPage() {
 
   const load = async () => {
     setLoading(true);
+    setError("");
     try {
-      const token = localStorage.getItem("access_token");
-      const res = await fetch(`${API}/financial/dashboard`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) throw new Error("Erro ao buscar dados");
-      const json = await res.json();
-      setData(json);
+      const res = await api.get("/financial/dashboard");
+      setData(res.data);
     } catch (e: any) {
-      setError(e.message);
+      setError(e?.response?.data?.message || e.message || "Erro ao carregar dados");
     } finally {
       setLoading(false);
     }
@@ -80,8 +71,9 @@ export default function FinanceiroPage() {
   if (error) return (
     <div className="p-6">
       <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-red-700 text-sm">
-        Erro ao carregar dados: {error}
+        {error}
       </div>
+      <button onClick={load} className="mt-3 text-sm text-brand-600 hover:underline">Tentar novamente</button>
     </div>
   );
 
@@ -96,35 +88,28 @@ export default function FinanceiroPage() {
 
   return (
     <div className="p-6 space-y-6 max-w-6xl">
-
-      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-semibold text-gray-900">Financeiro</h1>
           <p className="text-sm text-gray-500 mt-0.5">{monthLabel} · dados em tempo real do Asaas</p>
         </div>
-        <button
-          onClick={load}
-          className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-700 border border-gray-200 rounded-lg px-3 py-1.5 transition-colors"
-        >
-          <RefreshCw className="w-4 h-4" />
-          Atualizar
+        <button onClick={load} className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-700 border border-gray-200 rounded-lg px-3 py-1.5 transition-colors">
+          <RefreshCw className="w-4 h-4" /> Atualizar
         </button>
       </div>
 
-      {/* Cards principais */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-white rounded-xl border border-gray-100 p-4">
           <p className="text-xs text-gray-500 mb-1">Total contratado</p>
           <p className="text-2xl font-semibold text-gray-900">{fmt(data.total)}</p>
-          <p className="text-xs text-gray-400 mt-1">{data.receivedCount + data.pendingCount} clientes</p>
+          <p className="text-xs text-gray-400 mt-1">{(data.receivedCount ?? 0) + (data.pendingCount ?? 0)} clientes</p>
         </div>
         <div className="bg-white rounded-xl border border-gray-100 p-4">
           <p className="text-xs text-gray-500 mb-1">Já recebido</p>
           <p className="text-2xl font-semibold text-green-600">{fmt(data.received)}</p>
           <div className="flex items-center gap-1 mt-1">
             <CheckCircle2 className="w-3 h-3 text-green-500" />
-            <p className="text-xs text-gray-400">{data.receivedCount} pagamentos</p>
+            <p className="text-xs text-gray-400">{data.receivedCount ?? 0} pagamentos</p>
           </div>
         </div>
         <div className="bg-white rounded-xl border border-gray-100 p-4">
@@ -132,7 +117,7 @@ export default function FinanceiroPage() {
           <p className="text-2xl font-semibold text-amber-600">{fmt(data.pending)}</p>
           <div className="flex items-center gap-1 mt-1">
             <Clock className="w-3 h-3 text-amber-500" />
-            <p className="text-xs text-gray-400">{data.pendingCount} cobranças</p>
+            <p className="text-xs text-gray-400">{data.pendingCount ?? 0} cobranças</p>
           </div>
         </div>
         <div className="bg-white rounded-xl border border-gray-100 p-4">
@@ -140,12 +125,11 @@ export default function FinanceiroPage() {
           <p className="text-2xl font-semibold text-red-600">{fmt(data.overdue)}</p>
           <div className="flex items-center gap-1 mt-1">
             <AlertCircle className="w-3 h-3 text-red-500" />
-            <p className="text-xs text-gray-400">{data.overdueCount} cobranças</p>
+            <p className="text-xs text-gray-400">{data.overdueCount ?? 0} cobranças</p>
           </div>
         </div>
       </div>
 
-      {/* Métricas de negócio */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-white rounded-xl border border-gray-100 p-4">
           <p className="text-xs text-gray-500 mb-1">Ticket médio</p>
@@ -174,25 +158,23 @@ export default function FinanceiroPage() {
         </div>
       </div>
 
-      {/* Barra de inadimplência */}
       <div className="bg-white rounded-xl border border-gray-100 p-4">
         <div className="flex items-center justify-between mb-2">
           <p className="text-sm font-medium text-gray-700">Taxa de inadimplência do mês</p>
-          <span className={`text-sm font-semibold ${data.inadimplencyRate > 20 ? "text-red-600" : data.inadimplencyRate > 10 ? "text-amber-600" : "text-green-600"}`}>
-            {pct(data.inadimplencyRate)}
+          <span className={`text-sm font-semibold ${(data.inadimplencyRate ?? 0) > 20 ? "text-red-600" : (data.inadimplencyRate ?? 0) > 10 ? "text-amber-600" : "text-green-600"}`}>
+            {Math.round(data.inadimplencyRate ?? 0)}%
           </span>
         </div>
         <div className="w-full bg-gray-100 rounded-full h-2">
           <div
-            className={`h-2 rounded-full transition-all ${data.inadimplencyRate > 20 ? "bg-red-500" : data.inadimplencyRate > 10 ? "bg-amber-400" : "bg-green-500"}`}
-            style={{ width: `${Math.min(data.inadimplencyRate, 100)}%` }}
+            className={`h-2 rounded-full transition-all ${(data.inadimplencyRate ?? 0) > 20 ? "bg-red-500" : (data.inadimplencyRate ?? 0) > 10 ? "bg-amber-400" : "bg-green-500"}`}
+            style={{ width: `${Math.min(data.inadimplencyRate ?? 0, 100)}%` }}
           />
         </div>
         <p className="text-xs text-gray-400 mt-1.5">Meta saudável: abaixo de 15%</p>
       </div>
 
-      {/* Pendentes por cliente */}
-      {data.pendingByClient.length > 0 && (
+      {(data.pendingByClient?.length ?? 0) > 0 && (
         <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
           <div className="px-4 py-3 border-b border-gray-100">
             <h2 className="text-sm font-semibold text-gray-800">Cobranças pendentes por cliente</h2>
@@ -215,9 +197,7 @@ export default function FinanceiroPage() {
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-semibold text-amber-600">{fmt(client.total)}</span>
-                    {expanded === client.name
-                      ? <ChevronUp className="w-4 h-4 text-gray-400" />
-                      : <ChevronDown className="w-4 h-4 text-gray-400" />}
+                    {expanded === client.name ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
                   </div>
                 </button>
                 {expanded === client.name && (
@@ -239,13 +219,11 @@ export default function FinanceiroPage() {
         </div>
       )}
 
-      {/* Em atraso */}
-      {data.overdueItems.length > 0 && (
+      {(data.overdueItems?.length ?? 0) > 0 && (
         <div className="bg-white rounded-xl border border-red-100 overflow-hidden">
           <div className="px-4 py-3 border-b border-red-100 bg-red-50">
             <h2 className="text-sm font-semibold text-red-700 flex items-center gap-2">
-              <AlertCircle className="w-4 h-4" />
-              Em atraso — ação necessária
+              <AlertCircle className="w-4 h-4" /> Em atraso — ação necessária
             </h2>
           </div>
           <div className="divide-y divide-gray-50">
@@ -262,8 +240,7 @@ export default function FinanceiroPage() {
         </div>
       )}
 
-      {/* Comissões */}
-      {data.commissions.total > 0 && (
+      {(data.commissions?.total ?? 0) > 0 && (
         <div className="bg-white rounded-xl border border-gray-100 p-4">
           <p className="text-xs text-gray-500 mb-1">Comissões do mês</p>
           <p className="text-xl font-semibold text-violet-600">{fmt(data.commissions.total)}</p>

@@ -1,12 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import api from "@/lib/api";
 import {
   FileText, Plus, Calendar, TrendingUp, RefreshCw,
   CheckCircle2, Clock, XCircle, Star, AlertCircle,
 } from "lucide-react";
 
-const API = process.env.NEXT_PUBLIC_API_URL ?? "https://renewed-youth-production-7d32.up.railway.app/api/v1";
 
 function fmt(val: number) {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(val);
@@ -64,12 +64,8 @@ export default function ContratosPage() {
   const load = async () => {
     setLoading(true);
     try {
-      const token = localStorage.getItem("access_token");
-      const res = await fetch(`${API}/contracts`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const json = await res.json();
-      setContracts(Array.isArray(json) ? json : []);
+      const res = await api.get("/contracts");
+      setContracts(Array.isArray(res.data) ? res.data : []);
     } catch { } finally { setLoading(false); }
   };
 
@@ -78,17 +74,12 @@ export default function ContratosPage() {
   const save = async () => {
     setSaving(true);
     try {
-      const token = localStorage.getItem("access_token");
-      await fetch(`${API}/contracts`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...form,
-          monthlyValue: parseFloat(form.monthlyValue),
-          totalValue: parseFloat(form.totalValue || form.monthlyValue),
-          installments: parseInt(form.installments),
-          endsAt: form.endsAt || undefined,
-        }),
+      await api.post("/contracts", {
+        ...form,
+        monthlyValue: parseFloat(form.monthlyValue),
+        totalValue: parseFloat(form.totalValue || form.monthlyValue),
+        installments: parseInt(form.installments),
+        endsAt: form.endsAt || undefined,
       });
       setShowForm(false);
       setForm({ clientName: "", serviceType: "SOCIAL_MEDIA", monthlyValue: "", totalValue: "", installments: "1", signedAt: "", startsAt: "", endsAt: "", notes: "", clicksignDocId: "" });
