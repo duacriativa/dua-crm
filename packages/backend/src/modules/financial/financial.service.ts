@@ -110,17 +110,18 @@ export class FinancialService {
     const ltv = ticketMedio * avgRetentionMonths;
 
     // CAC (gasto em ads / novos clientes no mês)
-    // Por enquanto usando R$1.200 fixo de ads (variável de ambiente futura)
+    // Conta contratos assinados nos últimos 30 dias
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
     const adsSpend = 1200;
     const newClientsThisMonth = await this.prisma.contract.count({
       where: {
         tenantId,
-        createdAt: {
-          gte: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
-        },
+        signedAt: { gte: thirtyDaysAgo },
+        status: 'ACTIVE',
       },
     });
-    const cac = newClientsThisMonth > 0 ? adsSpend / newClientsThisMonth : 0;
+    const cac = newClientsThisMonth > 0 ? Math.round(adsSpend / newClientsThisMonth) : 0;
 
     return {
       ...summary,
