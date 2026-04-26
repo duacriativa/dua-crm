@@ -69,9 +69,9 @@ export class FinancialService {
       overdueCount: summary.overdue.count,
       total: summary.paid.total + summary.pending.total,
       inadimplencyRate:
-        summary.paid.total + summary.pending.total > 0
-          ? (summary.pending.total /
-              (summary.paid.total + summary.pending.total)) *
+        summary.paid.total + summary.overdue.total > 0
+          ? (summary.overdue.total /
+              (summary.paid.total + summary.overdue.total)) *
             100
           : 0,
       commissions: {
