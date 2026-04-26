@@ -18,6 +18,8 @@ import { UsersModule } from './modules/users/users.module';
 import { PipelinesModule } from './modules/pipelines/pipelines.module';
 import { WebhooksModule } from './modules/webhooks/webhooks.module';
 import { LeadsModule } from './modules/leads/leads.module';
+import { FinancialModule } from './modules/financial/financial.module';
+import { ContractsModule } from './modules/contracts/contracts.module';
 
 @Module({
   imports: [
@@ -50,6 +52,8 @@ import { LeadsModule } from './modules/leads/leads.module';
     PipelinesModule,
     WebhooksModule,
     LeadsModule,
+    FinancialModule,
+    ContractsModule,
   ],
   providers: [
     // Rate limiting aplicado globalmente

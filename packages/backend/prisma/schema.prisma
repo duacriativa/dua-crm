@@ -78,6 +78,27 @@ enum IntegrationType {
   WOOCOMMERCE
 }
 
+enum ContractStatus {
+  ACTIVE
+  FINISHED
+  CANCELLED
+}
+
+enum ContractServiceType {
+  SOCIAL_MEDIA       // Gerenciamento de Redes Sociais
+  PAID_TRAFFIC       // Tráfego Pago / Anúncios
+  CRM_SETUP          // Implantação de CRM
+  CONSULTING         // Consultoria
+  OTHER
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  OVERDUE
+  CANCELLED
+}
+
 enum AutomationTrigger {
   ABANDONED_CART         // carrinho abandonado no ecommerce
   ORDER_DELIVERED        // pedido entregue
@@ -115,6 +136,8 @@ model Tenant {
   metaCredential   MetaCredential?
   auditLogs        AuditLog[]
   pipelines        Pipeline[]
+  contracts        Contract[]
+  financialEntries FinancialEntry[]
 }
 
 model User {
@@ -351,4 +374,57 @@ model AuditLog {
   createdAt  DateTime @default(now())
 
   @@index([tenantId, createdAt])
+}
+
+model Contract {
+  id              String              @id @default(cuid())
+  tenantId        String
+  tenant          Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  clientName      String
+  clientEmail     String?
+  clientPhone     String?
+  asaasCustomerId String?             // ID do cliente no Asaas
+  serviceType     ContractServiceType
+  description     String?
+  totalValue      Float               // valor total do contrato
+  monthlyValue    Float               // valor mensal (recorrente)
+  installments    Int                 @default(1) // 1 = recorrente indefinido
+  installmentsPaid Int                @default(0)
+  status          ContractStatus      @default(ACTIVE)
+  signedAt        DateTime            // data de assinatura (cadastro manual)
+  startsAt        DateTime
+  endsAt          DateTime?           // null = recorrente sem fim
+  clicksignDocId  String?             // ID do doc no Clicksign (futuro)
+  notes           String?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  financialEntries FinancialEntry[]
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+}
+
+model FinancialEntry {
+  id              String        @id @default(cuid())
+  tenantId        String
+  tenant          Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  contractId      String?
+  contract        Contract?     @relation(fields: [contractId], references: [id])
+  asaasPaymentId  String?       @unique  // ID do pagamento no Asaas
+  clientName      String
+  description     String?
+  value           Float
+  status          PaymentStatus @default(PENDING)
+  dueDate         DateTime
+  paidAt          DateTime?
+  isCommission    Boolean       @default(false) // comissões (ex: Kommo)
+  installmentNum  Int?          // qual parcela (1, 2, 3...)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([tenantId, dueDate])
+  @@index([asaasPaymentId])
 }

@@ -16,6 +16,8 @@ import {
   Kanban,
   Menu,
   X,
+  DollarSign,
+  FileText,
 } from "lucide-react";
 
 const navItems = [
@@ -23,6 +25,8 @@ const navItems = [
   { icon: MessageCircle,   label: "Conversas",     href: "/dashboard/conversas", badge: 12 },
   { icon: Users,           label: "Contatos",      href: "/dashboard/contatos" },
   { icon: Kanban,          label: "Funil",         href: "/dashboard/funil" },
+  { icon: DollarSign,      label: "Financeiro",    href: "/dashboard/financeiro" },
+  { icon: FileText,        label: "Contratos",     href: "/dashboard/contratos" },
   { icon: Megaphone,       label: "Campanhas",     href: "/dashboard/campanhas" },
   { icon: Bot,             label: "Bots",          href: "/dashboard/bots" },
   { icon: Smartphone,      label: "WhatsApp",      href: "/dashboard/whatsapp" },
