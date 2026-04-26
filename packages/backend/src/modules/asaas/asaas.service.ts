@@ -72,7 +72,7 @@ export class AsaasService {
       .toISOString()
       .split('T')[0];
 
-    const [paid, pending, overdue] = await Promise.all([
+    const [paid, pending, overdue, customers] = await Promise.all([
       this.fetch<{ data: AsaasPayment[] }>(
         `/payments?status=RECEIVED&dueDate[ge]=${startOfMonth}&dueDate[le]=${endOfMonth}&limit=100`,
       ),
@@ -82,16 +82,34 @@ export class AsaasService {
       this.fetch<{ data: AsaasPayment[] }>(
         `/payments?status=OVERDUE&limit=100`,
       ),
+      this.fetch<{ data: AsaasCustomer[] }>(
+        `/customers?limit=100`,
+      ),
     ]);
+
+    // Mapa id -> nome do cliente
+    const customerMap = new Map<string, string>();
+    customers.data.forEach((c) => customerMap.set(c.id, c.name));
+
+    // Enriquecer pagamentos com nome do cliente
+    const enrich = (payments: AsaasPayment[]) =>
+      payments.map((p) => ({
+        ...p,
+        customerName: customerMap.get(p.customer) ?? p.customer,
+      }));
 
     const sum = (payments: AsaasPayment[]) =>
       payments.reduce((acc, p) => acc + p.value, 0);
 
+    const enrichedPaid = enrich(paid.data);
+    const enrichedPending = enrich(pending.data);
+    const enrichedOverdue = enrich(overdue.data);
+
     return {
       month: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`,
-      paid: { total: sum(paid.data), count: paid.data.length, items: paid.data },
-      pending: { total: sum(pending.data), count: pending.data.length, items: pending.data },
-      overdue: { total: sum(overdue.data), count: overdue.data.length, items: overdue.data },
+      paid: { total: sum(paid.data), count: paid.data.length, items: enrichedPaid },
+      pending: { total: sum(pending.data), count: pending.data.length, items: enrichedPending },
+      overdue: { total: sum(overdue.data), count: overdue.data.length, items: enrichedOverdue },
     };
   }
 }
