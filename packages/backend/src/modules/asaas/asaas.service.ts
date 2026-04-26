@@ -146,3 +146,4 @@ export interface AsaasSubscription {
   billingType: string;
   description?: string;
 }
+# Sun Apr 26 16:23:43 UTC 2026
