@@ -2,6 +2,7 @@
 builder = "nixpacks"
 
 [deploy]
+startCommand = "npm run start:prod"
 restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 3
 
