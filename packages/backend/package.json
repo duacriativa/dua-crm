@@ -12,7 +12,8 @@
     "db:studio": "prisma studio",
     "db:generate": "prisma generate",
     "postinstall": "prisma generate",
-    "db:seed": "ts-node prisma/seed.ts"
+    "db:seed": "ts-node prisma/seed.ts",
+    "db:seed-contracts": "ts-node prisma/seed-contracts.ts"
   },
   "dependencies": {
     "@nestjs/common": "^10.0.0",

@@ -1,0 +1,378 @@
+import { PrismaClient, ContractServiceType, ContractStatus } from '@prisma/client';
+
+const prisma = new PrismaClient();
+
+async function main() {
+  // Buscar o tenant Dua Criativa
+  const tenant = await prisma.tenant.findFirst({
+    where: { slug: 'dua-criativa' },
+  });
+
+  if (!tenant) {
+    console.error('Tenant dua-criativa não encontrado!');
+    process.exit(1);
+  }
+
+  console.log(`Tenant encontrado: ${tenant.name} (${tenant.id})`);
+
+  const contracts = [
+    // ─── REDES SOCIAIS ───────────────────────────────────────────────
+    {
+      clientName: 'Michelle @usoamiche',
+      clientEmail: 'usoamiche@gmail.com',
+      clientPhone: '85981160721',
+      serviceType: ContractServiceType.SOCIAL_MEDIA,
+      description: 'Rede Social + Tráfego + CRM',
+      monthlyValue: 3300,
+      totalValue: 3300 * 12,
+      installments: 1,
+      signedAt: new Date('2026-03-05'),
+      startsAt: new Date('2026-03-05'),
+      endsAt: new Date('2027-03-05'),
+    },
+    {
+      clientName: 'Irandra Maria @eloah',
+      clientEmail: 'juju.soares@bol.com.br',
+      clientPhone: '85996833834',
+      serviceType: ContractServiceType.SOCIAL_MEDIA,
+      description: 'Rede Social + Tráfego',
+      monthlyValue: 3000,
+      totalValue: 3000 * 12,
+      installments: 1,
+      signedAt: new Date('2024-02-22'),
+      startsAt: new Date('2024-02-22'),
+      endsAt: new Date('2025-02-22'),
+    },
+    {
+      clientName: 'Imaculada Pires @ninaenoz',
+      clientEmail: 'imaculadapiressgt@gmail.com',
+      clientPhone: '85997842654',
+      serviceType: ContractServiceType.SOCIAL_MEDIA,
+      description: 'Rede Social',
+      monthlyValue: 2000,
+      totalValue: 2000 * 12,
+      installments: 1,
+      signedAt: new Date('2025-10-14'),
+      startsAt: new Date('2025-10-14'),
+      endsAt: new Date('2026-10-14'),
+    },
+    {
+      clientName: '@naromooficial - Yasnara',
+      clientEmail: 'yasnara@napaiva.com',
+      clientPhone: '85997375037',
+      serviceType: ContractServiceType.SOCIAL_MEDIA,
+      description: 'Rede Social',
+      monthlyValue: 2000,
+      totalValue: 2000 * 12,
+      installments: 1,
+      signedAt: new Date('2025-10-24'),
+      startsAt: new Date('2025-10-24'),
+      endsAt: new Date('2026-10-24'),
+    },
+    {
+      clientName: 'Joseni Cruz @docecaju',
+      clientEmail: 'josenny_cruz@hotmail.com',
+      clientPhone: '85985307764',
+      serviceType: ContractServiceType.SOCIAL_MEDIA,
+      description: 'Rede Social + Tráfego',
+      monthlyValue: 3230,
+      totalValue: 3230 * 12,
+      installments: 1,
+      signedAt: new Date('2024-08-23'),
+      startsAt: new Date('2024-08-23'),
+      endsAt: new Date('2025-08-23'),
+    },
+    {
+      clientName: 'Sergio Pedrosa @andirajeans',
+      clientEmail: 'andiradenin@gmail.com',
+      clientPhone: '81999296023',
+      serviceType: ContractServiceType.SOCIAL_MEDIA,
+      description: 'Rede Social + Tráfego',
+      monthlyValue: 4000,
+      totalValue: 4000 * 12,
+      installments: 1,
+      signedAt: new Date('2024-07-15'),
+      startsAt: new Date('2024-07-15'),
+      endsAt: new Date('2025-07-15'),
+    },
+    {
+      clientName: 'Beatriz @delcarmenbysaruc',
+      clientEmail: 'botelhos.beatriz@gmail.com',
+      clientPhone: '11993674765',
+      serviceType: ContractServiceType.SOCIAL_MEDIA,
+      description: 'Rede Social + Tráfego',
+      monthlyValue: 3760,
+      totalValue: 3760 * 12,
+      installments: 1,
+      signedAt: new Date('2024-07-05'),
+      startsAt: new Date('2024-07-05'),
+      endsAt: new Date('2025-07-05'),
+    },
+    {
+      clientName: 'Samuel Machado @usemarryblue',
+      clientEmail: 'samo_ka@hotmail.com',
+      clientPhone: '85981532689',
+      serviceType: ContractServiceType.SOCIAL_MEDIA,
+      description: 'Rede Social',
+      monthlyValue: 1000,
+      totalValue: 1000 * 12,
+      installments: 1,
+      signedAt: new Date('2023-02-15'),
+      startsAt: new Date('2023-02-15'),
+      endsAt: new Date('2024-02-15'),
+    },
+    {
+      clientName: 'Mariana Elleri @floraminha',
+      clientEmail: 'floraminha@hotmail.com',
+      clientPhone: '85999252998',
+      serviceType: ContractServiceType.SOCIAL_MEDIA,
+      description: 'Rede Social + Tráfego',
+      monthlyValue: 2562,
+      totalValue: 2562 * 12,
+      installments: 1,
+      signedAt: new Date('2021-05-24'),
+      startsAt: new Date('2021-05-24'),
+      endsAt: null,
+    },
+    {
+      clientName: 'Camila Faustino @tchubi',
+      clientEmail: 'tchu.bi@outlook.com.br',
+      clientPhone: '85985263312',
+      serviceType: ContractServiceType.SOCIAL_MEDIA,
+      description: 'Rede Social',
+      monthlyValue: 2340,
+      totalValue: 2340 * 6,
+      installments: 1,
+      signedAt: new Date('2026-01-16'),
+      startsAt: new Date('2026-01-16'),
+      endsAt: new Date('2026-07-16'),
+    },
+    {
+      clientName: 'BRUNA - Santa Passion',
+      clientEmail: 'marketing@santapassion.com.br',
+      clientPhone: '85987176006',
+      serviceType: ContractServiceType.SOCIAL_MEDIA,
+      description: 'Rede Social + Conteúdo',
+      monthlyValue: 1200,
+      totalValue: 1200 * 12,
+      installments: 1,
+      signedAt: new Date('2026-04-24'),
+      startsAt: new Date('2026-04-24'),
+      endsAt: new Date('2027-04-24'),
+    },
+    {
+      clientName: 'Jenni Pink',
+      clientEmail: 'jennipiink@gmail.com',
+      clientPhone: '85984743868',
+      serviceType: ContractServiceType.SOCIAL_MEDIA,
+      description: 'Rede Social + creators',
+      monthlyValue: 2500,
+      totalValue: 2500 * 6,
+      installments: 1,
+      signedAt: new Date('2026-01-01'),
+      startsAt: new Date('2026-01-01'),
+      endsAt: new Date('2026-07-01'),
+    },
+    {
+      clientName: 'Mandi',
+      clientEmail: 'contato@soumandi.com.br',
+      clientPhone: '71997010984',
+      serviceType: ContractServiceType.SOCIAL_MEDIA,
+      description: 'Rede Social + creators',
+      monthlyValue: 2500,
+      totalValue: 2500 * 6,
+      installments: 1,
+      signedAt: new Date('2026-04-30'),
+      startsAt: new Date('2026-04-30'),
+      endsAt: new Date('2026-10-30'),
+    },
+    {
+      clientName: 'Juliana Costa Aya Fit',
+      clientEmail: 'juliana-kd@hotmail.com',
+      clientPhone: '85986962001',
+      serviceType: ContractServiceType.SOCIAL_MEDIA,
+      description: 'Rede Social',
+      monthlyValue: 1600,
+      totalValue: 1600 * 3,
+      installments: 1,
+      signedAt: new Date('2026-04-05'),
+      startsAt: new Date('2026-04-05'),
+      endsAt: new Date('2026-07-05'),
+    },
+    // ─── TRÁFEGO PAGO ────────────────────────────────────────────────
+    {
+      clientName: 'Jorge José - Liz',
+      clientEmail: 'contato.sejaliz@gmail.com',
+      clientPhone: '85996447767',
+      serviceType: ContractServiceType.PAID_TRAFFIC,
+      description: 'Tráfego Pago',
+      monthlyValue: 1500,
+      totalValue: 1500 * 6,
+      installments: 1,
+      signedAt: new Date('2026-04-05'),
+      startsAt: new Date('2026-04-05'),
+      endsAt: new Date('2026-10-05'),
+    },
+    {
+      clientName: 'Maria Hilda @userothes',
+      clientEmail: 'mariahildasil55@gmail.com',
+      clientPhone: '85991246112',
+      serviceType: ContractServiceType.PAID_TRAFFIC,
+      description: 'Tráfego Pago',
+      monthlyValue: 1000,
+      totalValue: 1000 * 12,
+      installments: 1,
+      signedAt: new Date('2024-07-25'),
+      startsAt: new Date('2024-07-25'),
+      endsAt: new Date('2025-07-25'),
+    },
+    {
+      clientName: 'Rafaela Cristina @amofrozinha',
+      clientEmail: 'frozinhaamo@gmail.com',
+      clientPhone: '85999336570',
+      serviceType: ContractServiceType.PAID_TRAFFIC,
+      description: 'Tráfego Pago',
+      monthlyValue: 1200,
+      totalValue: 1200 * 12,
+      installments: 1,
+      signedAt: new Date('2023-04-05'),
+      startsAt: new Date('2023-04-05'),
+      endsAt: null,
+    },
+    {
+      clientName: 'Sthephanie @shopcast',
+      clientEmail: 'contato.shopcast@gmail.com',
+      clientPhone: '85999198447',
+      serviceType: ContractServiceType.PAID_TRAFFIC,
+      description: 'Tráfego Pago',
+      monthlyValue: 1500,
+      totalValue: 1500 * 12,
+      installments: 1,
+      signedAt: new Date('2025-10-22'),
+      startsAt: new Date('2025-10-22'),
+      endsAt: new Date('2026-10-22'),
+    },
+    {
+      clientName: 'Henrique @libertyjeans',
+      clientEmail: 'libertyjeansoficial@gmail.com',
+      clientPhone: '85999333869',
+      serviceType: ContractServiceType.PAID_TRAFFIC,
+      description: 'Tráfego Pago',
+      monthlyValue: 1000,
+      totalValue: 1000 * 6,
+      installments: 1,
+      signedAt: new Date('2025-10-16'),
+      startsAt: new Date('2025-10-16'),
+      endsAt: new Date('2026-04-16'),
+    },
+    {
+      clientName: 'CleanGirl',
+      clientEmail: 'beatriz@saros-group.com',
+      clientPhone: '11917779792',
+      serviceType: ContractServiceType.PAID_TRAFFIC,
+      description: 'Tráfego Pago',
+      monthlyValue: 1650,
+      totalValue: 1650 * 12,
+      installments: 1,
+      signedAt: new Date('2026-01-01'),
+      startsAt: new Date('2026-01-01'),
+      endsAt: new Date('2027-01-01'),
+    },
+    {
+      clientName: 'Luiz Gonzaga @sunliv',
+      clientEmail: 'sunlivgoiania@hotmail.com',
+      clientPhone: '85991621538',
+      serviceType: ContractServiceType.PAID_TRAFFIC,
+      description: 'Marketing 360',
+      monthlyValue: 1500,
+      totalValue: 1500 * 12,
+      installments: 1,
+      signedAt: new Date('2025-03-06'),
+      startsAt: new Date('2025-03-06'),
+      endsAt: new Date('2026-03-06'),
+    },
+    // ─── KYREFH — COMBO ──────────────────────────────────────────────
+    {
+      clientName: 'Luis Fellype @kyrefh',
+      clientEmail: 'adj905@hotmail.com',
+      clientPhone: '85988769020',
+      serviceType: ContractServiceType.SOCIAL_MEDIA,
+      description: 'Rede Social + Tráfego + CRM',
+      monthlyValue: 3300,
+      totalValue: 3300 * 12,
+      installments: 1,
+      signedAt: new Date('2022-02-05'),
+      startsAt: new Date('2022-02-05'),
+      endsAt: null,
+    },
+    // ─── CRM SETUP (PARCELADOS) ───────────────────────────────────────
+    {
+      clientName: 'Michelle @usoamiche — CRM Setup',
+      clientEmail: 'usoamiche@gmail.com',
+      clientPhone: '85981160721',
+      serviceType: ContractServiceType.CRM_SETUP,
+      description: 'Implantação CRM — 6 parcelas de R$333',
+      monthlyValue: 333,
+      totalValue: 2000,
+      installments: 6,
+      installmentsPaid: 0,
+      signedAt: new Date('2026-04-28'),
+      startsAt: new Date('2026-04-28'),
+      endsAt: new Date('2026-10-28'),
+      notes: 'Gera comissão Kommo a cada parcela recebida',
+    },
+    {
+      clientName: 'Adanna — CRM Setup',
+      clientEmail: '',
+      clientPhone: '',
+      serviceType: ContractServiceType.CRM_SETUP,
+      description: 'Implantação CRM — parcelas mensais de R$200',
+      monthlyValue: 200,
+      totalValue: 1000,
+      installments: 5,
+      installmentsPaid: 3,
+      signedAt: new Date('2026-01-30'),
+      startsAt: new Date('2026-01-30'),
+      endsAt: new Date('2026-06-30'),
+      notes: 'Termina em junho/2026. 3 parcelas pagas (jan/fev/mar)',
+    },
+  ];
+
+  let created = 0;
+  let skipped = 0;
+
+  for (const contract of contracts) {
+    const existing = await prisma.contract.findFirst({
+      where: {
+        tenantId: tenant.id,
+        clientName: contract.clientName,
+        serviceType: contract.serviceType,
+      },
+    });
+
+    if (existing) {
+      console.log(`  ⏭  Já existe: ${contract.clientName} (${contract.serviceType})`);
+      skipped++;
+      continue;
+    }
+
+    await prisma.contract.create({
+      data: {
+        tenantId: tenant.id,
+        status: ContractStatus.ACTIVE,
+        ...contract,
+        signedAt: contract.signedAt,
+        startsAt: contract.startsAt,
+        endsAt: contract.endsAt ?? null,
+      },
+    });
+    console.log(`  ✅ Criado: ${contract.clientName} — R$${contract.monthlyValue}/mês`);
+    created++;
+  }
+
+  console.log(`\nPronto! ${created} contratos criados, ${skipped} já existiam.`);
+}
+
+main()
+  .catch((e) => { console.error(e); process.exit(1); })
+  .finally(() => prisma.$disconnect());
