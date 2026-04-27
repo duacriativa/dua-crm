@@ -5,4 +5,4 @@ cmds = ["npm install --legacy-peer-deps --include=dev"]
 cmds = ["npx prisma generate"]
 
 [start]
-cmd = "npx prisma migrate resolve --rolled-back 20260426000001_add_contracts_financial; npx prisma migrate deploy && npx prisma db push --accept-data-loss && npx ts-node prisma/seed.ts && npx ts-node prisma/seed-contracts.ts && npx ts-node --transpile-only src/main.ts"
+cmd = "npx prisma migrate resolve --rolled-back 20260426000001_add_contracts_financial; npx prisma migrate deploy && npx prisma db push --accept-data-loss && npx ts-node prisma/seed.ts && npx ts-node prisma/seed-contracts.ts && npx ts-node prisma/seed-qualify-contacts.ts && npx ts-node --transpile-only src/main.ts"
