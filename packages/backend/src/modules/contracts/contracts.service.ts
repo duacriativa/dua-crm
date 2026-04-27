@@ -51,16 +51,24 @@ export class ContractsService {
       if (contact) contactId = contact.id;
     }
 
-    // Fallback: busca por nome similar
+    // Fallback: busca por nome — precisa de 2+ palavras para evitar match errado
     if (!contactId && dto.clientName) {
-      const namePart = dto.clientName.split(' ')[0].toLowerCase();
-      const contact = await this.prisma.contact.findFirst({
-        where: {
-          tenantId,
-          name: { contains: namePart, mode: 'insensitive' },
-        },
-      });
-      if (contact) contactId = contact.id;
+      const nameParts = dto.clientName
+        .replace(/@\S+/g, '')
+        .trim()
+        .split(/\s+/)
+        .filter((p) => p.length >= 3);
+
+      if (nameParts.length >= 2) {
+        const firstTwo = nameParts.slice(0, 2).join(' ');
+        const contact = await this.prisma.contact.findFirst({
+          where: {
+            tenantId,
+            name: { contains: firstTwo, mode: 'insensitive' },
+          },
+        });
+        if (contact) contactId = contact.id;
+      }
     }
 
     // 2. Cria o contrato
@@ -114,8 +122,17 @@ export class ContractsService {
 
       if (!pipelineLead) continue;
 
-      // Já está fechado? Pula
-      if (pipelineLead.stage.name === 'Fechado') continue;
+      // Se já está fechado, só atualiza o valor
+      if (pipelineLead.stage.name === 'Fechado') {
+        await this.prisma.pipelineLead.update({
+          where: { id: pipelineLead.id },
+          data: {
+            value,
+            notes: `Contrato fechado — R$${value}/mês`,
+          },
+        });
+        continue;
+      }
 
       // Busca ou cria estágio "Fechado"
       let wonStage = pipeline.stages.find((s) => s.name === 'Fechado');
