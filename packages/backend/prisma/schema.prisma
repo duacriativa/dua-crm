@@ -48,6 +48,13 @@ enum MessageType {
   INTERACTIVE
 }
 
+enum LeadQualification {
+  ULTRA       // ICP — faturamento alto + estrutura
+  QUALIFIED   // Qualificado — potencial médio
+  COLD        // Frio — iniciando
+  UNQUALIFIED // Ainda não qualificado (padrão)
+}
+
 enum ContactSegment {
   NEW       // nunca comprou
   ACTIVE    // comprou nos últimos 60 dias
@@ -186,6 +193,14 @@ model Contact {
   lastPurchaseAt  DateTime?
   notes               String?
   analysisInstagram   String?
+  // Qualificação de lead
+  qualification       LeadQualification @default(UNQUALIFIED)
+  leadScore           Int               @default(0)
+  monthlyRevenue      String?           // faturamento mensal (ex: "R$50k–R$100k")
+  saleModel           String?           // modelo de venda (ex: "Loja física + online")
+  utmSource           String?
+  utmMedium           String?
+  utmCampaign         String?
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
 

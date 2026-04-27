@@ -112,16 +112,16 @@ function MetricCard({ label, value, sub, badge, badgeGreen, highlight }: {
 function DashboardContent() {
   const router = useRouter();
   const [financial, setFinancial] = useState<any>(null);
-  const [contacts, setContacts] = useState<number>(0);
+  const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     Promise.all([
       api.get("/financial/dashboard").catch(() => null),
-      api.get("/contacts").catch(() => null),
-    ]).then(([fin, cont]) => {
+      api.get("/contacts/stats").catch(() => null),
+    ]).then(([fin, st]) => {
       if (fin?.data) setFinancial(fin.data);
-      if (cont?.data) setContacts(Array.isArray(cont.data) ? cont.data.length : cont.data?.total ?? 0);
+      if (st?.data) setStats(st.data);
     }).finally(() => setLoading(false));
   }, []);
 
@@ -134,6 +134,10 @@ function DashboardContent() {
   const overdue = financial?.overdue ?? 0;
   const inadimplencia = financial?.inadimplencyRate ?? 0;
   const activeContracts = financial?.activeContracts ?? 0;
+  const totalLeads = stats?.total ?? 0;
+  const ultraLeads = stats?.ultra ?? 0;
+  const qualifiedLeads = stats?.qualified ?? 0;
+  const coldLeads = stats?.cold ?? 0;
 
   return (
     <div className="flex-1 min-h-screen bg-gray-50 overflow-y-auto">
@@ -164,10 +168,10 @@ function DashboardContent() {
         <div>
           <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-3">Aquisição de leads</p>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <MetricCard label="Leads recebidos" value={String(contacts || "—")} sub="total na base" badge="este mês" badgeGreen />
-            <MetricCard label="Leads ultra qualificados" value="—" sub="dentro do ICP" badge="tag ICP" highlight />
-            <MetricCard label="Leads qualificados" value="—" sub="potencial médio" badge="a configurar" />
-            <MetricCard label="Leads frios" value="—" sub="pouco qualificados" badge="a configurar" />
+            <MetricCard label="Leads recebidos" value={loading ? "..." : String(totalLeads)} sub="total na base" badge="este mês" badgeGreen />
+            <MetricCard label="Leads ultra qualificados" value={loading ? "..." : String(ultraLeads)} sub="dentro do ICP" badge={totalLeads ? `${Math.round((ultraLeads/totalLeads)*100)}% dos leads` : "tag ICP"} highlight />
+            <MetricCard label="Leads qualificados" value={loading ? "..." : String(qualifiedLeads)} sub="potencial médio" badge={totalLeads ? `${Math.round((qualifiedLeads/totalLeads)*100)}% dos leads` : "—"} badgeGreen={qualifiedLeads > 0} />
+            <MetricCard label="Leads frios" value={loading ? "..." : String(coldLeads)} sub="pouco qualificados" badge={totalLeads ? `${Math.round((coldLeads/totalLeads)*100)}% dos leads` : "—"} />
           </div>
         </div>
 
@@ -283,10 +287,10 @@ function DashboardContent() {
             <h2 className="font-semibold text-gray-800 mb-4">Funil de vendas</h2>
             <div className="space-y-2">
               {[
-                { stage: "Novos leads", count: contacts || 0, pct: 100, color: "bg-gray-200" },
-                { stage: "Qualificando", count: Math.round((contacts || 0) * 0.53), pct: 53, color: "bg-brand-200" },
-                { stage: "Proposta enviada", count: Math.round((contacts || 0) * 0.19), pct: 19, color: "bg-brand-400" },
-                { stage: "Fechado", count: activeContracts, pct: activeContracts && contacts ? Math.round((activeContracts / contacts) * 100) : 0, color: "bg-brand-600" },
+                { stage: "Novos leads", count: totalLeads, pct: 100, color: "bg-gray-200" },
+                { stage: "Qualificando", count: qualifiedLeads + ultraLeads, pct: totalLeads ? Math.round(((qualifiedLeads + ultraLeads) / totalLeads) * 100) : 0, color: "bg-brand-200" },
+                { stage: "Ultra qualificados (ICP)", count: ultraLeads, pct: totalLeads ? Math.round((ultraLeads / totalLeads) * 100) : 0, color: "bg-brand-400" },
+                { stage: "Fechado", count: activeContracts, pct: totalLeads ? Math.round((activeContracts / totalLeads) * 100) : 0, color: "bg-brand-600" },
               ].map(({ stage, count, pct, color }) => (
                 <div key={stage}>
                   <div className="flex justify-between text-xs text-gray-500 mb-1">

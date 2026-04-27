@@ -15,6 +15,20 @@ export class ContactsController {
     private readonly prisma: PrismaService,
   ) {}
 
+  /** GET /contacts/stats — contagem por qualificação para o dashboard */
+  @Get('stats')
+  async stats(@Request() req: any) {
+    const tenantId = req.user.tenantId;
+    const [ultra, qualified, cold, unqualified, total] = await Promise.all([
+      this.prisma.contact.count({ where: { tenantId, qualification: 'ULTRA' } }),
+      this.prisma.contact.count({ where: { tenantId, qualification: 'QUALIFIED' } }),
+      this.prisma.contact.count({ where: { tenantId, qualification: 'COLD' } }),
+      this.prisma.contact.count({ where: { tenantId, qualification: 'UNQUALIFIED' } }),
+      this.prisma.contact.count({ where: { tenantId } }),
+    ]);
+    return { total, ultra, qualified, cold, unqualified };
+  }
+
   /** GET /contacts?segment=VIP&search=ana&page=1&limit=20 */
   @Get()
   findAll(
@@ -68,11 +82,11 @@ export class ContactsController {
       tags?: string[];
       notes?: string;
       analysisInstagram?: string;
+      qualification?: 'ULTRA' | 'QUALIFIED' | 'COLD' | 'UNQUALIFIED';
     },
   ) {
     const tenantId = req.user.tenantId;
 
-    // Se o telefone está sendo atualizado, sincroniza a conversa
     if (body.phone) {
       const existing = await this.prisma.contact.findFirst({ where: { id, tenantId } });
       if (existing?.phone && existing.phone !== body.phone) {
@@ -92,7 +106,22 @@ export class ContactsController {
         ...(body.tags !== undefined && { tags: body.tags }),
         ...(body.notes !== undefined && { notes: body.notes }),
         ...(body.analysisInstagram !== undefined && { analysisInstagram: body.analysisInstagram }),
+        ...(body.qualification !== undefined && { qualification: body.qualification }),
       },
+    });
+  }
+
+  /** PATCH /contacts/:id/qualify — qualificação manual (para leads do WhatsApp) */
+  @Patch(':id/qualify')
+  async qualify(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body() body: { qualification: 'ULTRA' | 'QUALIFIED' | 'COLD' | 'UNQUALIFIED' },
+  ) {
+    const tenantId = req.user.tenantId;
+    return this.prisma.contact.updateMany({
+      where: { id, tenantId },
+      data: { qualification: body.qualification },
     });
   }
 
