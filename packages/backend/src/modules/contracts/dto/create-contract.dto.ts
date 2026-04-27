@@ -4,6 +4,7 @@ export class CreateContractDto {
   clientName: string;
   clientEmail?: string;
   clientPhone?: string;
+  contactId?: string;
   asaasCustomerId?: string;
   serviceType: ContractServiceType;
   description?: string;

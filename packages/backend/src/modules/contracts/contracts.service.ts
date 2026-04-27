@@ -1,15 +1,18 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateContractDto } from './dto/create-contract.dto';
 
 @Injectable()
 export class ContractsService {
+  private readonly logger = new Logger(ContractsService.name);
+
   constructor(private prisma: PrismaService) {}
 
   async findAll(tenantId: string) {
     const contracts = await this.prisma.contract.findMany({
       where: { tenantId },
       orderBy: { signedAt: 'desc' },
+      include: { contact: { select: { id: true, name: true, phone: true } } },
     });
 
     return contracts.map((c) => ({
@@ -22,9 +25,8 @@ export class ContractsService {
     const contract = await this.prisma.contract.findFirst({
       where: { tenantId, id },
       include: {
-        financialEntries: {
-          orderBy: { dueDate: 'asc' },
-        },
+        financialEntries: { orderBy: { dueDate: 'asc' } },
+        contact: { select: { id: true, name: true, phone: true, qualification: true } },
       },
     });
     if (!contract) throw new NotFoundException('Contrato não encontrado');
@@ -32,12 +34,43 @@ export class ContractsService {
   }
 
   async create(tenantId: string, dto: CreateContractDto) {
-    return this.prisma.contract.create({
+    // 1. Tenta encontrar o contato pelo telefone ou nome
+    let contactId: string | null = null;
+
+    if (dto.clientPhone) {
+      const phone = dto.clientPhone.replace(/\D/g, '');
+      const contact = await this.prisma.contact.findFirst({
+        where: {
+          tenantId,
+          OR: [
+            { phone: { contains: phone } },
+            { phone: { endsWith: phone.slice(-8) } },
+          ],
+        },
+      });
+      if (contact) contactId = contact.id;
+    }
+
+    // Fallback: busca por nome similar
+    if (!contactId && dto.clientName) {
+      const namePart = dto.clientName.split(' ')[0].toLowerCase();
+      const contact = await this.prisma.contact.findFirst({
+        where: {
+          tenantId,
+          name: { contains: namePart, mode: 'insensitive' },
+        },
+      });
+      if (contact) contactId = contact.id;
+    }
+
+    // 2. Cria o contrato
+    const contract = await this.prisma.contract.create({
       data: {
         tenantId,
         clientName: dto.clientName,
         clientEmail: dto.clientEmail,
         clientPhone: dto.clientPhone,
+        contactId,
         asaasCustomerId: dto.asaasCustomerId,
         serviceType: dto.serviceType,
         description: dto.description,
@@ -51,6 +84,67 @@ export class ContractsService {
         notes: dto.notes,
       },
     });
+
+    // 3. Se encontrou contato, move lead para "Fechado" no funil
+    if (contactId) {
+      await this.moveLeadToWon(tenantId, contactId, dto.monthlyValue);
+      this.logger.log(`Lead ${contactId} movido para Fechado — contrato ${contract.id}`);
+    }
+
+    return contract;
+  }
+
+  // Move lead para estágio "Fechado" no funil e registra o valor
+  private async moveLeadToWon(tenantId: string, contactId: string, value: number) {
+    // Busca funis do tenant
+    const pipelines = await this.prisma.pipeline.findMany({
+      where: { tenantId },
+      include: { stages: true },
+    });
+
+    for (const pipeline of pipelines) {
+      // Verifica se o contato tem lead nesse funil
+      const pipelineLead = await this.prisma.pipelineLead.findFirst({
+        where: {
+          contactId,
+          stage: { pipelineId: pipeline.id },
+        },
+        include: { stage: true },
+      });
+
+      if (!pipelineLead) continue;
+
+      // Já está fechado? Pula
+      if (pipelineLead.stage.name === 'Fechado') continue;
+
+      // Busca ou cria estágio "Fechado"
+      let wonStage = pipeline.stages.find((s) => s.name === 'Fechado');
+      if (!wonStage) {
+        wonStage = await this.prisma.pipelineStage.create({
+          data: {
+            pipelineId: pipeline.id,
+            name: 'Fechado',
+            color: '#10B981',
+            position: pipeline.stages.length,
+          },
+        });
+      }
+
+      const position = await this.prisma.pipelineLead.count({
+        where: { stageId: wonStage.id },
+      });
+
+      // Move o lead para Fechado com o valor do contrato
+      await this.prisma.pipelineLead.update({
+        where: { id: pipelineLead.id },
+        data: {
+          stageId: wonStage.id,
+          value,
+          position,
+          notes: `Contrato fechado — R$${value}/mês`,
+        },
+      });
+    }
   }
 
   async cancel(tenantId: string, id: string, reason: string) {

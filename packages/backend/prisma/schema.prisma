@@ -207,6 +207,7 @@ model Contact {
   conversations  Conversation[]
   orders         Order[]
   pipelineLeads  PipelineLead[]
+  contracts      Contract[]
 
   @@unique([tenantId, phone])
   @@unique([tenantId, instagramId])
@@ -398,6 +399,8 @@ model Contract {
   clientName      String
   clientEmail     String?
   clientPhone     String?
+  contactId       String?             // link com Contact (lead que virou cliente)
+  contact         Contact?            @relation(fields: [contactId], references: [id])
   asaasCustomerId String?             // ID do cliente no Asaas
   serviceType     ContractServiceType
   description     String?
