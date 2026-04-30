@@ -3,22 +3,22 @@
 import { useState, useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import {
-  LayoutDashboard, MessageCircle, Users, Megaphone, Bot,
+  LayoutDashboard, MessageCircle, Users,
   Settings, ChevronLeft, ChevronRight, LogOut, Kanban,
-  Menu, X, DollarSign, FileText, Smartphone, Plus,
-  ChevronDown, Bell, Trophy,
+  Menu, X, DollarSign, FileText, Plus,
+  Bell, Trophy, Calendar, Briefcase, ClipboardList,
 } from "lucide-react";
 
 const navItems = [
   { icon: LayoutDashboard, label: "Dashboard",     href: "/dashboard" },
-  { icon: MessageCircle,   label: "Conversas",     href: "/dashboard/conversas", badge: 12 },
-  { icon: Users,           label: "Contatos",      href: "/dashboard/contatos" },
+  { icon: Users,           label: "Clientes",      href: "/dashboard/contatos" },
   { icon: Kanban,          label: "Funil",         href: "/dashboard/funil" },
+  { icon: MessageCircle,   label: "WhatsApp",      href: "/dashboard/conversas", badge: 12 },
+  { icon: Calendar,        label: "Agenda",        href: "/dashboard/agenda" },
   { icon: DollarSign,      label: "Financeiro",    href: "/dashboard/financeiro" },
+  { icon: Briefcase,       label: "Serviços",      href: "/dashboard/servicos" },
   { icon: FileText,        label: "Contratos",     href: "/dashboard/contratos" },
-  { icon: Megaphone,       label: "Campanhas",     href: "/dashboard/campanhas" },
-  { icon: Bot,             label: "Bots",          href: "/dashboard/bots" },
-  { icon: Smartphone,      label: "WhatsApp",      href: "/dashboard/whatsapp" },
+  { icon: ClipboardList,   label: "Briefings",     href: "/dashboard/briefings" },
   { icon: Settings,        label: "Configurações", href: "/dashboard/configuracoes" },
 ];
 
