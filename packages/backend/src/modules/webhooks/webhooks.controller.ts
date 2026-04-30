@@ -1,24 +1,23 @@
 import { Controller, Post, Body, HttpCode, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 
 @Controller('webhooks')
 export class WebhooksController {
   private readonly logger = new Logger(WebhooksController.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly events: EventEmitter2,
+  ) {}
 
-  /**
-   * POST /webhooks/asaas
-   * Webhook do Asaas — notifica pagamentos confirmados
-   * Configurar no Asaas: Integrações → Webhook → URL → /api/v1/webhooks/asaas
-   */
   @Post('asaas')
   @HttpCode(200)
   async receiveAsaas(@Body() body: any) {
     const event = body?.event;
     const payment = body?.payment;
 
-    this.logger.log(`Asaas webhook: ${event} — ${payment?.id}`);
+    this.logger.log(`Asaas webhook: ${event} — ${payment?.id} R$${payment?.value}`);
 
     if (!event || !payment) return { ok: true };
 
@@ -28,7 +27,6 @@ export class WebhooksController {
         const entry = await this.prisma.financialEntry.findUnique({
           where: { asaasPaymentId: payment.id },
         });
-
         if (entry) {
           if (event === 'PAYMENT_RECEIVED' || event === 'PAYMENT_CONFIRMED') {
             await this.prisma.financialEntry.update({
@@ -44,10 +42,26 @@ export class WebhooksController {
         }
       }
 
-      // Log do evento para debug
-      this.logger.log(
-        `Asaas ${event}: cliente=${payment.customer} valor=R$${payment.value} status=${payment.status}`,
-      );
+      // Emite evento SSE para notificação no browser
+      if (event === 'PAYMENT_RECEIVED' || event === 'PAYMENT_CONFIRMED') {
+        this.events.emit('asaas.payment', {
+          type: 'payment_received',
+          customerName: payment.customerName ?? payment.customer,
+          value: payment.value,
+          description: payment.description,
+          paidAt: new Date().toISOString(),
+        });
+        this.logger.log(`💰 Pagamento recebido: ${payment.customer} R$${payment.value}`);
+      }
+
+      if (event === 'PAYMENT_OVERDUE') {
+        this.events.emit('asaas.payment', {
+          type: 'payment_overdue',
+          customerName: payment.customerName ?? payment.customer,
+          value: payment.value,
+          dueDate: payment.dueDate,
+        });
+      }
 
     } catch (err: any) {
       this.logger.error('Asaas webhook error: ' + err.message);
@@ -56,38 +70,16 @@ export class WebhooksController {
     return { ok: true };
   }
 
-  /**
-   * POST /webhooks/lead
-   * Endpoint público (sem JWT) — recebe leads do site marketingdemoda.
-   * Cria contato + lead no primeiro funil do tenant dua-criativa.
-   */
   @Post('lead')
   @HttpCode(200)
-  async receiveLead(@Body() body: {
-    name: string;
-    whatsapp?: string;
-    email?: string;
-    instagram?: string;
-    faturamento?: string;
-    modelo?: string;
-    clientSlug?: string;
-    utmSource?: string;
-    utmMedium?: string;
-    utmCampaign?: string;
-    stageName?: string;
-  }) {
+  async receiveLead(@Body() body: any) {
     try {
       const slug = body.clientSlug || 'dua-criativa';
-
       const tenant = await this.prisma.tenant.findUnique({ where: { slug } });
       if (!tenant) return { ok: false, error: 'Tenant não encontrado' };
 
-      // Formata o telefone
-      const phone = body.whatsapp
-        ? `+${body.whatsapp.replace(/\D/g, '')}`
-        : null;
+      const phone = body.whatsapp ? `+${body.whatsapp.replace(/\D/g, '')}` : null;
 
-      // Cria ou atualiza contato
       const contact = await this.prisma.contact.upsert({
         where: { tenantId_phone: { tenantId: tenant.id, phone: phone || '' } },
         create: {
@@ -95,57 +87,63 @@ export class WebhooksController {
           name: body.name,
           phone,
           email: body.email || null,
+          instagramHandle: body.instagram || null,
+          monthlyRevenue: body.faturamento_mensal || body.faturamento || null,
+          saleModel: body.modelo_venda || body.modelo || null,
+          utmSource: body.utm_source || null,
+          utmMedium: body.utm_medium || null,
+          utmCampaign: body.utm_campaign || null,
           tags: [
-            ...(body.instagram ? [`ig:${body.instagram}`] : []),
-            ...(body.faturamento ? [body.faturamento] : []),
-            ...(body.modelo ? [body.modelo] : []),
-          ],
+            body.faturamento_mensal || body.faturamento,
+            body.modelo_venda || body.modelo,
+          ].filter(Boolean) as string[],
         },
         update: {
           email: body.email || undefined,
+          monthlyRevenue: body.faturamento_mensal || body.faturamento || undefined,
+          saleModel: body.modelo_venda || body.modelo || undefined,
+          utmSource: body.utm_source || undefined,
+          utmMedium: body.utm_medium || undefined,
+          utmCampaign: body.utm_campaign || undefined,
         },
       }).catch(async () => {
-        // Se phone for null, não tem unique — cria direto
         return this.prisma.contact.create({
           data: {
             tenantId: tenant.id,
             name: body.name,
             phone,
             email: body.email || null,
-            tags: [
-              ...(body.instagram ? [`ig:${body.instagram}`] : []),
-              ...(body.faturamento ? [body.faturamento] : []),
-              ...(body.modelo ? [body.modelo] : []),
-            ],
+            instagramHandle: body.instagram || null,
+            monthlyRevenue: body.faturamento_mensal || body.faturamento || null,
+            saleModel: body.modelo_venda || body.modelo || null,
+            utmSource: body.utm_source || null,
+            utmMedium: body.utm_medium || null,
+            utmCampaign: body.utm_campaign || null,
+            tags: [body.faturamento_mensal || body.faturamento, body.modelo_venda || body.modelo].filter(Boolean) as string[],
           },
         });
       });
 
-      // Busca o pipeline e a etapa correta
       const pipeline = await this.prisma.pipeline.findFirst({
         where: { tenantId: tenant.id },
         include: { stages: { orderBy: { position: 'asc' } } },
       });
 
       if (pipeline && pipeline.stages.length > 0) {
-        // Tenta encontrar a etapa pelo nome (case-insensitive), senão usa a primeira
         const targetStage = body.stageName
-          ? (pipeline.stages.find(
-              (s) => s.name.toLowerCase() === body.stageName!.toLowerCase(),
-            ) ?? pipeline.stages[0])
+          ? (pipeline.stages.find((s) => s.name.toLowerCase() === body.stageName.toLowerCase()) ?? pipeline.stages[0])
           : pipeline.stages[0];
 
         const count = await this.prisma.pipelineLead.count({ where: { stageId: targetStage.id } });
-
         await this.prisma.pipelineLead.create({
           data: {
             stageId: targetStage.id,
             contactId: contact.id,
             position: count,
             notes: [
-              body.faturamento ? `Faturamento: ${body.faturamento}` : '',
-              body.modelo ? `Modelo: ${body.modelo}` : '',
-              body.utmSource ? `UTM: ${body.utmSource}/${body.utmMedium}/${body.utmCampaign}` : '',
+              body.faturamento_mensal ? `Faturamento: ${body.faturamento_mensal}` : '',
+              body.modelo_venda ? `Modelo: ${body.modelo_venda}` : '',
+              body.utm_source ? `UTM: ${body.utm_source}/${body.utm_medium}` : '',
             ].filter(Boolean).join(' | ') || null,
           },
         });
@@ -153,7 +151,7 @@ export class WebhooksController {
 
       return { ok: true, contactId: contact.id };
     } catch (err: any) {
-      console.error('Webhook lead error:', err.message);
+      this.logger.error('Webhook lead error: ' + err.message);
       return { ok: false, error: err.message };
     }
   }

@@ -20,6 +20,8 @@ import { WebhooksModule } from './modules/webhooks/webhooks.module';
 import { LeadsModule } from './modules/leads/leads.module';
 import { FinancialModule } from './modules/financial/financial.module';
 import { ContractsModule } from './modules/contracts/contracts.module';
+import { NotificationsModule } from './modules/notifications/notifications.module';
+import { EventEmitterModule } from '@nestjs/event-emitter';
 
 @Module({
   imports: [
@@ -54,6 +56,8 @@ import { ContractsModule } from './modules/contracts/contracts.module';
     LeadsModule,
     FinancialModule,
     ContractsModule,
+    NotificationsModule,
+    EventEmitterModule.forRoot(),
   ],
   providers: [
     // Rate limiting aplicado globalmente
