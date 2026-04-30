@@ -1,8 +1,11 @@
+[phases.setup]
+cmds = ["echo 'cache-bust-2026-04-30'"]
+
 [phases.install]
 cmds = ["npm install --legacy-peer-deps"]
 
 [phases.build]
-cmds = ["npm run build"]
+cmds = ["npm install --legacy-peer-deps && npm run build"]
 
 [start]
 cmd = "npx next start -p 3000"
