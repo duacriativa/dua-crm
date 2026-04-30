@@ -1,9 +1,60 @@
-import { Controller, Post, Body, HttpCode } from '@nestjs/common';
+import { Controller, Post, Body, HttpCode, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 
 @Controller('webhooks')
 export class WebhooksController {
+  private readonly logger = new Logger(WebhooksController.name);
+
   constructor(private readonly prisma: PrismaService) {}
+
+  /**
+   * POST /webhooks/asaas
+   * Webhook do Asaas — notifica pagamentos confirmados
+   * Configurar no Asaas: Integrações → Webhook → URL → /api/v1/webhooks/asaas
+   */
+  @Post('asaas')
+  @HttpCode(200)
+  async receiveAsaas(@Body() body: any) {
+    const event = body?.event;
+    const payment = body?.payment;
+
+    this.logger.log(`Asaas webhook: ${event} — ${payment?.id}`);
+
+    if (!event || !payment) return { ok: true };
+
+    try {
+      // Atualiza FinancialEntry se existir
+      if (payment.id) {
+        const entry = await this.prisma.financialEntry.findUnique({
+          where: { asaasPaymentId: payment.id },
+        });
+
+        if (entry) {
+          if (event === 'PAYMENT_RECEIVED' || event === 'PAYMENT_CONFIRMED') {
+            await this.prisma.financialEntry.update({
+              where: { id: entry.id },
+              data: { status: 'PAID', paidAt: new Date() },
+            });
+          } else if (event === 'PAYMENT_OVERDUE') {
+            await this.prisma.financialEntry.update({
+              where: { id: entry.id },
+              data: { status: 'OVERDUE' },
+            });
+          }
+        }
+      }
+
+      // Log do evento para debug
+      this.logger.log(
+        `Asaas ${event}: cliente=${payment.customer} valor=R$${payment.value} status=${payment.status}`,
+      );
+
+    } catch (err: any) {
+      this.logger.error('Asaas webhook error: ' + err.message);
+    }
+
+    return { ok: true };
+  }
 
   /**
    * POST /webhooks/lead

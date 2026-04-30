@@ -55,6 +55,8 @@ export default function FunilPage() {
   const [draggingStageId, setDraggingStageId] = useState<string | null>(null);
   const [dragOverStageId, setDragOverStageId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [editingValue, setEditingValue] = useState(false);
+  const [editValueInput, setEditValueInput] = useState("");
 
   // Stage editing
   const [editingStageId, setEditingStageId] = useState<string | null>(null);
@@ -121,6 +123,8 @@ export default function FunilPage() {
     setSelectedStage(stage);
     setFullContact(null);
     setLoadingContact(true);
+    setEditingValue(false);
+    setEditValueInput("");
     try {
       const res = await fetch(`${API_URL}/api/v1/contacts/${lead.contactId}`, { headers: authHeaders() });
       if (res.ok) setFullContact(await res.json());
@@ -676,16 +680,69 @@ export default function FunilPage() {
                     </div>
                   )}
 
-                  {/* Valor no funil */}
-                  {selectedLead.value && (
-                    <div>
-                      <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Oportunidade</p>
-                      <div className="bg-green-50 rounded-xl p-3 flex items-center gap-2">
-                        <DollarSign className="w-4 h-4 text-green-600" />
-                        <span className="text-sm font-bold text-green-700">R$ {selectedLead.value.toLocaleString("pt-BR")}</span>
+                  {/* Valor no funil — editável */}
+                  <div>
+                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Oportunidade</p>
+                    {editingValue ? (
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm text-gray-500">R$</span>
+                        <input
+                          autoFocus
+                          type="number"
+                          className="flex-1 border border-brand-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-300"
+                          value={editValueInput}
+                          onChange={(e) => setEditValueInput(e.target.value)}
+                          onKeyDown={async (e) => {
+                            if (e.key === 'Enter') {
+                              const val = parseFloat(editValueInput);
+                              if (!isNaN(val)) {
+                                await fetch(`${API}/pipelines/leads/${selectedLead.id}`, {
+                                  method: 'PATCH', headers: authHeaders(),
+                                  body: JSON.stringify({ value: val }),
+                                });
+                                setSelectedLead((p: any) => p ? { ...p, value: val } : p);
+                                loadPipelines();
+                              }
+                              setEditingValue(false);
+                            }
+                            if (e.key === 'Escape') setEditingValue(false);
+                          }}
+                          placeholder="0"
+                        />
+                        <button
+                          onClick={async () => {
+                            const val = parseFloat(editValueInput);
+                            if (!isNaN(val)) {
+                              await fetch(`${API}/pipelines/leads/${selectedLead.id}`, {
+                                method: 'PATCH', headers: authHeaders(),
+                                body: JSON.stringify({ value: val }),
+                              });
+                              setSelectedLead((p: any) => p ? { ...p, value: val } : p);
+                              loadPipelines();
+                            }
+                            setEditingValue(false);
+                          }}
+                          className="text-xs bg-brand-600 text-white px-3 py-1.5 rounded-lg hover:bg-brand-700"
+                        >
+                          Salvar
+                        </button>
+                        <button onClick={() => setEditingValue(false)} className="text-xs text-gray-400 hover:text-gray-600">✕</button>
                       </div>
-                    </div>
-                  )}
+                    ) : (
+                      <div
+                        className="bg-green-50 rounded-xl p-3 flex items-center justify-between gap-2 cursor-pointer hover:bg-green-100 transition-colors group"
+                        onClick={() => { setEditingValue(true); setEditValueInput(String(selectedLead.value || '')); }}
+                      >
+                        <div className="flex items-center gap-2">
+                          <DollarSign className="w-4 h-4 text-green-600" />
+                          <span className="text-sm font-bold text-green-700">
+                            {selectedLead.value ? `R$ ${selectedLead.value.toLocaleString("pt-BR")}` : 'Clique para adicionar valor'}
+                          </span>
+                        </div>
+                        <span className="text-xs text-green-500 opacity-0 group-hover:opacity-100 transition-opacity">editar</span>
+                      </div>
+                    )}
+                  </div>
 
                   {/* UTM */}
                   {parsed?.utm && parsed.utm !== "-/-/-" && (
