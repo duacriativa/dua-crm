@@ -696,12 +696,12 @@ export default function FunilPage() {
                             if (e.key === 'Enter') {
                               const val = parseFloat(editValueInput);
                               if (!isNaN(val)) {
-                                await fetch(`${API}/pipelines/leads/${selectedLead.id}`, {
+                                await fetch(`${API_URL}/api/v1/pipelines/leads/${selectedLead.id}`, {
                                   method: 'PATCH', headers: authHeaders(),
                                   body: JSON.stringify({ value: val }),
                                 });
                                 setSelectedLead((p: any) => p ? { ...p, value: val } : p);
-                                loadPipelines();
+                                fetchPipelines();
                               }
                               setEditingValue(false);
                             }
@@ -713,12 +713,12 @@ export default function FunilPage() {
                           onClick={async () => {
                             const val = parseFloat(editValueInput);
                             if (!isNaN(val)) {
-                              await fetch(`${API}/pipelines/leads/${selectedLead.id}`, {
+                              await fetch(`${API_URL}/api/v1/pipelines/leads/${selectedLead.id}`, {
                                 method: 'PATCH', headers: authHeaders(),
                                 body: JSON.stringify({ value: val }),
                               });
                               setSelectedLead((p: any) => p ? { ...p, value: val } : p);
-                              loadPipelines();
+                              fetchPipelines();
                             }
                             setEditingValue(false);
                           }}

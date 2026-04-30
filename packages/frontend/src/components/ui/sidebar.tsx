@@ -8,7 +8,6 @@ import {
   Menu, X, DollarSign, FileText, Smartphone, Plus,
   ChevronDown, Bell, Trophy,
 } from "lucide-react";
-import { Progress } from "@/components/ui/progress";
 
 const navItems = [
   { icon: LayoutDashboard, label: "Dashboard",     href: "/dashboard" },
@@ -89,7 +88,7 @@ function DesktopSidebar() {
                 <span className="font-semibold text-foreground">R$ 7.800</span>
                 <span className="text-muted-foreground">/ R$ 10.000</span>
               </div>
-              <Progress value={78} className="h-1" />
+              <div className="h-1 rounded-full bg-muted overflow-hidden"><div className="h-full w-[78%] rounded-full bg-gradient-primary" /></div>
             </div>
           </div>
         )}
