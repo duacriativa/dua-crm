@@ -87,8 +87,9 @@ export default function AgendaPage() {
               <Calendar className="w-4 h-4" />
             </button>
             <button onClick={() => setShowModal(true)}
-              className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-gradient-primary rounded-xl hover:opacity-90 transition-opacity shadow-elegant">
-              <Plus className="w-4 h-4" />Novo Compromisso
+              className="flex items-center gap-2 px-3 py-2 sm:px-4 text-sm font-semibold text-white bg-gradient-primary rounded-xl hover:opacity-90 transition-opacity shadow-elegant">
+              <Plus className="w-4 h-4" />
+              <span className="hidden sm:inline">Novo Compromisso</span>
             </button>
           </div>
         </div>
