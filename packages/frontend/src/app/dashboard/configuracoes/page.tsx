@@ -151,6 +151,16 @@ const THEMES = [
     colors: ["#eff6ff","#3b82f6","#93c5fd"],
     vars: { background:"214 100% 97%", card:"0 0% 100%", primary:"217 91% 60%", primaryGlow:"213 94% 68%", border:"214 30% 88%", muted:"214 50% 93%", sidebar:"214 60% 95%" },
   },
+  {
+    id: "custom-dark", label: "Personalizado", desc: "Escolha sua cor — escuro", type: "dark",
+    colors: ["#1a1a2e","#8B5CF6","#a78bfa"],
+    vars: { background:"240 14% 6%", card:"240 12% 9%", primary:"263 85% 65%", primaryGlow:"280 90% 72%", border:"240 8% 16%", muted:"240 8% 14%", sidebar:"240 14% 5%" },
+  },
+  {
+    id: "custom-light", label: "Personalizado", desc: "Escolha sua cor — claro", type: "light",
+    colors: ["#ffffff","#8B5CF6","#a78bfa"],
+    vars: { background:"0 0% 98%", card:"0 0% 100%", primary:"263 85% 65%", primaryGlow:"280 90% 72%", border:"0 0% 89%", muted:"0 0% 94%", sidebar:"0 0% 96%" },
+  },
 ];
 
 function applyTheme(theme: typeof THEMES[0]) {
@@ -173,9 +183,15 @@ function applyTheme(theme: typeof THEMES[0]) {
   root.style.setProperty("--input", v.border);
   root.style.setProperty("--ring", v.primary);
   root.style.setProperty("--sidebar-background", v.sidebar);
-  root.style.setProperty("--sidebar-foreground", isDark ? "240 5% 75%" : "240 5% 35%");
+  root.style.setProperty("--sidebar-foreground", isDark ? "240 5% 75%" : "240 10% 20%");
   root.style.setProperty("--sidebar-primary", v.primary);
   root.style.setProperty("--sidebar-border", v.muted);
+  root.style.setProperty("--sidebar-accent", isDark ? "240 10% 12%" : "240 5% 92%");
+  root.style.setProperty("--sidebar-accent-foreground", isDark ? "0 0% 98%" : "240 10% 10%");
+  root.style.setProperty("--accent", isDark ? "263 70% 22%" : "214 32% 91%");
+  root.style.setProperty("--accent-foreground", isDark ? "0 0% 98%" : "240 10% 4%");
+  root.style.setProperty("--secondary", isDark ? "240 10% 14%" : "214 32% 91%");
+  root.style.setProperty("--secondary-foreground", isDark ? "0 0% 98%" : "240 10% 4%");
   root.style.setProperty("--gradient-primary", `linear-gradient(135deg, hsl(${v.primary}), hsl(${v.primaryGlow}))`);
   root.style.setProperty("--gradient-card", isDark
     ? `linear-gradient(180deg, hsl(${v.card}), hsl(${v.background}))`
@@ -194,10 +210,46 @@ function TabAparencia() {
     if (typeof window !== "undefined") return localStorage.getItem("dua-crm-fontsize") ?? "normal";
     return "normal";
   });
+  const [customDarkColor, setCustomDarkColor] = useState(
+    () => typeof window !== "undefined" ? (localStorage.getItem("dua-crm-custom-dark") ?? "#8B5CF6") : "#8B5CF6"
+  );
+  const [customLightColor, setCustomLightColor] = useState(
+    () => typeof window !== "undefined" ? (localStorage.getItem("dua-crm-custom-light") ?? "#8B5CF6") : "#8B5CF6"
+  );
+
+  // Converte hex para HSL string
+  const hexToHsl = (hex: string): string => {
+    const r = parseInt(hex.slice(1,3),16)/255;
+    const g = parseInt(hex.slice(3,5),16)/255;
+    const b = parseInt(hex.slice(5,7),16)/255;
+    const max = Math.max(r,g,b), min = Math.min(r,g,b);
+    let h=0,s=0,l=(max+min)/2;
+    if(max!==min){const d=max-min;s=l>0.5?d/(2-max-min):d/(max+min);
+      switch(max){case r:h=((g-b)/d+(g<b?6:0))/6;break;case g:h=((b-r)/d+2)/6;break;case b:h=((r-g)/d+4)/6;break;}}
+    return `${Math.round(h*360)} ${Math.round(s*100)}% ${Math.round(l*100)}%`;
+  };
+
+  const applyCustomColor = (hex: string, isDark: boolean) => {
+    const hsl = hexToHsl(hex);
+    const themeId = isDark ? "custom-dark" : "custom-light";
+    const baseTheme = THEMES.find(t => t.id === themeId)!;
+    const glowH = parseInt(hsl.split(" ")[0]) + 15;
+    const glowHsl = `${glowH % 360} ${hsl.split(" ")[1]} ${parseInt(hsl.split(" ")[2])+8}%`;
+    const customTheme = { ...baseTheme, vars: { ...baseTheme.vars, primary: hsl, primaryGlow: glowHsl } };
+    applyTheme(customTheme as any);
+    localStorage.setItem(isDark ? "dua-crm-custom-dark" : "dua-crm-custom-light", hex);
+    setActiveTheme(themeId);
+  };
 
   const selectTheme = (theme: typeof THEMES[0]) => {
-    setActiveTheme(theme.id);
-    applyTheme(theme);
+    if (theme.id === "custom-dark" || theme.id === "custom-light") {
+      const isDark = theme.id === "custom-dark";
+      const hex = isDark ? customDarkColor : customLightColor;
+      applyCustomColor(hex, isDark);
+    } else {
+      setActiveTheme(theme.id);
+      applyTheme(theme);
+    }
   };
 
   const selectFontSize = (size: string, px: number) => {
@@ -217,23 +269,41 @@ function TabAparencia() {
           🌙 Temas escuros
         </p>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-          {darkThemes.map(theme => (
-            <button key={theme.id} onClick={() => selectTheme(theme)}
-              className={`surface-card p-4 text-left hover:border-primary/50 transition-all relative ${activeTheme === theme.id ? "border-primary ring-1 ring-primary/40" : ""}`}>
-              {activeTheme === theme.id && (
-                <div className="absolute top-2 right-2 w-5 h-5 rounded-full bg-primary flex items-center justify-center">
-                  <Check className="w-3 h-3 text-white" />
-                </div>
-              )}
-              <div className="flex gap-1 mb-2">
-                {theme.colors.map((c, i) => (
-                  <div key={i} className="w-5 h-5 rounded-full border border-white/10" style={{ backgroundColor: c }} />
-                ))}
+          {darkThemes.map(theme => {
+            const isCustom = theme.id === "custom-dark";
+            const isActive = activeTheme === theme.id;
+            return (
+              <div key={theme.id} className={`surface-card p-4 text-left hover:border-primary/50 transition-all relative cursor-pointer ${isActive ? "border-primary ring-1 ring-primary/40" : ""}`}
+                onClick={() => selectTheme(theme)}>
+                {isActive && (
+                  <div className="absolute top-2 right-2 w-5 h-5 rounded-full bg-primary flex items-center justify-center">
+                    <Check className="w-3 h-3 text-white" />
+                  </div>
+                )}
+                {isCustom ? (
+                  <div className="mb-2">
+                    <div className="w-full h-5 rounded-lg mb-1.5" style={{ background: "linear-gradient(to right, #ff0000, #ffff00, #00ff00, #00ffff, #0000ff, #ff00ff, #ff0000)" }} />
+                    <div className="flex items-center gap-2">
+                      <div className="w-5 h-5 rounded-full border border-white/20 shrink-0" style={{ backgroundColor: customDarkColor }} />
+                      <input type="color" value={customDarkColor}
+                        onChange={e => { setCustomDarkColor(e.target.value); applyCustomColor(e.target.value, true); }}
+                        onClick={e => e.stopPropagation()}
+                        className="w-full h-5 opacity-0 absolute cursor-pointer" />
+                      <span className="text-[9px] text-muted-foreground font-mono">{customDarkColor}</span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex gap-1 mb-2">
+                    {theme.colors.map((col, i) => (
+                      <div key={i} className="w-5 h-5 rounded-full border border-white/10" style={{ backgroundColor: col }} />
+                    ))}
+                  </div>
+                )}
+                <p className="text-xs font-semibold text-foreground">{theme.label}</p>
+                <p className="text-[10px] text-muted-foreground mt-0.5 leading-tight">{theme.desc}</p>
               </div>
-              <p className="text-xs font-semibold text-foreground">{theme.label}</p>
-              <p className="text-[10px] text-muted-foreground mt-0.5 leading-tight">{theme.desc}</p>
-            </button>
-          ))}
+            );
+          })}
         </div>
       </div>
 
@@ -243,23 +313,41 @@ function TabAparencia() {
           ☀️ Temas claros
         </p>
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-          {lightThemes.map(theme => (
-            <button key={theme.id} onClick={() => selectTheme(theme)}
-              className={`surface-card p-4 text-left hover:border-primary/50 transition-all relative ${activeTheme === theme.id ? "border-primary ring-1 ring-primary/40" : ""}`}>
-              {activeTheme === theme.id && (
-                <div className="absolute top-2 right-2 w-5 h-5 rounded-full bg-primary flex items-center justify-center">
-                  <Check className="w-3 h-3 text-white" />
-                </div>
-              )}
-              <div className="flex gap-1 mb-2">
-                {theme.colors.map((c, i) => (
-                  <div key={i} className="w-5 h-5 rounded-full border border-black/10" style={{ backgroundColor: c }} />
-                ))}
+          {lightThemes.map(theme => {
+            const isCustom = theme.id === "custom-light";
+            const isActive = activeTheme === theme.id;
+            return (
+              <div key={theme.id} className={`surface-card p-4 text-left hover:border-primary/50 transition-all relative cursor-pointer ${isActive ? "border-primary ring-1 ring-primary/40" : ""}`}
+                onClick={() => selectTheme(theme)}>
+                {isActive && (
+                  <div className="absolute top-2 right-2 w-5 h-5 rounded-full bg-primary flex items-center justify-center">
+                    <Check className="w-3 h-3 text-white" />
+                  </div>
+                )}
+                {isCustom ? (
+                  <div className="mb-2">
+                    <div className="w-full h-5 rounded-lg mb-1.5" style={{ background: "linear-gradient(to right, #ff0000, #ffff00, #00ff00, #00ffff, #0000ff, #ff00ff, #ff0000)" }} />
+                    <div className="flex items-center gap-2 relative">
+                      <div className="w-5 h-5 rounded-full border border-black/20 shrink-0" style={{ backgroundColor: customLightColor }} />
+                      <input type="color" value={customLightColor}
+                        onChange={e => { setCustomLightColor(e.target.value); applyCustomColor(e.target.value, false); }}
+                        onClick={e => e.stopPropagation()}
+                        className="absolute inset-0 opacity-0 cursor-pointer w-full" />
+                      <span className="text-[9px] text-muted-foreground font-mono">{customLightColor}</span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex gap-1 mb-2">
+                    {theme.colors.map((col, i) => (
+                      <div key={i} className="w-5 h-5 rounded-full border border-black/10" style={{ backgroundColor: col }} />
+                    ))}
+                  </div>
+                )}
+                <p className="text-xs font-semibold text-foreground">{theme.label}</p>
+                <p className="text-[10px] text-muted-foreground mt-0.5 leading-tight">{theme.desc}</p>
               </div>
-              <p className="text-xs font-semibold text-foreground">{theme.label}</p>
-              <p className="text-[10px] text-muted-foreground mt-0.5 leading-tight">{theme.desc}</p>
-            </button>
-          ))}
+            );
+          })}
         </div>
       </div>
 
