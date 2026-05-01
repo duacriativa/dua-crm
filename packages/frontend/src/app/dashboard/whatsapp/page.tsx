@@ -23,7 +23,7 @@ interface Message {
   createdAt: string; messageType?: string; mediaUrl?: string;
 }
 
-type ConvTab = "all" | "unread" | "favorites" | "groups";
+type ConvTab = "all" | "unread" | "favorites" | "groups" | "pinned";
 type MobileView = "list" | "chat" | "settings";
 
 function timeAgo(dateStr?: string) {
@@ -68,6 +68,7 @@ function ConvList({
     if (tab === "unread") return matchSearch && c.unreadCount > 0;
     if (tab === "groups") return matchSearch && c.isGroup;
     if (tab === "favorites") return matchSearch;
+    if (tab === "pinned") return matchSearch;
     return matchSearch;
   });
 
