@@ -371,12 +371,101 @@ function TabConteudos() {
 }
 
 /* ── PLACEHOLDER ── */
+function SubPlaceholder({ title }: { title: string }) {
+  return (
+    <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
+      <div className="w-14 h-14 rounded-2xl bg-muted/40 flex items-center justify-center mb-4 text-2xl">⚙️</div>
+      <p className="font-semibold text-foreground">Configurações de {title} em breve</p>
+      <p className="text-sm mt-1 text-muted-foreground">Estamos trabalhando nisso.</p>
+    </div>
+  );
+}
 function TabPlaceholder({ title }: { title: string }) {
   return (
     <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
       <div className="w-16 h-16 rounded-2xl bg-muted/40 flex items-center justify-center mb-4 text-3xl">⚙️</div>
       <p className="font-semibold text-foreground">{title}</p>
       <p className="text-sm mt-1">Em breve disponível</p>
+    </div>
+  );
+}
+
+/* ── AUTOMAÇÕES ── */
+const autoSubTabs = ["Projetos","Tarefas","Notificações","WhatsApp","Novo","Recorrentes","Atalhos"];
+
+function AutoNotificacoes() {
+  const [resumo, setResumo] = useState(false);
+  const [notifs, setNotifs] = useState({
+    atribuido:  { inApp: true,  push: false },
+    status:     { inApp: true,  push: true  },
+    vencimento: { inApp: true,  push: true  },
+    mencao:     { inApp: true,  push: false },
+  });
+  const toggle = (k: keyof typeof notifs, ch: "inApp"|"push") =>
+    setNotifs(p => ({ ...p, [k]: { ...p[k], [ch]: !p[k][ch] } }));
+
+  const Toggle2 = ({ value, onChange }: { value: boolean; onChange: () => void }) => (
+    <button onClick={onChange}
+      className={`relative w-10 h-6 rounded-full transition-colors ${value ? "bg-primary" : "bg-muted"}`}>
+      <span className={`absolute top-1 w-4 h-4 rounded-full bg-white shadow transition-transform ${value ? "translate-x-5" : "translate-x-1"}`} />
+    </button>
+  );
+
+  return (
+    <div className="max-w-lg space-y-4">
+      <div className="surface-card p-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm font-semibold text-foreground">Resumo Diário</p>
+            <p className="text-xs text-muted-foreground mt-0.5">Receba um resumo das atividades do dia</p>
+          </div>
+          <Toggle2 value={resumo} onChange={() => setResumo(p => !p)} />
+        </div>
+      </div>
+      <div className="surface-card p-6">
+        <h3 className="text-base font-semibold text-foreground mb-1">Tipos de notificação</h3>
+        <p className="text-xs text-muted-foreground mb-4">Configure quais eventos geram notificações in-app e push.</p>
+        <div className="space-y-1">
+          <div className="grid grid-cols-3 gap-2 px-3 py-2 text-[10px] font-semibold text-muted-foreground uppercase tracking-wide border-b border-border mb-1">
+            <span>Evento</span><span className="text-center">In-app</span><span className="text-center">Push</span>
+          </div>
+          {([
+            { key: "atribuido",  label: "Conteúdo atribuído a mim" },
+            { key: "status",     label: "Mudança de status em meus conteúdos" },
+            { key: "vencimento", label: "Prazo de entrega próximo" },
+            { key: "mencao",     label: "Menção em comentário" },
+          ] as const).map(({ key, label }) => (
+            <div key={key} className="grid grid-cols-3 gap-2 items-center px-3 py-3 rounded-xl hover:bg-muted/30 transition-colors">
+              <span className="text-sm text-foreground">{label}</span>
+              <div className="flex justify-center">
+                <Toggle2 value={notifs[key].inApp} onChange={() => toggle(key, "inApp")} />
+              </div>
+              <div className="flex justify-center">
+                <Toggle2 value={notifs[key].push} onChange={() => toggle(key, "push")} />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TabAutomacoes() {
+  const [sub, setSub] = useState("Notificações");
+  return (
+    <div>
+      {/* Sub-tabs */}
+      <div className="flex gap-1 mb-6 p-1 rounded-xl bg-muted/30 border border-border overflow-x-auto scrollbar-none w-fit">
+        {autoSubTabs.map(t => (
+          <button key={t} onClick={() => setSub(t)}
+            className={`px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-all ${sub === t ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>
+            {t}
+          </button>
+        ))}
+      </div>
+      {sub === "Notificações"                                    && <AutoNotificacoes />}
+      {["Projetos","Tarefas","WhatsApp","Novo","Recorrentes","Atalhos"].includes(sub) && <SubPlaceholder title={sub} />}
     </div>
   );
 }
@@ -391,7 +480,7 @@ export default function ConfiguracoesPage() {
         <p className="text-sm text-muted-foreground mt-1">Personalize sua experiência no Dua CRM</p>
       </header>
 
-      {/* Tabs */}
+      {/* Tabs principais */}
       <div className="flex gap-1 mb-6 p-1 rounded-xl bg-muted/40 border border-border overflow-x-auto scrollbar-none">
         {tabs.map(({ key, icon: Icon }) => (
           <button key={key} onClick={() => setActive(key)}
@@ -405,9 +494,10 @@ export default function ConfiguracoesPage() {
       {active === "Assinatura"   && <TabAssinatura />}
       {active === "Mobile"       && <TabMobile />}
       {active === "Notificações" && <TabNotificacoes />}
+      {active === "Automações"   && <TabAutomacoes />}
       {active === "Integrações"  && <TabIntegracoes />}
       {active === "Conteúdos"    && <TabConteudos />}
-      {["Aparência","Atualizações","Automações"].includes(active) && <TabPlaceholder title={active} />}
+      {["Aparência","Atualizações"].includes(active) && <TabPlaceholder title={active} />}
     </div>
   );
 }
