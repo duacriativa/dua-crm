@@ -89,32 +89,209 @@ function TabPerfil() {
   );
 }
 
+/* ── Definição dos temas ── */
+const THEMES = [
+  {
+    id: "padrao", label: "Padrão", desc: "Escuro com vermelho vibrante", type: "dark",
+    colors: ["#1a1a2e","#e11d48","#a855f7"],
+    vars: { background:"240 14% 6%", card:"240 12% 9%", primary:"263 85% 65%", primaryGlow:"280 90% 72%", border:"240 8% 16%", muted:"240 8% 14%", sidebar:"240 14% 5%" },
+  },
+  {
+    id: "midnight", label: "Midnight", desc: "Ultra escuro com azul profundo", type: "dark",
+    colors: ["#0a0a1a","#1d4ed8","#60a5fa"],
+    vars: { background:"230 25% 4%", card:"230 20% 7%", primary:"217 91% 60%", primaryGlow:"213 94% 68%", border:"230 15% 14%", muted:"230 15% 11%", sidebar:"230 25% 3%" },
+  },
+  {
+    id: "amoled", label: "AMOLED", desc: "Preto puro com rosa", type: "dark",
+    colors: ["#000000","#000000","#ec4899"],
+    vars: { background:"0 0% 0%", card:"0 0% 4%", primary:"330 81% 60%", primaryGlow:"336 84% 68%", border:"0 0% 10%", muted:"0 0% 8%", sidebar:"0 0% 0%" },
+  },
+  {
+    id: "blackblue", label: "Black & Blue", desc: "Preto puro com azul elétrico", type: "dark",
+    colors: ["#000000","#1e40af","#60a5fa"],
+    vars: { background:"0 0% 0%", card:"0 0% 5%", primary:"213 94% 68%", primaryGlow:"210 100% 74%", border:"0 0% 12%", muted:"0 0% 9%", sidebar:"0 0% 0%" },
+  },
+  {
+    id: "blackgreen", label: "Black & Green", desc: "Preto puro com verde neon", type: "dark",
+    colors: ["#000000","#15803d","#4ade80"],
+    vars: { background:"0 0% 0%", card:"0 0% 5%", primary:"142 71% 45%", primaryGlow:"142 76% 55%", border:"0 0% 12%", muted:"0 0% 9%", sidebar:"0 0% 0%" },
+  },
+  {
+    id: "blackpurple", label: "Black & Purple", desc: "Preto puro com roxo vibrante", type: "dark",
+    colors: ["#000000","#7c3aed","#a78bfa"],
+    vars: { background:"0 0% 0%", card:"0 0% 5%", primary:"258 90% 66%", primaryGlow:"262 83% 74%", border:"0 0% 12%", muted:"0 0% 9%", sidebar:"0 0% 0%" },
+  },
+  {
+    id: "emerald", label: "Emerald", desc: "Escuro com verde esmeralda", type: "dark",
+    colors: ["#0a1628","#065f46","#34d399"],
+    vars: { background:"215 50% 9%", card:"215 45% 12%", primary:"160 84% 39%", primaryGlow:"158 64% 52%", border:"215 30% 18%", muted:"215 30% 14%", sidebar:"215 50% 7%" },
+  },
+  {
+    id: "ocean", label: "Ocean", desc: "Escuro com ciano oceano", type: "dark",
+    colors: ["#0c1a2e","#0891b2","#22d3ee"],
+    vars: { background:"215 55% 8%", card:"215 50% 11%", primary:"189 94% 43%", primaryGlow:"187 96% 54%", border:"215 30% 17%", muted:"215 30% 13%", sidebar:"215 55% 6%" },
+  },
+  {
+    id: "purplerain", label: "Purple Rain", desc: "Escuro com roxo intenso", type: "dark",
+    colors: ["#1a0533","#7c3aed","#c084fc"],
+    vars: { background:"272 60% 7%", card:"272 55% 10%", primary:"270 91% 65%", primaryGlow:"272 96% 74%", border:"272 35% 17%", muted:"272 35% 13%", sidebar:"272 60% 5%" },
+  },
+  {
+    id: "monochrome", label: "Monocromático", desc: "Preto e branco, claro", type: "light",
+    colors: ["#ffffff","#f4f4f5","#18181b"],
+    vars: { background:"0 0% 98%", card:"0 0% 100%", primary:"0 0% 9%", primaryGlow:"0 0% 20%", border:"0 0% 89%", muted:"0 0% 94%", sidebar:"0 0% 96%" },
+  },
+  {
+    id: "rosaclaro", label: "Rosa Claro", desc: "Claro com rosa vibrante", type: "light",
+    colors: ["#fff1f2","#f43f5e","#fda4af"],
+    vars: { background:"350 100% 97%", card:"0 0% 100%", primary:"347 77% 50%", primaryGlow:"345 83% 62%", border:"350 30% 88%", muted:"350 20% 94%", sidebar:"350 50% 96%" },
+  },
+  {
+    id: "azulclaro", label: "Azul Claro", desc: "Claro com azul suave", type: "light",
+    colors: ["#eff6ff","#3b82f6","#93c5fd"],
+    vars: { background:"214 100% 97%", card:"0 0% 100%", primary:"217 91% 60%", primaryGlow:"213 94% 68%", border:"214 30% 88%", muted:"214 50% 93%", sidebar:"214 60% 95%" },
+  },
+];
+
+function applyTheme(theme: typeof THEMES[0]) {
+  const root = document.documentElement;
+  const v = theme.vars;
+  const isDark = theme.type === "dark";
+
+  root.style.setProperty("--background", v.background);
+  root.style.setProperty("--foreground", isDark ? "0 0% 98%" : "240 10% 4%");
+  root.style.setProperty("--card", v.card);
+  root.style.setProperty("--card-foreground", isDark ? "0 0% 98%" : "240 10% 4%");
+  root.style.setProperty("--popover", v.card);
+  root.style.setProperty("--popover-foreground", isDark ? "0 0% 98%" : "240 10% 4%");
+  root.style.setProperty("--primary", v.primary);
+  root.style.setProperty("--primary-glow", v.primaryGlow);
+  root.style.setProperty("--primary-foreground", isDark ? "0 0% 100%" : "0 0% 100%");
+  root.style.setProperty("--muted", v.muted);
+  root.style.setProperty("--muted-foreground", isDark ? "240 5% 60%" : "240 4% 46%");
+  root.style.setProperty("--border", v.border);
+  root.style.setProperty("--input", v.border);
+  root.style.setProperty("--ring", v.primary);
+  root.style.setProperty("--sidebar-background", v.sidebar);
+  root.style.setProperty("--sidebar-foreground", isDark ? "240 5% 75%" : "240 5% 35%");
+  root.style.setProperty("--sidebar-primary", v.primary);
+  root.style.setProperty("--sidebar-border", v.muted);
+  root.style.setProperty("--gradient-primary", `linear-gradient(135deg, hsl(${v.primary}), hsl(${v.primaryGlow}))`);
+  root.style.setProperty("--gradient-card", isDark
+    ? `linear-gradient(180deg, hsl(${v.card}), hsl(${v.background}))`
+    : `linear-gradient(180deg, hsl(0 0% 100%), hsl(${v.muted}))`);
+
+  localStorage.setItem("dua-crm-theme", theme.id);
+}
+
 /* ── APARÊNCIA ── */
 function TabAparencia() {
+  const [activeTheme, setActiveTheme] = useState(() => {
+    if (typeof window !== "undefined") return localStorage.getItem("dua-crm-theme") ?? "padrao";
+    return "padrao";
+  });
+  const [fontSize, setFontSize] = useState(() => {
+    if (typeof window !== "undefined") return localStorage.getItem("dua-crm-fontsize") ?? "normal";
+    return "normal";
+  });
+
+  const selectTheme = (theme: typeof THEMES[0]) => {
+    setActiveTheme(theme.id);
+    applyTheme(theme);
+  };
+
+  const selectFontSize = (size: string, px: number) => {
+    setFontSize(size);
+    document.documentElement.style.fontSize = `${px}px`;
+    localStorage.setItem("dua-crm-fontsize", size);
+  };
+
+  const darkThemes = THEMES.filter(t => t.type === "dark");
+  const lightThemes = THEMES.filter(t => t.type === "light");
+
   return (
-    <div className="max-w-2xl space-y-4">
-      <h2 className="text-base font-bold text-foreground mb-4">Aparência</h2>
-      <div className="surface-card p-5">
-        <p className="text-sm font-medium text-foreground mb-1">Tema</p>
-        <p className="text-xs text-muted-foreground mb-3">Escolha entre modo escuro e claro</p>
-        <div className="flex gap-3">
-          {["Escuro", "Claro", "Sistema"].map(t => (
-            <button key={t} className={`px-4 py-2 text-sm font-medium rounded-xl border transition-colors ${t === "Escuro" ? "bg-primary text-white border-primary" : "border-border text-muted-foreground hover:bg-muted/50"}`}>
-              {t}
+    <div className="max-w-3xl space-y-6">
+      {/* Temas escuros */}
+      <div>
+        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5 mb-3">
+          🌙 Temas escuros
+        </p>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+          {darkThemes.map(theme => (
+            <button key={theme.id} onClick={() => selectTheme(theme)}
+              className={`surface-card p-4 text-left hover:border-primary/50 transition-all relative ${activeTheme === theme.id ? "border-primary ring-1 ring-primary/40" : ""}`}>
+              {activeTheme === theme.id && (
+                <div className="absolute top-2 right-2 w-5 h-5 rounded-full bg-primary flex items-center justify-center">
+                  <Check className="w-3 h-3 text-white" />
+                </div>
+              )}
+              <div className="flex gap-1 mb-2">
+                {theme.colors.map((c, i) => (
+                  <div key={i} className="w-5 h-5 rounded-full border border-white/10" style={{ backgroundColor: c }} />
+                ))}
+              </div>
+              <p className="text-xs font-semibold text-foreground">{theme.label}</p>
+              <p className="text-[10px] text-muted-foreground mt-0.5 leading-tight">{theme.desc}</p>
             </button>
           ))}
         </div>
       </div>
-      <div className="surface-card p-5">
-        <p className="text-sm font-medium text-foreground mb-1">Cor de destaque</p>
-        <p className="text-xs text-muted-foreground mb-3">Cor principal do CRM</p>
-        <div className="flex gap-2">
-          {["#8B5CF6","#6366F1","#EC4899","#10B981","#F59E0B","#3B82F6"].map(cor => (
-            <button key={cor} className={`w-8 h-8 rounded-full border-2 transition-all ${cor === "#8B5CF6" ? "border-white scale-110" : "border-transparent hover:scale-105"}`}
-              style={{backgroundColor: cor}} />
+
+      {/* Temas claros */}
+      <div>
+        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5 mb-3">
+          ☀️ Temas claros
+        </p>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+          {lightThemes.map(theme => (
+            <button key={theme.id} onClick={() => selectTheme(theme)}
+              className={`surface-card p-4 text-left hover:border-primary/50 transition-all relative ${activeTheme === theme.id ? "border-primary ring-1 ring-primary/40" : ""}`}>
+              {activeTheme === theme.id && (
+                <div className="absolute top-2 right-2 w-5 h-5 rounded-full bg-primary flex items-center justify-center">
+                  <Check className="w-3 h-3 text-white" />
+                </div>
+              )}
+              <div className="flex gap-1 mb-2">
+                {theme.colors.map((c, i) => (
+                  <div key={i} className="w-5 h-5 rounded-full border border-black/10" style={{ backgroundColor: c }} />
+                ))}
+              </div>
+              <p className="text-xs font-semibold text-foreground">{theme.label}</p>
+              <p className="text-[10px] text-muted-foreground mt-0.5 leading-tight">{theme.desc}</p>
+            </button>
           ))}
         </div>
       </div>
+
+      {/* Tamanho da fonte */}
+      <div>
+        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5 mb-3">
+          T Tamanho da fonte
+        </p>
+        <p className="text-xs text-muted-foreground mb-3">Reduza o tamanho das fontes do sistema, incluindo menu e textos gerais.</p>
+        <div className="grid grid-cols-3 gap-3">
+          {[
+            { key: "normal", label: "Aa — Normal", sub: "Tamanho padrão (16px)", px: 16 },
+            { key: "reduzido", label: "Aa — Reduzido", sub: "1px menor (14px)", px: 14 },
+            { key: "compacto", label: "Aa — Compacto", sub: "2px menor (13px)", px: 13 },
+          ].map(opt => (
+            <button key={opt.key} onClick={() => selectFontSize(opt.key, opt.px)}
+              className={`surface-card p-4 text-left hover:border-primary/50 transition-all ${fontSize === opt.key ? "border-primary ring-1 ring-primary/40" : ""}`}>
+              <p className="text-sm font-semibold text-foreground">{opt.label}</p>
+              <p className="text-xs text-muted-foreground mt-0.5">{opt.sub}</p>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Restaurar */}
+      <button onClick={() => {
+        const def = THEMES[0];
+        selectTheme(def);
+        selectFontSize("normal", 16);
+      }} className="flex items-center gap-2 px-4 py-2 text-sm text-muted-foreground border border-border rounded-xl hover:bg-muted/50 transition-colors">
+        🔄 Restaurar tema padrão
+      </button>
     </div>
   );
 }
@@ -256,6 +433,21 @@ function TabIntegracoes() {
 /* ── PÁGINA PRINCIPAL ── */
 export default function ConfiguracoesPage() {
   const [activeTab, setActiveTab] = useState("Perfil");
+
+  // Aplicar tema salvo ao carregar
+  useState(() => {
+    if (typeof window === "undefined") return;
+    const saved = localStorage.getItem("dua-crm-theme");
+    if (saved) {
+      const theme = THEMES.find(t => t.id === saved);
+      if (theme) applyTheme(theme);
+    }
+    const fs = localStorage.getItem("dua-crm-fontsize");
+    if (fs) {
+      const sizes: Record<string,number> = { normal:16, reduzido:14, compacto:13 };
+      if (sizes[fs]) document.documentElement.style.fontSize = `${sizes[fs]}px`;
+    }
+  });
 
   return (
     <div className="h-full flex flex-col bg-background">
