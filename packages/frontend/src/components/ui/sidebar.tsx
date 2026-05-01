@@ -14,7 +14,7 @@ const navItems = [
   { icon: LayoutDashboard, label: "Dashboard",     href: "/dashboard" },
   { icon: Users,           label: "Clientes",      href: "/dashboard/contatos" },
   { icon: Kanban,          label: "Funil",         href: "/dashboard/funil" },
-  { icon: MessageCircle,   label: "WhatsApp",      href: "/dashboard/conversas", badge: 12 },
+  { icon: MessageCircle,   label: "WhatsApp",      href: "/dashboard/whatsapp", badge: 12 },
   { icon: Calendar,        label: "Agenda",        href: "/dashboard/agenda" },
   { icon: DollarSign,      label: "Financeiro",    href: "/dashboard/financeiro" },
   { icon: Briefcase,       label: "Serviços",      href: "/dashboard/servicos" },
