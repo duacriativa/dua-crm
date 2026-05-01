@@ -485,13 +485,7 @@ export default function FunilPage() {
                           </div>
                           <span className="text-sm font-semibold text-foreground leading-tight truncate">{lead.contact.name}</span>
                         </div>
-                        {/* Botão mover etapa — visível no mobile */}
-                        <button
-                          onClick={(e) => { e.stopPropagation(); setMoveLeadModal({ lead, fromStageId: stage.id }); }}
-                          className="sm:hidden shrink-0 p-1.5 rounded-lg bg-muted/40 text-muted-foreground hover:bg-primary/10 hover:text-primary transition-colors"
-                          title="Mover de etapa">
-                          <ArrowRight className="w-3.5 h-3.5" />
-                        </button>
+
                         <div className="relative shrink-0" onClick={(e) => e.stopPropagation()}>
                           <button
                             onClick={() => setCardMenuId(cardMenuId === lead.id ? null : lead.id)}
@@ -515,6 +509,12 @@ export default function FunilPage() {
                       {lead.contact.phone && <p className="text-xs text-muted-foreground ml-9">{lead.contact.phone}</p>}
                       {lead.value && <div className="ml-9 mt-1"><span className="text-xs font-semibold text-green-600">R$ {lead.value.toLocaleString("pt-BR")}</span></div>}
                       {lead.notes && <p className="text-[10px] text-muted-foreground ml-9 mt-1 truncate">{lead.notes}</p>}
+                      {/* Mover etapa — só mobile, barra inferior no card */}
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setMoveLeadModal({ lead, fromStageId: stage.id }); }}
+                        className="sm:hidden mt-2 w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg bg-muted/40 text-muted-foreground text-xs font-medium hover:bg-primary/10 hover:text-primary transition-colors">
+                        <ArrowRight className="w-3 h-3" />Mover etapa
+                      </button>
                     </div>
                   ))}
 

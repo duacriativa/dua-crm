@@ -134,6 +134,22 @@ export class ContractsService {
         continue;
       }
 
+      // ⚠️ IMPORTANTE: só mover para Fechado se o lead ainda estiver
+      // na primeira etapa (posição 0). Se o usuário já moveu manualmente,
+      // respeitar a posição atual e apenas atualizar o valor/notas.
+      const firstStage = pipeline.stages
+        .sort((a, b) => a.position - b.position)[0];
+      const isAtFirstStage = firstStage && pipelineLead.stage.id === firstStage.id;
+
+      if (!isAtFirstStage) {
+        // Usuário moveu manualmente — só atualiza valor
+        await this.prisma.pipelineLead.update({
+          where: { id: pipelineLead.id },
+          data: { value, notes: `Contrato — R$${value}/mês` },
+        });
+        continue;
+      }
+
       // Busca ou cria estágio "Fechado"
       let wonStage = pipeline.stages.find((s) => s.name === 'Fechado');
       if (!wonStage) {
