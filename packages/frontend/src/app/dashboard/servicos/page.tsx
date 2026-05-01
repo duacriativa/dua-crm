@@ -184,7 +184,7 @@ export default function ServicosPage() {
       {tab === "servicos" && (
         <div className="flex-1 overflow-auto scrollbar-none">
           {/* Barra de ações */}
-          <div className="flex items-center gap-3 px-6 py-4 border-b border-border">
+          <div className="flex flex-wrap items-center gap-2 px-4 sm:px-6 py-3 sm:py-4 border-b border-border">
             <button className="flex items-center gap-1.5 px-3 py-2 text-sm text-muted-foreground border border-border rounded-xl hover:bg-muted/50 transition-colors">
               <Tag className="w-4 h-4" />Gerenciar Categorias
             </button>

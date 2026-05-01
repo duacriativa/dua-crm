@@ -175,7 +175,7 @@ export default function FinanceiroPage() {
       </div>
 
       {(data.pendingByClient?.length ?? 0) > 0 && (
-        <div className="bg-card rounded-xl border border-border overflow-hidden">
+        <div className="bg-card rounded-xl border border-border overflow-x-auto">
           <div className="px-4 py-3 border-b border-border">
             <h2 className="text-sm font-semibold text-foreground">Cobranças pendentes por cliente</h2>
           </div>
@@ -220,7 +220,7 @@ export default function FinanceiroPage() {
       )}
 
       {(data.overdueItems?.length ?? 0) > 0 && (
-        <div className="bg-card rounded-xl border border-red-100 overflow-hidden">
+        <div className="bg-card rounded-xl border border-red-500/20 overflow-x-auto">
           <div className="px-4 py-3 border-b border-red-100 bg-red-50">
             <h2 className="text-sm font-semibold text-red-700 flex items-center gap-2">
               <AlertCircle className="w-4 h-4" /> Em atraso — ação necessária

@@ -243,8 +243,14 @@ export default function ContatosPage() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-semibold text-foreground truncate">{c.name}</p>
-                    {c.phone&&<p className="text-xs text-muted-foreground">{c.phone}</p>}
-                    {c.segment&&<span className={`inline-block mt-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border ${SEG_COLOR[c.segment]??SEG_COLOR.NEW}`}>{SEG_LABEL[c.segment]??c.segment}</span>}
+                    {c.phone&&<p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5"><Phone className="w-3 h-3"/>{c.phone}</p>}
+                    {c.email&&!c.phone&&<p className="text-xs text-muted-foreground truncate mt-0.5">{c.email}</p>}
+                    <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                      {c.segment&&<span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold border ${SEG_COLOR[c.segment]??SEG_COLOR.NEW}`}>{SEG_LABEL[c.segment]??c.segment}</span>}
+                    </div>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className="text-xs font-mono font-semibold text-foreground">R$ {(c.totalSpent??0).toLocaleString("pt-BR")}</p>
                   </div>
                 </div>
               ))}

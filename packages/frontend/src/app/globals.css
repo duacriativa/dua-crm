@@ -94,3 +94,16 @@
   0%, 100% { box-shadow: 0 0 0 0 hsl(var(--primary) / 0.4); }
   50%       { box-shadow: 0 0 0 12px hsl(var(--primary) / 0); }
 }
+
+/* ── Mobile / iOS fixes ─────────────────────────────────────── */
+@supports (padding: env(safe-area-inset-bottom)) {
+  .safe-area-bottom { padding-bottom: env(safe-area-inset-bottom); }
+}
+
+/* Prevent font zoom on iOS when focusing inputs */
+@media (max-width: 768px) {
+  input, select, textarea { font-size: 16px !important; }
+}
+
+/* Smooth scrolling on mobile */
+* { -webkit-overflow-scrolling: touch; }

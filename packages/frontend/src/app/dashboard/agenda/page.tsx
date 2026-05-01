@@ -65,7 +65,7 @@ export default function AgendaPage() {
     <div className="h-full flex flex-col bg-background">
       {/* Header */}
       <div className="border-b border-border bg-background/80 backdrop-blur-xl px-6 py-4 shrink-0">
-        <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div>
             <h1 className="text-2xl font-bold text-foreground">Timeline de Projetos</h1>
             <p className="text-sm text-muted-foreground mt-0.5">Visualização completa de todas as etapas e prazos</p>

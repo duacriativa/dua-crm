@@ -48,7 +48,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </div>
         </header>
 
-        <main className="flex-1 overflow-auto pt-14 pb-16 lg:pt-0 lg:pb-0">
+        <main className="flex-1 overflow-auto pt-14 pb-[calc(4rem+env(safe-area-inset-bottom))] lg:pt-0 lg:pb-0">
           {children}
         </main>
       </div>
