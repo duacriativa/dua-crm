@@ -134,19 +134,43 @@ export class WebhooksController {
           ? (pipeline.stages.find((s) => s.name.toLowerCase() === body.stageName.toLowerCase()) ?? pipeline.stages[0])
           : pipeline.stages[0];
 
-        const count = await this.prisma.pipelineLead.count({ where: { stageId: targetStage.id } });
-        await this.prisma.pipelineLead.create({
-          data: {
-            stageId: targetStage.id,
+        // Verificar se o contato já tem um lead neste funil
+        const existingLead = await this.prisma.pipelineLead.findFirst({
+          where: {
             contactId: contact.id,
-            position: count,
-            notes: [
-              body.faturamento_mensal ? `Faturamento: ${body.faturamento_mensal}` : '',
-              body.modelo_venda ? `Modelo: ${body.modelo_venda}` : '',
-              body.utm_source ? `UTM: ${body.utm_source}/${body.utm_medium}` : '',
-            ].filter(Boolean).join(' | ') || null,
+            stage: { pipelineId: pipeline.id },
           },
+          include: { stage: true },
         });
+
+        if (existingLead) {
+          // Lead já existe — só atualizar notas, NÃO mover de etapa
+          await this.prisma.pipelineLead.update({
+            where: { id: existingLead.id },
+            data: {
+              notes: [
+                body.faturamento_mensal ? `Faturamento: ${body.faturamento_mensal}` : '',
+                body.modelo_venda ? `Modelo: ${body.modelo_venda}` : '',
+                body.utm_source ? `UTM: ${body.utm_source}/${body.utm_medium}` : '',
+              ].filter(Boolean).join(' | ') || existingLead.notes,
+            },
+          });
+        } else {
+          // Lead novo — criar na primeira etapa
+          const count = await this.prisma.pipelineLead.count({ where: { stageId: targetStage.id } });
+          await this.prisma.pipelineLead.create({
+            data: {
+              stageId: targetStage.id,
+              contactId: contact.id,
+              position: count,
+              notes: [
+                body.faturamento_mensal ? `Faturamento: ${body.faturamento_mensal}` : '',
+                body.modelo_venda ? `Modelo: ${body.modelo_venda}` : '',
+                body.utm_source ? `UTM: ${body.utm_source}/${body.utm_medium}` : '',
+              ].filter(Boolean).join(' | ') || null,
+            },
+          });
+        }
       }
 
       return { ok: true, contactId: contact.id };
