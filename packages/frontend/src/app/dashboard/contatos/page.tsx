@@ -384,6 +384,14 @@ export default function ContatosPage(){
                     })}
                   </div>
                   <p className="text-right text-[10px] font-medium text-muted-foreground mt-1">Recência →</p>
+                  {/* Legenda */}
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {(Object.keys(RFV) as RfvKey[]).map(k=>{const s=RFV[k];const Icon=s.icon;return(
+                      <span key={k} className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium border ${s.bg} ${s.text} ${s.border}`}>
+                        <Icon className="w-2.5 h-2.5"/>{s.label}
+                      </span>
+                    );})}
+                  </div>
                 </div>
               </div>
             </div>
@@ -405,27 +413,54 @@ export default function ContatosPage(){
         )}
       </div>
 
-      {/* Modal */}
+      {/* Modal Cadastrar Cliente */}
       {showNew&&(
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
-          <div className="bg-card border border-border rounded-t-3xl sm:rounded-3xl shadow-2xl w-full sm:max-w-md p-6">
-            <div className="flex items-center justify-between mb-5">
-              <h2 className="text-lg font-bold text-foreground">Novo Contato</h2>
+          <div className="bg-card border border-border rounded-t-3xl sm:rounded-3xl shadow-2xl w-full sm:max-w-lg p-6">
+            <div className="flex items-center justify-between mb-2">
+              <h2 className="text-lg font-bold text-foreground">Novo cliente</h2>
               <button onClick={()=>setShowNew(false)} className="p-1.5 rounded-xl hover:bg-muted/60 transition-colors"><X className="w-4 h-4 text-muted-foreground"/></button>
             </div>
-            <div className="space-y-4">
-              {[{label:"Nome *",key:"name",ph:"Ex: Ana Lima"},{label:"WhatsApp",key:"phone",ph:"+55 11 99999-9999"},{label:"E-mail",key:"email",ph:"ana@email.com"}].map(f=>(
-                <div key={f.key}>
-                  <label className="text-sm font-medium text-foreground block mb-1.5">{f.label}</label>
-                  <input value={newC[f.key as keyof typeof newC]} onChange={e=>setNewC(p=>({...p,[f.key]:e.target.value}))}
-                    placeholder={f.ph} autoFocus={f.key==="name"}
+            <p className="text-xs text-muted-foreground mb-5">Cadastre o cliente. A classificação RFV é calculada automaticamente conforme as interações.</p>
+            <div className="space-y-3">
+              <div>
+                <label className="text-sm font-medium text-foreground block mb-1.5">Nome *</label>
+                <input value={newC.name} onChange={e=>setNewC(p=>({...p,name:e.target.value}))}
+                  placeholder="Ex: Loja Aurora" autoFocus
+                  className="w-full px-4 py-2.5 text-sm bg-muted/50 border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/50 text-foreground placeholder:text-muted-foreground"/>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-sm font-medium text-foreground block mb-1.5">E-mail</label>
+                  <input value={newC.email} onChange={e=>setNewC(p=>({...p,email:e.target.value}))}
+                    placeholder="contato@..."
                     className="w-full px-4 py-2.5 text-sm bg-muted/50 border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/50 text-foreground placeholder:text-muted-foreground"/>
                 </div>
-              ))}
+                <div>
+                  <label className="text-sm font-medium text-foreground block mb-1.5">MRR estimado (R$)</label>
+                  <input type="number" value={newC.phone} onChange={e=>setNewC(p=>({...p,phone:e.target.value}))}
+                    placeholder="0"
+                    className="w-full px-4 py-2.5 text-sm bg-muted/50 border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/50 text-foreground placeholder:text-muted-foreground"/>
+                </div>
+              </div>
+              <div>
+                <label className="text-sm font-medium text-foreground block mb-1.5">Segmento</label>
+                <select className="w-full px-4 py-2.5 text-sm bg-muted/50 border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/50 text-foreground">
+                  <option value="">Selecione…</option>
+                  {["E-commerce","SaaS","Saúde","Educação","Food","Moda","Pet","Imobiliária","Outro"].map(s=>(
+                    <option key={s} value={s}>{s}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="text-sm font-medium text-foreground block mb-1.5">Observações</label>
+                <textarea rows={3} placeholder="Anotações sobre o cliente..."
+                  className="w-full px-4 py-2.5 text-sm bg-muted/50 border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/50 text-foreground placeholder:text-muted-foreground resize-none"/>
+              </div>
             </div>
-            <div className="flex gap-3 mt-6">
+            <div className="flex gap-3 mt-5">
               <button onClick={()=>setShowNew(false)} className="flex-1 py-2.5 text-sm font-medium text-muted-foreground border border-border rounded-xl hover:bg-muted/60 transition-colors">Cancelar</button>
-              <button onClick={addContact} className="flex-1 py-2.5 text-sm font-semibold text-white bg-gradient-primary rounded-xl hover:opacity-90 transition-opacity">Salvar</button>
+              <button onClick={addContact} className="flex-1 py-2.5 text-sm font-semibold text-white bg-gradient-primary rounded-xl hover:opacity-90 transition-opacity shadow-elegant">Cadastrar</button>
             </div>
           </div>
         </div>

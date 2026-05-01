@@ -7,6 +7,7 @@ import {
   Settings, ChevronLeft, ChevronRight, LogOut, Kanban,
   Menu, X, DollarSign, FileText, Plus,
   Bell, Trophy, Calendar, Briefcase, ClipboardList,
+  ChevronUp, User, CreditCard,
 } from "lucide-react";
 
 const navItems = [
@@ -21,6 +22,54 @@ const navItems = [
   { icon: ClipboardList,   label: "Briefings",     href: "/dashboard/briefings" },
   { icon: Settings,        label: "Configurações", href: "/dashboard/configuracoes" },
 ];
+
+function UserFooter({ collapsed, onLogout }: { collapsed: boolean; onLogout: () => void }) {
+  const [open, setOpen] = useState(false);
+  const router = useRouter();
+  return (
+    <div className="px-3 pb-4 pt-3 border-t border-sidebar-border relative">
+      <button onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center gap-2 px-2 py-2 rounded-xl hover:bg-sidebar-accent/60 transition-all">
+        <div className="w-8 h-8 rounded-xl bg-gradient-primary flex items-center justify-center text-sm font-semibold text-white shrink-0">D</div>
+        {!collapsed && (
+          <>
+            <div className="flex-1 min-w-0 text-left">
+              <p className="text-sm font-medium text-foreground truncate">Daniel</p>
+              <p className="text-xs text-muted-foreground truncate">Plano PRO</p>
+            </div>
+            <ChevronUp className={`w-4 h-4 text-muted-foreground transition-transform ${open ? "" : "rotate-180"}`} />
+          </>
+        )}
+      </button>
+
+      {open && !collapsed && (
+        <div className="absolute bottom-full left-3 right-3 mb-1 bg-sidebar border border-sidebar-border rounded-xl shadow-2xl overflow-hidden z-50">
+          <button onClick={() => { router.push("/dashboard/configuracoes"); setOpen(false); }}
+            className="w-full flex items-center gap-3 px-4 py-3 text-sm text-sidebar-foreground hover:bg-sidebar-accent/60 transition-colors">
+            <User className="w-4 h-4 shrink-0" />
+            <span>Meu perfil</span>
+          </button>
+          <button onClick={() => { router.push("/dashboard/configuracoes"); setOpen(false); }}
+            className="w-full flex items-center gap-3 px-4 py-3 text-sm text-sidebar-foreground hover:bg-sidebar-accent/60 transition-colors">
+            <CreditCard className="w-4 h-4 shrink-0" />
+            <span>Assinatura</span>
+          </button>
+          <button onClick={() => { router.push("/dashboard/configuracoes"); setOpen(false); }}
+            className="w-full flex items-center gap-3 px-4 py-3 text-sm text-sidebar-foreground hover:bg-sidebar-accent/60 transition-colors">
+            <Settings className="w-4 h-4 shrink-0" />
+            <span>Configurações</span>
+          </button>
+          <div className="h-px bg-sidebar-border mx-3" />
+          <button onClick={onLogout}
+            className="w-full flex items-center gap-3 px-4 py-3 text-sm text-destructive hover:bg-destructive/10 transition-colors">
+            <LogOut className="w-4 h-4 shrink-0" />
+            <span>Sair</span>
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function DesktopSidebar() {
   const [collapsed, setCollapsed] = useState(false);
@@ -77,36 +126,8 @@ function DesktopSidebar() {
         })}
       </nav>
 
-      {/* Footer user */}
-      <div className="px-3 pb-4 pt-3 border-t border-sidebar-border space-y-2">
-        {/* Meta de vendas */}
-        {!collapsed && (
-          <div className="flex items-center gap-2 px-2 py-2 rounded-xl bg-sidebar-accent/60">
-            <Trophy className="w-4 h-4 text-warning shrink-0" />
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center justify-between text-xs mb-1">
-                <span className="font-semibold text-foreground">R$ 7.800</span>
-                <span className="text-muted-foreground">/ R$ 10.000</span>
-              </div>
-              <div className="h-1 rounded-full bg-muted overflow-hidden"><div className="h-full w-[78%] rounded-full bg-gradient-primary" /></div>
-            </div>
-          </div>
-        )}
-        <div className="flex items-center gap-2 px-2 py-1">
-          <div className="w-8 h-8 rounded-xl bg-gradient-primary flex items-center justify-center text-sm font-semibold text-white shrink-0">D</div>
-          {!collapsed && (
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-foreground truncate">Daniel</p>
-              <p className="text-xs text-muted-foreground truncate">Plano PRO</p>
-            </div>
-          )}
-        </div>
-        <button onClick={handleLogout}
-          className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium text-muted-foreground hover:bg-sidebar-accent/60 hover:text-foreground transition-all">
-          <LogOut className="w-4 h-4 shrink-0" />
-          {!collapsed && <span>Sair</span>}
-        </button>
-      </div>
+      {/* Footer user with dropdown */}
+      <UserFooter collapsed={collapsed} onLogout={handleLogout} />
 
       {/* Collapse toggle */}
       <button onClick={() => setCollapsed(!collapsed)}

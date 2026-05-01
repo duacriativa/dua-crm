@@ -8,8 +8,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       <Sidebar />
       <AsaasNotificationsProvider />
       <div className="flex-1 flex flex-col min-w-0">
-        {/* Top header — desktop only (mobile has its own in Sidebar) */}
-        <header className="hidden lg:flex sticky top-0 z-30 h-16 border-b border-border bg-background/80 backdrop-blur-xl items-center gap-3 px-6">
+        {/* Header — desktop */}
+        <header className="hidden lg:flex sticky top-0 z-30 h-16 border-b border-border bg-background/80 backdrop-blur-xl items-center gap-3 px-6 shrink-0">
+          {/* Busca */}
           <div className="relative flex-1 max-w-md">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <input
@@ -17,19 +18,23 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               className="w-full pl-9 pr-4 py-2 text-sm bg-muted/50 border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/50 text-foreground placeholder:text-muted-foreground"
             />
           </div>
-          <div className="ml-auto flex items-center gap-2">
-            <div className="hidden xl:flex items-center gap-3 px-4 py-2 rounded-xl bg-muted/40 border border-border">
-              <Trophy className="h-4 w-4 text-warning shrink-0" />
-              <div className="space-y-1">
-                <div className="flex items-center gap-2 text-xs">
-                  <span className="font-semibold text-foreground">R$ 7.800</span>
-                  <span className="text-muted-foreground">/ R$ 10.000</span>
-                </div>
-                <div className="h-1 w-32 rounded-full bg-muted overflow-hidden">
-                  <div className="h-full w-[78%] rounded-full bg-gradient-primary" />
-                </div>
+
+          {/* Widget Trophy — entre busca e ícones */}
+          <div className="hidden xl:flex items-center gap-3 px-4 py-2 rounded-xl bg-muted/40 border border-border ml-auto">
+            <Trophy className="h-4 w-4 text-warning shrink-0" />
+            <div className="space-y-1">
+              <div className="flex items-center gap-2 text-xs">
+                <span className="font-bold text-foreground">R$ 7.800</span>
+                <span className="text-muted-foreground">/ R$ 10.000</span>
+              </div>
+              <div className="h-1 w-32 rounded-full bg-muted overflow-hidden">
+                <div className="h-full w-[78%] rounded-full bg-gradient-primary" />
               </div>
             </div>
+          </div>
+
+          {/* Ícones */}
+          <div className="flex items-center gap-1 xl:ml-0 ml-auto">
             <button className="p-2 rounded-xl hover:bg-muted/60 transition-colors text-muted-foreground hover:text-foreground">
               <Globe className="h-5 w-5" />
             </button>
@@ -42,6 +47,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             </button>
           </div>
         </header>
+
         <main className="flex-1 overflow-auto pt-14 pb-16 lg:pt-0 lg:pb-0">
           {children}
         </main>
