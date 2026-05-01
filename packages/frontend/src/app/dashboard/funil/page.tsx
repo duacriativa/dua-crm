@@ -77,15 +77,20 @@ export default function FunilPage() {
   const [loadingContact, setLoadingContact] = useState(false);
   const [selectedStage, setSelectedStage] = useState<Stage | null>(null);
 
-  const fetchPipelines = useCallback(async () => {
+  const fetchPipelines = useCallback(async (silent = false) => {
     try {
       const res = await fetch(`${API_URL}/api/v1/pipelines`, { headers: authHeaders() });
       if (!res.ok) return;
       const data = await res.json();
       setPipelines(data);
-      if (activePipeline) {
+      // Só atualiza activePipeline no carregamento inicial (não silent)
+      // silent=true é usado após salvar etapa/lead — não sobrescreve drag recente
+      if (!silent && activePipeline) {
         const updated = data.find((p: Pipeline) => p.id === activePipeline.id);
         if (updated) setActivePipeline(updated);
+      } else if (!activePipeline && data.length > 0) {
+        // primeiro carregamento — define o pipeline ativo
+        setActivePipeline(data[0]);
       }
     } finally { setLoading(false); }
   }, [activePipeline?.id]);
@@ -245,16 +250,34 @@ export default function FunilPage() {
   };
 
   const onDropLead = async (toStageId: string) => {
-    if (!draggingLead || !activePipeline || draggingLead.fromStageId === toStageId) { setDraggingLead(null); return; }
+    if (!draggingLead || !activePipeline || draggingLead.fromStageId === toStageId) {
+      setDraggingLead(null); setDragOverStageId(null); return;
+    }
+    // Guarda referência antes de limpar o estado
+    const leadToMove = draggingLead;
+    setDraggingLead(null);
+    setDragOverStageId(null);
+
+    // 1. Atualiza UI imediatamente (otimista)
     const updated = { ...activePipeline, stages: activePipeline.stages.map((s) => {
-      if (s.id === draggingLead.fromStageId) return { ...s, leads: s.leads.filter((l) => l.id !== draggingLead.lead.id) };
-      if (s.id === toStageId) return { ...s, leads: [...s.leads, { ...draggingLead.lead, stageId: toStageId }] };
+      if (s.id === leadToMove.fromStageId) return { ...s, leads: s.leads.filter((l) => l.id !== leadToMove.lead.id) };
+      if (s.id === toStageId) return { ...s, leads: [...s.leads, { ...leadToMove.lead, stageId: toStageId }] };
       return s;
     })};
     setActivePipeline(updated);
     setPipelines((prev) => prev.map((p) => p.id === updated.id ? updated : p));
-    setDraggingLead(null);
-    await moveLead(draggingLead.lead.id, toStageId);
+
+    // 2. Persiste no backend — se falhar, reverte
+    try {
+      const res = await fetch(`${API_URL}/api/v1/pipelines/leads/${leadToMove.lead.id}/move`, {
+        method: "PATCH", headers: authHeaders(), body: JSON.stringify({ stageId: toStageId }),
+      });
+      if (!res.ok) throw new Error("Falha ao mover lead");
+    } catch {
+      // Reverte para o estado original se der erro
+      setActivePipeline(activePipeline);
+      setPipelines((prev) => prev.map((p) => p.id === activePipeline.id ? activePipeline : p));
+    }
   };
 
   // ── Pipeline list ──
@@ -701,7 +724,8 @@ export default function FunilPage() {
                                   body: JSON.stringify({ value: val }),
                                 });
                                 setSelectedLead((p: any) => p ? { ...p, value: val } : p);
-                                fetchPipelines();
+                                // Atualiza só o lead no state sem refetch completo
+                                setActivePipeline((prev: any) => prev ? { ...prev, stages: prev.stages.map((s: any) => ({ ...s, leads: s.leads.map((l: any) => l.id === selectedLead.id ? { ...l, value: val } : l) })) } : prev);
                               }
                               setEditingValue(false);
                             }
@@ -718,7 +742,7 @@ export default function FunilPage() {
                                 body: JSON.stringify({ value: val }),
                               });
                               setSelectedLead((p: any) => p ? { ...p, value: val } : p);
-                              fetchPipelines();
+                              setActivePipeline((prev: any) => prev ? { ...prev, stages: prev.stages.map((s: any) => ({ ...s, leads: s.leads.map((l: any) => l.id === selectedLead.id ? { ...l, value: val } : l) })) } : prev);
                             }
                             setEditingValue(false);
                           }}
