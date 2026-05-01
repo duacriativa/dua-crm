@@ -5,7 +5,6 @@ import {
   Search, Plus, Settings, Users, MessageSquarePlus, Zap,
   Phone, MoreVertical, Send, Paperclip, Smile, Mic,
   X, ChevronRight, Star, RefreshCw, Volume2, ArrowLeft, EyeOff,
-  Image as ImageIcon,
 } from "lucide-react";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
