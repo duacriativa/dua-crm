@@ -371,6 +371,7 @@ export default function FunilPage() {
   const parsed = contact ? parseContactFields(contact, selectedLead?.notes) : null;
 
   return (
+    <>
     <div className="h-full flex flex-col bg-muted/20 relative">
       <div className="bg-card border-b border-border px-4 py-3 shrink-0">
         <div className="flex items-center justify-between gap-2">
@@ -884,5 +885,6 @@ export default function FunilPage() {
           </div>
         </div>
       )}
+    </>
   );
 }
