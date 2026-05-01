@@ -239,7 +239,7 @@ export default function ServicosPage() {
 
             {/* Grid view */}
             {!loading && filtered.length > 0 && viewMode === "grid" && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 {filtered.map(s => (
                   <div key={s.id} className="surface-card p-5 flex flex-col gap-3">
                     <div className="flex items-start justify-between gap-2">
@@ -333,8 +333,8 @@ export default function ServicosPage() {
 
       {/* ══════════════════ MODAL ══════════════════ */}
       {showModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-card border border-border rounded-3xl shadow-2xl w-full max-w-xl max-h-[90vh] flex flex-col">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+          <div className="bg-card border border-border rounded-t-3xl sm:rounded-3xl shadow-2xl w-full sm:max-w-xl max-h-[90vh] flex flex-col">
 
             {/* Cabeçalho */}
             <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-border shrink-0">
@@ -521,8 +521,8 @@ export default function ServicosPage() {
 
       {/* ── Confirmar exclusão ── */}
       {deleteConfirm && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-card border border-border rounded-2xl shadow-2xl p-6 w-full max-w-sm">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+          <div className="bg-card border border-border rounded-t-2xl sm:rounded-2xl shadow-2xl p-6 w-full sm:max-w-sm">
             <h3 className="font-bold text-foreground mb-2">Excluir serviço?</h3>
             <p className="text-sm text-muted-foreground mb-5">Esta ação não pode ser desfeita.</p>
             <div className="flex gap-3">

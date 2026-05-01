@@ -161,7 +161,7 @@ export default function ContratosPage() {
       {showForm && (
         <div className="bg-card border border-border rounded-xl p-5 space-y-4">
           <h2 className="text-sm font-semibold text-foreground">Cadastrar contrato</h2>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-xs text-muted-foreground mb-1">Cliente</label>
               <input className="w-full border border-border rounded-lg px-3 py-2 text-sm" value={form.clientName} onChange={e => setForm(p => ({ ...p, clientName: e.target.value }))} placeholder="Ex: Amiche" />

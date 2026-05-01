@@ -141,23 +141,29 @@ export default function AgendaPage() {
 
                 return (
                   <div key={idx}
-                    className={`bg-background min-h-[90px] p-2 ${!isCurrentMonth ? "opacity-30" : ""}`}>
-                    <div className={`w-7 h-7 rounded-full flex items-center justify-center text-sm font-semibold mb-1 ${
+                    className={`bg-background min-h-[60px] sm:min-h-[90px] p-1 sm:p-2 ${!isCurrentMonth ? "opacity-30" : ""}`}>
+                    <div className={`w-6 h-6 sm:w-7 sm:h-7 rounded-full flex items-center justify-center text-xs sm:text-sm font-semibold mb-0.5 sm:mb-1 ${
                       isToday ? "bg-primary text-white" : "text-foreground"
                     }`}>
                       {isCurrentMonth ? dayNum : ""}
                     </div>
                     {holiday && (
-                      <div className="text-[9px] font-medium text-primary bg-primary/10 rounded px-1 py-0.5 mb-0.5 truncate">
+                      <div className="text-[8px] sm:text-[9px] font-medium text-primary bg-primary/10 rounded px-1 py-0.5 mb-0.5 truncate hidden sm:block">
                         {holiday}
                       </div>
                     )}
+                    {holiday && (
+                      <div className="w-1.5 h-1.5 rounded-full bg-primary mb-0.5 sm:hidden" title={holiday} />
+                    )}
                     {dayEvents.map(ev => (
-                      <div key={ev.id} className="text-[9px] font-medium rounded px-1 py-0.5 mb-0.5 truncate text-white"
+                      <div key={ev.id} className="text-[8px] sm:text-[9px] font-medium rounded px-1 py-0.5 mb-0.5 truncate text-white hidden sm:block"
                         style={{ backgroundColor: ev.color }}>
                         {ev.time && <span className="opacity-80">{ev.time} </span>}{ev.title}
                       </div>
                     ))}
+                    {dayEvents.length > 0 && (
+                      <div className="w-1.5 h-1.5 rounded-full mb-0.5 sm:hidden" style={{ backgroundColor: dayEvents[0].color }} />
+                    )}
                   </div>
                 );
               })}
@@ -184,8 +190,8 @@ export default function AgendaPage() {
 
       {/* Modal novo compromisso */}
       {showModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-card border border-border rounded-3xl shadow-2xl w-full max-w-md p-6">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+          <div className="bg-card border border-border rounded-t-3xl sm:rounded-3xl shadow-2xl w-full sm:max-w-md p-6 pb-safe">
             <div className="flex items-center justify-between mb-5">
               <h2 className="text-lg font-bold text-foreground">Novo Compromisso</h2>
               <button onClick={() => setShowModal(false)} className="p-1.5 rounded-xl hover:bg-muted/60 text-muted-foreground">

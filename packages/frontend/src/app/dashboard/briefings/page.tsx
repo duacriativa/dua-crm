@@ -140,8 +140,8 @@ function CustomBuilder({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-card border border-border rounded-3xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+      <div className="bg-card border border-border rounded-t-3xl sm:rounded-3xl shadow-2xl w-full sm:max-w-2xl max-h-[90vh] flex flex-col">
         {/* Header */}
         <div className="flex items-center gap-3 px-6 pt-6 pb-4 border-b border-border shrink-0">
           <button onClick={onCancel} className="p-1.5 rounded-xl hover:bg-muted/60 text-muted-foreground">
@@ -247,7 +247,7 @@ function CustomBuilder({
         </div>
 
         {/* Footer */}
-        <div className="flex gap-3 px-6 py-4 border-t border-border shrink-0">
+        <div className="flex gap-3 px-6 py-4 border-t border-border shrink-0 pb-safe">
           <button onClick={onCancel}
             className="flex-1 py-2.5 text-sm font-medium text-muted-foreground border border-border rounded-xl hover:bg-muted/50 transition-colors">
             Cancelar
@@ -284,8 +284,8 @@ function FillBriefingModal({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-card border border-border rounded-3xl shadow-2xl w-full max-w-lg max-h-[88vh] flex flex-col">
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+      <div className="bg-card border border-border rounded-t-3xl sm:rounded-3xl shadow-2xl w-full sm:max-w-lg max-h-[88vh] flex flex-col">
         <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-border shrink-0">
           <div>
             <h2 className="text-lg font-bold text-foreground">{template.name}</h2>
@@ -333,7 +333,7 @@ function FillBriefingModal({
             </div>
           ))}
         </div>
-        <div className="flex gap-3 px-6 py-4 border-t border-border shrink-0">
+        <div className="flex gap-3 px-6 py-4 border-t border-border shrink-0 pb-safe">
           <button onClick={onCancel}
             className="flex-1 py-2.5 text-sm font-medium text-muted-foreground border border-border rounded-xl hover:bg-muted/50 transition-colors">
             Cancelar
@@ -517,8 +517,8 @@ export default function BriefingsPage() {
 
       {/* ── Modal: Selecionar tipo ── */}
       {showTypeSelect && !fillTemplate && !showBuilder && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-card border border-border rounded-3xl shadow-2xl w-full max-w-lg p-6">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+          <div className="bg-card border border-border rounded-t-3xl sm:rounded-3xl shadow-2xl w-full sm:max-w-lg p-6 pb-safe">
             <div className="flex items-center justify-between mb-2">
               <h2 className="text-lg font-bold text-foreground">Selecione o Tipo de Briefing</h2>
               <button onClick={() => setShowTypeSelect(false)} className="p-1.5 rounded-xl hover:bg-muted/60 text-muted-foreground">
@@ -580,8 +580,8 @@ export default function BriefingsPage() {
 
       {/* ── Gerenciador de templates ── */}
       {showTemplatesMgr && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-card border border-border rounded-3xl shadow-2xl w-full max-w-lg p-6">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+          <div className="bg-card border border-border rounded-t-3xl sm:rounded-3xl shadow-2xl w-full sm:max-w-lg p-6 pb-safe">
             <div className="flex items-center justify-between mb-5">
               <h2 className="text-lg font-bold text-foreground">Meus Templates</h2>
               <button onClick={() => setShowTemplatesMgr(false)} className="p-1.5 rounded-xl hover:bg-muted/60 text-muted-foreground">
