@@ -311,24 +311,31 @@ export default function ContatosPage(){
           <div className="grid grid-cols-1 gap-3 p-4 sm:grid-cols-2 lg:grid-cols-3">
             {filtered.map(c=>(
               <div key={c.id} onClick={()=>router.push(`/dashboard/contatos/${c.id}`)}
-                className={`surface-card p-4 cursor-pointer hover:shadow-elegant hover:-translate-y-0.5 transition-all ${c.rfvSeg.border}`}>
-                <div className="flex items-start justify-between gap-2 mb-3">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <div className="w-9 h-9 rounded-full bg-gradient-primary text-white font-bold text-sm flex items-center justify-center shrink-0">{c.name.charAt(0)}</div>
-                    <div className="min-w-0">
-                      <p className="font-semibold text-foreground truncate text-sm">{c.name}</p>
-                      {c.phone&&<p className="text-xs text-muted-foreground truncate">{c.phone}</p>}
-                    </div>
+                className={`surface-card p-5 cursor-pointer hover:shadow-elegant hover:-translate-y-0.5 transition-all border-l-2 ${c.rfvSeg.border}`}>
+                {/* Nome + setor */}
+                <div className="mb-3">
+                  <div className="flex items-start justify-between gap-2 mb-1">
+                    <p className="font-bold text-foreground text-base leading-tight">{c.name}</p>
+                    <RfvBadge seg={c.rfvSeg}/>
                   </div>
-                  <RfvBadge seg={c.rfvSeg}/>
+                  {c.segment&&<p className="text-xs text-muted-foreground">{c.segment}</p>}
+                  {c.email&&<p className="text-xs text-muted-foreground truncate">{c.email}</p>}
                 </div>
-                <div className="grid grid-cols-3 gap-2 rounded-xl border border-border bg-muted/30 p-2 mb-3">
-                  {(["r","f","v"]as const).map(dim=>(
-                    <div key={dim} className="text-center">
-                      <p className="text-[10px] font-bold uppercase text-muted-foreground">{dim}</p>
-                      <p className="text-lg font-bold text-foreground">{c[dim]}</p>
+                {/* Scores R F V numéricos */}
+                <div className="flex items-center gap-3 mb-3 px-3 py-2.5 rounded-xl bg-muted/30 border border-border">
+                  {([
+                    {dim:"r",color:"text-sky-400",   label:"R"},
+                    {dim:"f",color:"text-violet-400", label:"F"},
+                    {dim:"v",color:"text-emerald-400",label:"V"},
+                  ] as const).map(({dim,color,label})=>(
+                    <div key={dim} className="flex items-baseline gap-0.5">
+                      <span className={`text-xs font-bold ${color}`}>{label}</span>
+                      <span className="text-xl font-bold text-foreground">{c[dim]}</span>
                     </div>
                   ))}
+                  <div className="ml-auto text-[10px] text-muted-foreground font-mono">
+                    {c.r>=4&&c.f>=4&&c.v>=4?"R5F5V5":c.rfvKey==="cantLose"?"R2F5V5":c.rfvKey==="lost"?"R1F1V1":`R${c.r}F${c.f}V${c.v}`}
+                  </div>
                 </div>
                 <div className="flex items-center justify-between text-xs">
                   <span className="text-muted-foreground">{c.orderCount??0} pedidos</span>
