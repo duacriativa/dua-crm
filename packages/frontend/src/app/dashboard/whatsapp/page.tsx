@@ -4,7 +4,8 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import {
   Search, Plus, Settings, Users, MessageSquarePlus, Zap,
   Phone, MoreVertical, Send, Paperclip, Smile, Mic,
-  X, ChevronRight, Star, RefreshCw, Volume2, ArrowLeft,
+  X, ChevronRight, Star, RefreshCw, Volume2, ArrowLeft, EyeOff,
+  Image as ImageIcon,
 } from "lucide-react";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
@@ -16,6 +17,7 @@ interface Conversation {
   lastMessage?: string; lastMessageAt?: string; unreadCount: number;
   isGroup?: boolean; channel: string; status: string;
   contactId?: string; externalId?: string;
+  profilePicUrl?: string;
 }
 interface Message {
   id: string; content: string; direction: "inbound" | "outbound";
@@ -76,16 +78,22 @@ function ConvList({
       <div className="px-4 pt-4 pb-3 border-b border-border shrink-0">
         <div className="flex items-center justify-between mb-3">
           <h1 className="text-lg font-bold text-foreground">WhatsApp</h1>
-          <div className="flex items-center gap-1">
-            <button onClick={onOpenSettings}
-              className="p-1.5 rounded-lg text-muted-foreground hover:bg-muted/50 transition-colors" title="Automações">
-              <Settings className="w-4 h-4" />
+          <div className="flex items-center gap-0.5">
+            <button className="p-1.5 rounded-lg text-muted-foreground hover:bg-muted/50 transition-colors" title="Ocultar lidas">
+              <EyeOff className="w-4 h-4" />
             </button>
-            <button className="p-1.5 rounded-lg text-muted-foreground hover:bg-muted/50 transition-colors" title="Monitor de Grupos">
+            <button className="p-1.5 rounded-lg text-muted-foreground hover:bg-muted/50 transition-colors" title="Automações">
+              <Zap className="w-4 h-4 text-emerald-400" />
+            </button>
+            <button className="p-1.5 rounded-lg text-muted-foreground hover:bg-muted/50 transition-colors" title="Contatos">
               <Users className="w-4 h-4" />
             </button>
             <button className="p-1.5 rounded-lg text-muted-foreground hover:bg-muted/50 transition-colors" title="Nova conversa">
               <MessageSquarePlus className="w-4 h-4" />
+            </button>
+            <button onClick={onOpenSettings}
+              className="p-1.5 rounded-lg text-muted-foreground hover:bg-muted/50 transition-colors" title="Configurações">
+              <Settings className="w-4 h-4" />
             </button>
           </div>
         </div>
@@ -100,6 +108,7 @@ function ConvList({
             { key: "unread", label: `Não lidas${unreadCount ? ` ${unreadCount}` : ""}` },
             { key: "favorites", label: "Favoritas" },
             { key: "groups", label: `Grupos${groupCount ? ` ${groupCount}` : ""}` },
+            { key: "pinned", label: "Fixadas" },
           ] as const).map(t => (
             <button key={t.key} onClick={() => setTab(t.key)}
               className={`px-3 py-1.5 text-xs font-semibold rounded-xl whitespace-nowrap transition-colors shrink-0 ${tab === t.key ? "bg-primary text-white" : "text-muted-foreground hover:bg-muted/50"}`}>
@@ -171,7 +180,13 @@ function ChatView({
             <ArrowLeft className="w-5 h-5" />
           </button>
         )}
-        <Avatar name={conv.contactName} size={10} />
+        <div className="relative shrink-0">
+          {conv.profilePicUrl ? (
+            <img src={conv.profilePicUrl} alt={conv.contactName} className="w-10 h-10 rounded-full object-cover" />
+          ) : (
+            <Avatar name={conv.contactName} size={10} />
+          )}
+        </div>
         <div className="flex-1 min-w-0">
           <p className="font-semibold text-foreground truncate">{conv.contactName}</p>
           <p className="text-xs text-muted-foreground">{conv.isGroup ? "Grupo" : conv.contactPhone ?? conv.externalId ?? ""}</p>
