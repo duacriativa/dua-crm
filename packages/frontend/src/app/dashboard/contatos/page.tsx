@@ -354,7 +354,7 @@ export default function ContatosPage() {
       {/* ══════════════════ MODAL ══════════════════ */}
       {showModal&&(
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
-          <div className="bg-card border border-border rounded-t-3xl sm:rounded-3xl shadow-2xl w-full sm:max-w-2xl max-h-[90vh] flex flex-col">
+          <div className="bg-card border border-border rounded-t-3xl sm:rounded-3xl shadow-2xl w-full sm:max-w-2xl max-h-[92dvh] flex flex-col">
             <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-border shrink-0">
               <div>
                 <h2 className="text-lg font-bold text-foreground">Cadastrar Cliente</h2>
@@ -486,11 +486,11 @@ export default function ContatosPage() {
 
             <div className="flex gap-3 px-6 py-4 border-t border-border shrink-0">
               <button onClick={()=>{setShowModal(false);setForm(EMPTY_FORM);}}
-                className="flex-1 py-2.5 text-sm font-medium text-muted-foreground border border-border rounded-xl hover:bg-muted/50 transition-colors">
+                className="flex-1 py-2.5 text-sm font-medium text-muted-foreground border border-border rounded-xl hover:bg-muted/50 transition-colors whitespace-nowrap">
                 Cancelar
               </button>
               <button onClick={handleSave} disabled={!form.name.trim()||saving}
-                className="flex-1 py-2.5 text-sm font-semibold text-white bg-gradient-primary rounded-xl hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
+                className="flex-1 py-2.5 text-sm font-semibold text-white bg-gradient-primary rounded-xl hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 whitespace-nowrap">
                 {saving?<><RefreshCw className="w-4 h-4 animate-spin"/>Salvando...</>:<><Check className="w-4 h-4"/>Cadastrar Cliente</>}
               </button>
             </div>

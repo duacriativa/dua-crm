@@ -184,16 +184,16 @@ export default function ServicosPage() {
       {tab === "servicos" && (
         <div className="flex-1 overflow-auto scrollbar-none">
           {/* Barra de ações */}
-          <div className="flex flex-wrap items-center gap-2 px-4 sm:px-6 py-3 sm:py-4 border-b border-border">
-            <button className="flex items-center gap-1.5 px-3 py-2 text-sm text-muted-foreground border border-border rounded-xl hover:bg-muted/50 transition-colors">
+          <div className="flex items-center gap-2 px-4 sm:px-6 py-3 border-b border-border">
+            <button className="hidden sm:flex items-center gap-1.5 px-3 py-2 text-sm text-muted-foreground border border-border rounded-xl hover:bg-muted/50 transition-colors">
               <Tag className="w-4 h-4" />Gerenciar Categorias
             </button>
-            <button className="flex items-center gap-1.5 px-3 py-2 text-sm text-muted-foreground border border-primary/40 rounded-xl hover:bg-primary/5 transition-colors">
+            <button className="hidden sm:flex items-center gap-1.5 px-3 py-2 text-sm text-muted-foreground border border-primary/40 rounded-xl hover:bg-primary/5 transition-colors">
               <FileText className="w-4 h-4 text-primary" /><span className="text-primary">Novo Orçamento</span>
             </button>
             <button onClick={openNew}
               className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-gradient-primary rounded-xl hover:opacity-90 transition-opacity shadow-elegant ml-auto">
-              <Plus className="w-4 h-4" />Novo Serviço
+              <Plus className="w-4 h-4" /><span>Novo Serviço</span>
             </button>
           </div>
 

@@ -249,11 +249,11 @@ function CustomBuilder({
         {/* Footer */}
         <div className="flex gap-3 px-6 py-4 border-t border-border shrink-0 pb-safe">
           <button onClick={onCancel}
-            className="flex-1 py-2.5 text-sm font-medium text-muted-foreground border border-border rounded-xl hover:bg-muted/50 transition-colors">
+            className="flex-1 py-2.5 text-sm font-medium text-muted-foreground border border-border rounded-xl hover:bg-muted/50 transition-colors whitespace-nowrap">
             Cancelar
           </button>
           <button onClick={save} disabled={!name.trim() || questions.length === 0}
-            className="flex-1 py-2.5 text-sm font-semibold text-white bg-gradient-primary rounded-xl hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-2">
+            className="flex-1 py-2.5 text-sm font-semibold text-white bg-gradient-primary rounded-xl hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 whitespace-nowrap">
             <Check className="w-4 h-4" />
             {initial ? "Salvar alterações" : "Salvar Briefing"}
           </button>
@@ -335,11 +335,11 @@ function FillBriefingModal({
         </div>
         <div className="flex gap-3 px-6 py-4 border-t border-border shrink-0 pb-safe">
           <button onClick={onCancel}
-            className="flex-1 py-2.5 text-sm font-medium text-muted-foreground border border-border rounded-xl hover:bg-muted/50 transition-colors">
+            className="flex-1 py-2.5 text-sm font-medium text-muted-foreground border border-border rounded-xl hover:bg-muted/50 transition-colors whitespace-nowrap">
             Cancelar
           </button>
           <button onClick={save} disabled={!client.trim()}
-            className="flex-1 py-2.5 text-sm font-semibold text-white bg-gradient-primary rounded-xl hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-2">
+            className="flex-1 py-2.5 text-sm font-semibold text-white bg-gradient-primary rounded-xl hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 whitespace-nowrap">
             <Check className="w-4 h-4" />Salvar Briefing
           </button>
         </div>

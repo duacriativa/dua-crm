@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   Plus, MoreVertical, ChevronRight, Kanban, DollarSign, Users,
   GripVertical, X, RefreshCw, Check, Phone, Mail, Instagram,
-  MessageCircle, Tag, FileText, ExternalLink, TrendingUp, Trash2, Clock
+  MessageCircle, Tag, FileText, ExternalLink, TrendingUp, Trash2, Clock, ArrowRight
 } from "lucide-react";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
@@ -52,6 +52,7 @@ export default function FunilPage() {
   const [showNewLead, setShowNewLead] = useState<string | null>(null);
   const [newLead, setNewLead] = useState({ name: "", phone: "", value: "" });
   const [draggingLead, setDraggingLead] = useState<{ lead: Lead; fromStageId: string } | null>(null);
+  const [moveLeadModal, setMoveLeadModal] = useState<{ lead: Lead; fromStageId: string } | null>(null);
   const [draggingStageId, setDraggingStageId] = useState<string | null>(null);
   const [dragOverStageId, setDragOverStageId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -483,6 +484,13 @@ export default function FunilPage() {
                           </div>
                           <span className="text-sm font-semibold text-foreground leading-tight truncate">{lead.contact.name}</span>
                         </div>
+                        {/* Botão mover etapa — visível no mobile */}
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setMoveLeadModal({ lead, fromStageId: stage.id }); }}
+                          className="sm:hidden shrink-0 p-1.5 rounded-lg bg-muted/40 text-muted-foreground hover:bg-primary/10 hover:text-primary transition-colors"
+                          title="Mover de etapa">
+                          <ArrowRight className="w-3.5 h-3.5" />
+                        </button>
                         <div className="relative shrink-0" onClick={(e) => e.stopPropagation()}>
                           <button
                             onClick={() => setCardMenuId(cardMenuId === lead.id ? null : lead.id)}
@@ -754,7 +762,7 @@ export default function FunilPage() {
                       </div>
                     ) : (
                       <div
-                        className="bg-green-50 rounded-xl p-3 flex items-center justify-between gap-2 cursor-pointer hover:bg-green-100 transition-colors group"
+                        className="bg-green-500/10 border border-green-500/20 rounded-xl p-3 flex items-center justify-between gap-2 cursor-pointer hover:bg-green-500/20 transition-colors group"
                         onClick={() => { setEditingValue(true); setEditValueInput(String(selectedLead.value || '')); }}
                       >
                         <div className="flex items-center gap-2">
@@ -824,5 +832,57 @@ export default function FunilPage() {
         </>
       )}
     </div>
+
+      {/* ── Modal mover lead de etapa (mobile) ── */}
+      {moveLeadModal && activePipeline && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
+          onClick={() => setMoveLeadModal(null)}>
+          <div className="bg-card border border-border rounded-t-3xl sm:rounded-3xl w-full sm:max-w-sm p-6"
+            onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <p className="font-bold text-foreground">Mover Lead</p>
+                <p className="text-xs text-muted-foreground mt-0.5">{moveLeadModal.lead.contact.name}</p>
+              </div>
+              <button onClick={() => setMoveLeadModal(null)} className="p-1.5 rounded-xl hover:bg-muted/60 text-muted-foreground">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="space-y-2">
+              {activePipeline.stages.map(st => (
+                <button key={st.id}
+                  onClick={async () => {
+                    if (st.id === moveLeadModal.fromStageId) { setMoveLeadModal(null); return; }
+                    const leadToMove = moveLeadModal;
+                    setMoveLeadModal(null);
+                    const updated = { ...activePipeline, stages: activePipeline.stages.map(s => {
+                      if (s.id === leadToMove.fromStageId) return { ...s, leads: s.leads.filter(l => l.id !== leadToMove.lead.id) };
+                      if (s.id === st.id) return { ...s, leads: [...s.leads, { ...leadToMove.lead, stageId: st.id }] };
+                      return s;
+                    })};
+                    setActivePipeline(updated);
+                    setPipelines(prev => prev.map(p => p.id === updated.id ? updated : p));
+                    try {
+                      await fetch(`${API_URL}/api/v1/pipelines/leads/${leadToMove.lead.id}/move`, {
+                        method: "PATCH", headers: authHeaders(), body: JSON.stringify({ stageId: st.id }),
+                      });
+                    } catch { setActivePipeline(activePipeline); }
+                  }}
+                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl border transition-colors text-left ${
+                    st.id === moveLeadModal.fromStageId
+                      ? "border-primary/40 bg-primary/5 cursor-default"
+                      : "border-border hover:border-primary/40 hover:bg-muted/40"
+                  }`}>
+                  <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: st.color }} />
+                  <span className="text-sm font-medium text-foreground">{st.name}</span>
+                  {st.id === moveLeadModal.fromStageId && (
+                    <span className="ml-auto text-[10px] text-primary font-medium">atual</span>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
   );
 }
