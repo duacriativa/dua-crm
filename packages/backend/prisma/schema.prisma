@@ -48,6 +48,11 @@ enum MessageType {
   INTERACTIVE
 }
 
+enum ContactType {
+  LEAD
+  CLIENT
+}
+
 enum LeadQualification {
   ULTRA       // ICP — faturamento alto + estrutura
   QUALIFIED   // Qualificado — potencial médio
@@ -202,6 +207,8 @@ model Contact {
   utmSource           String?
   utmMedium           String?
   utmCampaign         String?
+  type            ContactType    @default(LEAD)
+  clientSince     DateTime?
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
 

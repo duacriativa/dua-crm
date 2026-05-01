@@ -8,6 +8,7 @@ export class ContactsService {
   constructor(private readonly prisma: PrismaService) {}
 
   async findAll(tenantId: string, filters?: {
+    type?: 'LEAD' | 'CLIENT';
     segment?: ContactSegment;
     tags?: string[];
     search?: string;
@@ -15,11 +16,12 @@ export class ContactsService {
     limit?: number;
   }) {
     const page = filters?.page ?? 1;
-    const limit = Math.min(filters?.limit ?? 20, 100); // máx 100 por página
+    const limit = Math.min(filters?.limit ?? 20, 200);
     const skip = (page - 1) * limit;
 
     const where: any = { tenantId };
 
+    if (filters?.type) where.type = filters.type;
     if (filters?.segment) where.segment = filters.segment;
     if (filters?.tags?.length) where.tags = { hasSome: filters.tags };
     if (filters?.search) {
@@ -44,10 +46,18 @@ export class ContactsService {
           email: true,
           tags: true,
           segment: true,
+          type: true,
+          clientSince: true,
           totalSpent: true,
           orderCount: true,
           lastPurchaseAt: true,
           createdAt: true,
+          notes: true,
+          contracts: {
+            where: { status: 'ACTIVE' },
+            select: { monthlyValue: true, serviceType: true },
+            take: 1,
+          },
         },
       }),
       this.prisma.contact.count({ where }),

@@ -15,30 +15,75 @@ export class ContactsController {
     private readonly prisma: PrismaService,
   ) {}
 
-  /** GET /contacts/stats — contagem por qualificação para o dashboard */
+  /** GET /contacts/stats — stats para o dashboard de Clientes */
   @Get('stats')
   async stats(@Request() req: any) {
     const tenantId = req.user.tenantId;
-    const [ultra, qualified, cold, unqualified, total] = await Promise.all([
-      this.prisma.contact.count({ where: { tenantId, qualification: 'ULTRA' } }),
-      this.prisma.contact.count({ where: { tenantId, qualification: 'QUALIFIED' } }),
-      this.prisma.contact.count({ where: { tenantId, qualification: 'COLD' } }),
-      this.prisma.contact.count({ where: { tenantId, qualification: 'UNQUALIFIED' } }),
-      this.prisma.contact.count({ where: { tenantId } }),
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const in30Days = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+
+    const [totalClients, newThisMonth, renewalsSoon, mrrResult, leadStats] = await Promise.all([
+      // Total de clientes (type = CLIENT)
+      this.prisma.contact.count({ where: { tenantId, type: 'CLIENT' } }),
+
+      // Novos clientes este mês
+      this.prisma.contact.count({
+        where: { tenantId, type: 'CLIENT', clientSince: { gte: startOfMonth } },
+      }),
+
+      // Contratos que vencem nos próximos 30 dias
+      this.prisma.contract.count({
+        where: {
+          tenantId,
+          status: 'ACTIVE',
+          endsAt: { gte: now, lte: in30Days },
+        },
+      }),
+
+      // MRR: soma dos monthlyValue de contratos ativos
+      this.prisma.contract.aggregate({
+        where: { tenantId, status: 'ACTIVE' },
+        _sum: { monthlyValue: true },
+      }),
+
+      // Stats de leads para o funil
+      this.prisma.contact.groupBy({
+        by: ['qualification'],
+        where: { tenantId, type: 'LEAD' },
+        _count: true,
+      }),
     ]);
-    return { total, ultra, qualified, cold, unqualified };
+
+    const mrr = mrrResult._sum.monthlyValue ?? 0;
+
+    return {
+      totalClients,
+      newThisMonth,
+      renewalsSoon,
+      mrr,
+      leads: {
+        total: leadStats.reduce((s, r) => s + r._count, 0),
+        ultra: leadStats.find(r => r.qualification === 'ULTRA')?._count ?? 0,
+        qualified: leadStats.find(r => r.qualification === 'QUALIFIED')?._count ?? 0,
+        cold: leadStats.find(r => r.qualification === 'COLD')?._count ?? 0,
+        unqualified: leadStats.find(r => r.qualification === 'UNQUALIFIED')?._count ?? 0,
+      },
+    };
   }
 
-  /** GET /contacts?segment=VIP&search=ana&page=1&limit=20 */
+  /** GET /contacts?type=CLIENT&segment=VIP&search=ana&page=1&limit=20 */
   @Get()
   findAll(
     @Request() req: any,
+    @Query('type') type?: string,
     @Query('segment') segment?: string,
     @Query('search') search?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
   ) {
     return this.contactsService.findAll(req.user.tenantId, {
+      type: type as any,
       segment: segment as any,
       search,
       page: page ? parseInt(page, 10) : 1,
@@ -66,6 +111,8 @@ export class ContactsController {
         email: body.email ?? null,
         tags: body.tags ?? [],
         segment: 'NEW',
+        type: 'CLIENT',
+        clientSince: new Date(),
       },
     });
   }
@@ -83,6 +130,7 @@ export class ContactsController {
       notes?: string;
       analysisInstagram?: string;
       qualification?: 'ULTRA' | 'QUALIFIED' | 'COLD' | 'UNQUALIFIED';
+      type?: 'LEAD' | 'CLIENT';
     },
   ) {
     const tenantId = req.user.tenantId;
@@ -97,6 +145,9 @@ export class ContactsController {
       }
     }
 
+    // Quando promover para CLIENT, registrar clientSince se ainda não tiver
+    const promotingToClient = body.type === 'CLIENT';
+
     return this.prisma.contact.updateMany({
       where: { id, tenantId },
       data: {
@@ -107,6 +158,8 @@ export class ContactsController {
         ...(body.notes !== undefined && { notes: body.notes }),
         ...(body.analysisInstagram !== undefined && { analysisInstagram: body.analysisInstagram }),
         ...(body.qualification !== undefined && { qualification: body.qualification }),
+        ...(body.type !== undefined && { type: body.type }),
+        ...(promotingToClient && { clientSince: new Date() }),
       },
     });
   }

@@ -18,6 +18,8 @@ interface Contact {
   id: string; name: string; phone?: string; email?: string;
   segment?: string; tags?: string[]; createdAt: string;
   totalSpent: number; orderCount: number; lastPurchaseAt?: string; notes?: string;
+  type?: string; clientSince?: string;
+  contracts?: { monthlyValue: number; serviceType: string }[];
 }
 
 /* ── Serviços (virá do módulo Serviços futuramente) ── */
@@ -68,7 +70,7 @@ export default function ContatosPage() {
   const fetchContacts = useCallback(async () => {
     setLoading(true);
     try {
-      const p = new URLSearchParams({ limit: "200" });
+      const p = new URLSearchParams({ limit: "200", type: "CLIENT" });
       if (segFilter !== "ALL") p.set("segment", segFilter);
       if (search) p.set("search", search);
       const res = await fetch(`${API_URL}/api/v1/contacts?${p}`, { headers: authHeaders() });
@@ -80,15 +82,12 @@ export default function ContatosPage() {
 
   useEffect(() => { fetchContacts(); }, [fetchContacts]);
 
-  const newThisMonth = contacts.filter(c => {
-    const d = new Date(c.createdAt); const n = new Date();
-    return d.getMonth() === n.getMonth() && d.getFullYear() === n.getFullYear();
-  }).length;
-  const renewalsSoon = contacts.filter(c => c.lastPurchaseAt && (() => {
-    const diff = (new Date(c.lastPurchaseAt!).getTime() + 30*86400000) - Date.now();
-    return diff > 0 && diff < 30*86400000;
-  })()).length;
-  const totalValue = contacts.reduce((s,c) => s+(c.totalSpent??0), 0);
+  const [stats, setStats] = useState({ totalClients: 0, newThisMonth: 0, renewalsSoon: 0, mrr: 0 });
+
+  useEffect(() => {
+    fetch(`${API_URL}/api/v1/contacts/stats`, { headers: authHeaders() })
+      .then(r => r.json()).then(data => setStats(data)).catch(() => {});
+  }, []);
 
   const handleSave = async () => {
     if (!form.name.trim()) return;
@@ -108,6 +107,7 @@ export default function ContatosPage() {
           email: form.email || undefined,
           notes: notesText || undefined,
           tags: form.tags ? form.tags.split(",").map(t=>t.trim()).filter(Boolean) : [],
+          type: "CLIENT",
         }),
       });
       setForm(EMPTY_FORM); setShowModal(false); fetchContacts();
@@ -163,10 +163,10 @@ export default function ContatosPage() {
         {/* Stats */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
           {[
-            {label:"Total de Clientes",value:loading?"—":String(total),sub:null,Icon:Users,c:"text-violet-400",bg:"bg-violet-500/10 border-violet-500/20"},
-            {label:"Novos este Mês",value:loading?"—":String(newThisMonth),sub:null,Icon:TrendingUp,c:"text-emerald-400",bg:"bg-emerald-500/10 border-emerald-500/20"},
-            {label:"Renovações próximas",value:loading?"—":String(renewalsSoon),sub:"nos próximos 30 dias",Icon:AlertCircle,c:"text-amber-400",bg:"bg-amber-500/10 border-amber-500/20"},
-            {label:"Valor Estimado Total",value:loading?"—":`R$ ${totalValue.toLocaleString("pt-BR",{minimumFractionDigits:2})}`,sub:"valor mensal total",Icon:Star,c:"text-blue-400",bg:"bg-blue-500/10 border-blue-500/20"},
+            {label:"Total de Clientes",value:loading?"—":String(stats.totalClients),sub:null,Icon:Users,c:"text-violet-400",bg:"bg-violet-500/10 border-violet-500/20"},
+            {label:"Novos este Mês",value:loading?"—":String(stats.newThisMonth),sub:null,Icon:TrendingUp,c:"text-emerald-400",bg:"bg-emerald-500/10 border-emerald-500/20"},
+            {label:"Renovações próximas",value:loading?"—":String(stats.renewalsSoon),sub:"nos próximos 30 dias",Icon:AlertCircle,c:"text-amber-400",bg:"bg-amber-500/10 border-amber-500/20"},
+            {label:"MRR (Receita Mensal)",value:loading?"—":`R$ ${stats.mrr.toLocaleString("pt-BR",{minimumFractionDigits:2})}`,sub:"contratos ativos",Icon:Star,c:"text-blue-400",bg:"bg-blue-500/10 border-blue-500/20"},
           ].map(({label,value,sub,Icon,c,bg})=>(
             <div key={label} className={`rounded-2xl border p-4 ${bg}`}>
               <div className="flex items-center justify-between mb-2">
