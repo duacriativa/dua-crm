@@ -145,6 +145,7 @@ model Tenant {
   pipelines        Pipeline[]
   contracts        Contract[]
   financialEntries FinancialEntry[]
+  services         Service[]
 }
 
 model User {
@@ -447,4 +448,29 @@ model FinancialEntry {
   @@index([tenantId, status])
   @@index([tenantId, dueDate])
   @@index([asaasPaymentId])
+}
+
+// ─── Módulo de Serviços ───────────────────────────────────────────────────────
+
+model Service {
+  id              String    @id @default(cuid())
+  tenantId        String
+  tenant          Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name            String
+  description     String?
+  price           Float     @default(0)
+  cost            Float     @default(0)
+  currency        String    @default("BRL")
+  category        String?
+  isRecurring     Boolean   @default(false)
+  recurringPeriod String?   // "mensal" | "trimestral" | "semestral" | "anual"
+  isPublic        Boolean   @default(true)   // exibir no portfólio
+  isOnForm        Boolean   @default(true)   // exibir no formulário de leads
+  commission      Float?    // % comissão padrão
+  isActive        Boolean   @default(true)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([tenantId])
+  @@index([tenantId, isActive])
 }
