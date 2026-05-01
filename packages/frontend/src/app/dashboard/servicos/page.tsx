@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   Plus, Edit2, Trash2, Search, RefreshCw, X, Check,
-  Package, Layers, ShoppingCart, Lightbulb, ToggleLeft,
+  Lightbulb, ToggleLeft,
   ToggleRight, ChevronDown, DollarSign, Tag, FileText,
   LayoutGrid, List as ListIcon, Briefcase,
 } from "lucide-react";
@@ -55,7 +55,7 @@ const EMPTY_FORM = {
   isPublic: true, isOnForm: true, commission: "",
 };
 
-type Tab = "servicos" | "produtos" | "planos" | "checkout";
+type Tab = "servicos";
 
 export default function ServicosPage() {
   const [tab, setTab] = useState<Tab>("servicos");
@@ -167,9 +167,6 @@ export default function ServicosPage() {
         <div className="flex gap-1 mt-4 border-b border-border pb-0">
           {([
             { key: "servicos", label: "Serviços", icon: Briefcase },
-            { key: "produtos", label: "Produtos", icon: Package },
-            { key: "planos", label: "Planos", icon: Layers },
-            { key: "checkout", label: "Checkout", icon: ShoppingCart },
           ] as const).map(({ key, label, icon: Icon }) => (
             <button key={key} onClick={() => setTab(key)}
               className={`flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-t-xl transition-colors border-b-2 ${
@@ -330,104 +327,6 @@ export default function ServicosPage() {
                 </tbody>
               </table>
             )}
-          </div>
-        </div>
-      )}
-
-      {/* ── Aba Produtos ── */}
-      {tab === "produtos" && (
-        <div className="flex-1 flex flex-col">
-          <div className="flex items-center justify-between px-6 py-4 border-b border-border">
-            <div />
-            <button className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-gradient-primary rounded-xl hover:opacity-90 transition-opacity">
-              <Plus className="w-4 h-4" />Novo Produto
-            </button>
-          </div>
-          <div className="flex-1 flex flex-col items-center justify-center gap-3 text-muted-foreground">
-            <div className="w-16 h-16 rounded-2xl bg-muted/30 flex items-center justify-center">
-              <Package className="w-8 h-8 opacity-30" />
-            </div>
-            <p className="font-medium">Nenhum produto cadastrado</p>
-            <p className="text-xs opacity-60">Cadastre seus produtos para controlar estoque, custos e margens.</p>
-            <button className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-gradient-primary rounded-xl hover:opacity-90 transition-opacity mt-2">
-              <Plus className="w-4 h-4" />Novo Produto
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* ── Aba Planos ── */}
-      {tab === "planos" && (
-        <div className="flex-1 flex flex-col">
-          <div className="flex items-center gap-3 px-6 py-4 border-b border-border">
-            <div className="relative flex-1 max-w-sm">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <input placeholder="Buscar planos..." className="w-full pl-9 pr-4 py-2 text-sm bg-muted/50 border border-border rounded-xl focus:outline-none text-foreground placeholder:text-muted-foreground" />
-            </div>
-            <button className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-gradient-primary rounded-xl hover:opacity-90 transition-opacity ml-auto">
-              <Plus className="w-4 h-4" />Novo Plano
-            </button>
-          </div>
-          <div className="flex-1 flex flex-col items-center justify-center gap-3 text-muted-foreground">
-            <div className="w-16 h-16 rounded-2xl bg-muted/30 flex items-center justify-center">
-              <Layers className="w-8 h-8 opacity-30" />
-            </div>
-            <p className="font-medium">Nenhum plano cadastrado</p>
-            <p className="text-xs opacity-60">Crie planos agrupando serviços existentes com um valor fixo</p>
-          </div>
-        </div>
-      )}
-
-      {/* ── Aba Checkout ── */}
-      {tab === "checkout" && (
-        <div className="flex-1 overflow-auto scrollbar-none p-6">
-          <div className="flex items-center justify-between mb-5">
-            <div>
-              <h2 className="text-lg font-bold text-foreground">Catálogo de Checkout <span className="ml-2 px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-500/15 text-amber-400 border border-amber-500/30">BETA</span></h2>
-              <p className="text-sm text-muted-foreground mt-0.5">Serviços disponíveis para pagamento online via Asaas</p>
-            </div>
-            <div className="flex gap-2">
-              <button className="flex items-center gap-1.5 px-3 py-2 text-sm text-muted-foreground border border-border rounded-xl hover:bg-muted/50 transition-colors">
-                Importar serviços
-              </button>
-              <button onClick={openNew}
-                className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-gradient-primary rounded-xl hover:opacity-90 transition-opacity">
-                <Plus className="w-4 h-4" />Novo serviço
-              </button>
-            </div>
-          </div>
-
-          {services.length === 0 ? (
-            <div className="surface-card flex flex-col items-center justify-center py-16 gap-3 text-muted-foreground mb-5">
-              <ShoppingCart className="w-10 h-10 opacity-20" />
-              <p className="text-sm">Nenhum serviço cadastrado. Crie seu primeiro serviço para gerar o link de checkout.</p>
-            </div>
-          ) : (
-            <div className="surface-card p-4 mb-5">
-              <p className="text-sm font-medium text-foreground mb-3">{services.filter(s => s.isPublic).length} serviços disponíveis no checkout</p>
-            </div>
-          )}
-
-          <div className="surface-card p-5">
-            <h3 className="font-semibold text-foreground mb-4 flex items-center gap-2">
-              <span className="text-lg">⚙️</span> Personalizar Checkout
-            </h3>
-            {[
-              { label: "Cores e tema", icon: "🎨" },
-              { label: "Logo e imagem", icon: "🖼️" },
-              { label: "Textos customizados", icon: "T" },
-            ].map(item => (
-              <div key={item.label}
-                className="flex items-center justify-between py-3 border-b border-border last:border-0 cursor-pointer hover:bg-muted/20 px-2 rounded-xl transition-colors">
-                <span className="text-sm font-medium text-foreground flex items-center gap-2">
-                  <span className="text-base">{item.icon}</span>{item.label}
-                </span>
-                <ChevronDown className="w-4 h-4 text-muted-foreground" />
-              </div>
-            ))}
-            <button className="w-full mt-4 py-3 text-sm font-semibold text-white bg-gradient-primary rounded-xl hover:opacity-90 transition-opacity">
-              Salvar configurações
-            </button>
           </div>
         </div>
       )}

@@ -260,19 +260,19 @@ export default function FunilPage() {
   // ── Pipeline list ──
   if (!activePipeline) {
     return (
-      <div className="h-full bg-gray-50 p-4 sm:p-6 overflow-auto">
+      <div className="h-full bg-background p-4 sm:p-6 overflow-auto">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-xl font-bold text-gray-900">Funis de Venda</h1>
-            <p className="text-sm text-gray-400 mt-0.5">Gerencie seus pipelines de vendas</p>
+            <h1 className="text-xl font-bold text-foreground">Funis de Venda</h1>
+            <p className="text-sm text-muted-foreground mt-0.5">Gerencie seus pipelines de vendas</p>
           </div>
-          <button onClick={() => setShowNewPipeline(true)} className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-brand-600 rounded-xl hover:bg-brand-700">
+          <button onClick={() => setShowNewPipeline(true)} className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-gradient-primary rounded-xl hover:opacity-90">
             <Plus className="w-4 h-4" />Novo Funil
           </button>
         </div>
 
         {loading ? (
-          <div className="flex items-center justify-center py-20 text-gray-400"><RefreshCw className="w-6 h-6 animate-spin" /></div>
+          <div className="flex items-center justify-center py-20 text-muted-foreground"><RefreshCw className="w-6 h-6 animate-spin" /></div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {pipelines.map((pipeline) => {
@@ -280,55 +280,55 @@ export default function FunilPage() {
               const totalValue = pipeline.stages.reduce((s, st) => s + st.leads.reduce((a, l) => a + (l.value || 0), 0), 0);
               return (
                 <button key={pipeline.id} onClick={() => setActivePipeline(pipeline)}
-                  className="bg-white rounded-2xl p-5 border border-gray-200 hover:border-brand-300 hover:shadow-md transition-all text-left group">
+                  className="surface-card p-5 hover:border-primary/40 hover:shadow-elegant transition-all text-left group">
                   <div className="flex items-start justify-between mb-4">
-                    <div className="p-2.5 bg-brand-50 rounded-xl"><Kanban className="w-5 h-5 text-brand-600" /></div>
-                    <ChevronRight className="w-4 h-4 text-gray-300 group-hover:text-brand-500 transition-colors" />
+                    <div className="p-2.5 bg-brand-50 rounded-xl"><Kanban className="w-5 h-5 text-primary" /></div>
+                    <ChevronRight className="w-4 h-4 text-muted-foreground/30 group-hover:text-primary transition-colors" />
                   </div>
-                  <h3 className="font-bold text-gray-900 text-base mb-1">{pipeline.name}</h3>
-                  <p className="text-xs text-gray-400 mb-4">{pipeline.stages.length} etapas</p>
+                  <h3 className="font-bold text-foreground text-base mb-1">{pipeline.name}</h3>
+                  <p className="text-xs text-muted-foreground mb-4">{pipeline.stages.length} etapas</p>
                   <div className="flex gap-1 mb-4">
                     {pipeline.stages.map((stage) => <div key={stage.id} className="h-1.5 flex-1 rounded-full opacity-70" style={{ backgroundColor: stage.color }} />)}
                   </div>
                   <div className="grid grid-cols-2 gap-3">
-                    <div className="bg-gray-50 rounded-xl p-3">
-                      <div className="flex items-center gap-1.5 mb-1"><Users className="w-3.5 h-3.5 text-gray-400" /><span className="text-xs text-gray-400">Leads</span></div>
-                      <span className="text-lg font-bold text-gray-800">{totalLeads}</span>
+                    <div className="bg-muted/30 border border-border rounded-xl p-3">
+                      <div className="flex items-center gap-1.5 mb-1"><Users className="w-3.5 h-3.5 text-muted-foreground" /><span className="text-xs text-muted-foreground">Leads</span></div>
+                      <span className="text-lg font-bold text-foreground">{totalLeads}</span>
                     </div>
-                    <div className="bg-gray-50 rounded-xl p-3">
-                      <div className="flex items-center gap-1.5 mb-1"><DollarSign className="w-3.5 h-3.5 text-gray-400" /><span className="text-xs text-gray-400">Potencial</span></div>
-                      <span className="text-sm font-bold text-gray-800">R$ {(totalValue / 1000).toFixed(1)}k</span>
+                    <div className="bg-muted/30 border border-border rounded-xl p-3">
+                      <div className="flex items-center gap-1.5 mb-1"><DollarSign className="w-3.5 h-3.5 text-muted-foreground" /><span className="text-xs text-muted-foreground">Potencial</span></div>
+                      <span className="text-sm font-bold text-foreground">R$ {(totalValue / 1000).toFixed(1)}k</span>
                     </div>
                   </div>
                 </button>
               );
             })}
             <button onClick={() => setShowNewPipeline(true)}
-              className="bg-white rounded-2xl p-5 border-2 border-dashed border-gray-200 hover:border-brand-300 hover:bg-brand-50 transition-all flex flex-col items-center justify-center gap-2 min-h-[200px] group">
-              <div className="w-10 h-10 rounded-full bg-gray-100 group-hover:bg-brand-100 flex items-center justify-center transition-colors">
-                <Plus className="w-5 h-5 text-gray-400 group-hover:text-brand-600 transition-colors" />
+              className="rounded-2xl p-5 border-2 border-dashed border-border hover:border-primary/40 hover:bg-primary/5 transition-all flex flex-col items-center justify-center gap-2 min-h-[200px] group">
+              <div className="w-10 h-10 rounded-full bg-muted/40 group-hover:bg-primary/10 flex items-center justify-center transition-colors">
+                <Plus className="w-5 h-5 text-muted-foreground group-hover:text-primary transition-colors" />
               </div>
-              <span className="text-sm font-medium text-gray-400 group-hover:text-brand-600 transition-colors">Criar novo funil</span>
+              <span className="text-sm font-medium text-muted-foreground group-hover:text-primary transition-colors">Criar novo funil</span>
             </button>
           </div>
         )}
 
         {showNewPipeline && (
           <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md p-6">
+            <div className="bg-card border border-border rounded-3xl shadow-2xl w-full max-w-md p-6">
               <div className="flex items-center justify-between mb-5">
-                <h2 className="text-lg font-bold text-gray-900">Novo Funil</h2>
-                <button onClick={() => setShowNewPipeline(false)} className="p-1.5 rounded-xl hover:bg-gray-100"><X className="w-4 h-4 text-gray-400" /></button>
+                <h2 className="text-lg font-bold text-foreground">Novo Funil</h2>
+                <button onClick={() => setShowNewPipeline(false)} className="p-1.5 rounded-xl hover:bg-muted/40"><X className="w-4 h-4 text-muted-foreground" /></button>
               </div>
-              <label className="text-sm font-medium text-gray-700 block mb-1.5">Nome do Funil *</label>
+              <label className="text-sm font-medium text-foreground/80 block mb-1.5">Nome do Funil *</label>
               <input value={newPipelineName} onChange={(e) => setNewPipelineName(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && createPipeline()}
                 placeholder="Ex: Vendas Varejo, Atacado Premium..." autoFocus
-                className="w-full px-4 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500" />
-              <p className="text-xs text-gray-400 mt-2">Serão criadas 3 etapas padrão: Novo Lead, Em Andamento, Fechado</p>
+                className="w-full px-4 py-2.5 text-sm border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500" />
+              <p className="text-xs text-muted-foreground mt-2">Serão criadas 3 etapas padrão: Novo Lead, Em Andamento, Fechado</p>
               <div className="flex gap-3 mt-5">
-                <button onClick={() => setShowNewPipeline(false)} className="flex-1 py-2.5 text-sm font-medium text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50">Cancelar</button>
-                <button onClick={createPipeline} disabled={saving} className="flex-1 py-2.5 text-sm font-semibold text-white bg-brand-600 rounded-xl hover:bg-brand-700 disabled:opacity-50">
+                <button onClick={() => setShowNewPipeline(false)} className="flex-1 py-2.5 text-sm font-medium text-muted-foreground border border-border rounded-xl hover:bg-muted/20">Cancelar</button>
+                <button onClick={createPipeline} disabled={saving} className="flex-1 py-2.5 text-sm font-semibold text-white bg-gradient-primary rounded-xl hover:opacity-90 disabled:opacity-50">
                   {saving ? "Criando..." : "Criar Funil"}
                 </button>
               </div>
@@ -347,17 +347,17 @@ export default function FunilPage() {
   const parsed = contact ? parseContactFields(contact, selectedLead?.notes) : null;
 
   return (
-    <div className="h-full flex flex-col bg-gray-50 relative">
-      <div className="bg-white border-b border-gray-200 px-4 py-3 shrink-0">
+    <div className="h-full flex flex-col bg-muted/20 relative">
+      <div className="bg-card border-b border-border px-4 py-3 shrink-0">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 min-w-0">
-            <button onClick={() => setActivePipeline(null)} className="text-xs text-gray-400 hover:text-gray-700 shrink-0">Funis</button>
+            <button onClick={() => setActivePipeline(null)} className="text-xs text-muted-foreground hover:text-foreground/80 shrink-0">Funis</button>
             <ChevronRight className="w-3.5 h-3.5 text-gray-300 shrink-0" />
-            <h1 className="text-sm font-bold text-gray-900 truncate">{activePipeline.name}</h1>
+            <h1 className="text-sm font-bold text-foreground truncate">{activePipeline.name}</h1>
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            <span className="hidden sm:flex items-center gap-1 text-xs text-gray-500"><Users className="w-3.5 h-3.5" />{totalLeads}</span>
-            <span className="hidden sm:flex items-center gap-1 text-xs text-gray-500"><DollarSign className="w-3.5 h-3.5" />R$ {(totalValue / 1000).toFixed(1)}k</span>
+            <span className="hidden sm:flex items-center gap-1 text-xs text-muted-foreground"><Users className="w-3.5 h-3.5" />{totalLeads}</span>
+            <span className="hidden sm:flex items-center gap-1 text-xs text-muted-foreground"><DollarSign className="w-3.5 h-3.5" />R$ {(totalValue / 1000).toFixed(1)}k</span>
           </div>
         </div>
       </div>
@@ -404,10 +404,10 @@ export default function FunilPage() {
                         ))}
                       </div>
                       <div className="flex gap-1">
-                        <button onClick={() => saveStageEdit(stage.id)} className="flex-1 py-1 text-xs font-semibold text-white bg-brand-600 rounded-lg hover:bg-brand-700">
+                        <button onClick={() => saveStageEdit(stage.id)} className="flex-1 py-1 text-xs font-semibold text-white bg-primary rounded-lg hover:bg-primary/80">
                           <Check className="w-3 h-3 mx-auto" />
                         </button>
-                        <button onClick={() => setEditingStageId(null)} className="px-2 py-1 text-xs text-gray-500 border border-gray-200 rounded-lg hover:bg-gray-50">
+                        <button onClick={() => setEditingStageId(null)} className="px-2 py-1 text-xs text-muted-foreground border border-border rounded-lg hover:bg-muted/50">
                           <X className="w-3 h-3" />
                         </button>
                       </div>
@@ -417,18 +417,18 @@ export default function FunilPage() {
                       <div className="flex items-center gap-2 min-w-0">
                         <GripVertical className="w-3 h-3 text-gray-300 shrink-0" />
                         <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: stage.color }} />
-                        <span className="text-sm font-semibold text-gray-700 truncate">{stage.name}</span>
-                        <span className="text-xs text-gray-400 bg-gray-100 rounded-full px-1.5 py-0.5 shrink-0">{stage.leads.length}</span>
+                        <span className="text-sm font-semibold text-foreground/80 truncate">{stage.name}</span>
+                        <span className="text-xs text-muted-foreground bg-muted/40 rounded-full px-1.5 py-0.5 shrink-0">{stage.leads.length}</span>
                       </div>
                       <div className="relative shrink-0" ref={stageMenuId === stage.id ? stageMenuRef : null}>
                         <button onClick={(e) => { e.stopPropagation(); setStageMenuId(stageMenuId === stage.id ? null : stage.id); }}
-                          className="p-1 rounded-lg hover:bg-gray-100">
-                          <MoreVertical className="w-3.5 h-3.5 text-gray-400" />
+                          className="p-1 rounded-lg hover:bg-muted/40">
+                          <MoreVertical className="w-3.5 h-3.5 text-muted-foreground" />
                         </button>
                         {stageMenuId === stage.id && (
-                          <div className="absolute right-0 top-7 bg-white rounded-xl shadow-lg border border-gray-100 z-20 w-40 py-1">
+                          <div className="absolute right-0 top-7 bg-card rounded-xl shadow-lg border border-border z-20 w-40 py-1">
                             <button onClick={() => { setEditingStageId(stage.id); setEditingStageName(stage.name); setEditingStageColor(stage.color); setStageMenuId(null); }}
-                              className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                              className="w-full text-left px-3 py-2 text-sm text-foreground/80 hover:bg-muted/20">
                               Renomear etapa
                             </button>
                             <button onClick={() => deleteStage(stage.id)}
@@ -442,7 +442,7 @@ export default function FunilPage() {
                   )}
                 </div>
 
-                {stageValue > 0 && <p className="text-xs text-gray-400 mb-2">R$ {stageValue.toLocaleString("pt-BR")}</p>}
+                {stageValue > 0 && <p className="text-xs text-muted-foreground mb-2">R$ {stageValue.toLocaleString("pt-BR")}</p>}
 
                 <div className="flex-1 flex flex-col gap-2 overflow-y-auto pr-1" style={{ minHeight: 0 }}>
                   {stage.leads.map((lead) => (
@@ -451,25 +451,25 @@ export default function FunilPage() {
                       draggable
                       onDragStart={(e) => { e.stopPropagation(); onDragStart(lead, stage.id); }}
                       onClick={() => { if (cardMenuId !== lead.id) openLeadPanel(lead, stage); }}
-                      className={`relative group bg-white rounded-2xl p-3.5 border shadow-sm hover:shadow-md transition-all cursor-pointer ${selectedLead?.id === lead.id ? "border-brand-400 ring-1 ring-brand-300" : "border-gray-100 hover:border-gray-200"}`}
+                      className={`relative group bg-card rounded-2xl p-3.5 border shadow-sm hover:shadow-md transition-all cursor-pointer ${selectedLead?.id === lead.id ? "border-brand-400 ring-1 ring-brand-300" : "border-border hover:border-border"}`}
                     >
                       <div className="flex items-start justify-between gap-1 mb-2">
                         <div className="flex items-center gap-2 min-w-0">
-                          <div className="w-7 h-7 rounded-full bg-brand-100 text-brand-600 font-bold text-xs flex items-center justify-center shrink-0">
+                          <div className="w-7 h-7 rounded-full bg-primary/10 text-primary font-bold text-xs flex items-center justify-center shrink-0">
                             {lead.contact.name.charAt(0).toUpperCase()}
                           </div>
-                          <span className="text-sm font-semibold text-gray-800 leading-tight truncate">{lead.contact.name}</span>
+                          <span className="text-sm font-semibold text-foreground leading-tight truncate">{lead.contact.name}</span>
                         </div>
                         <div className="relative shrink-0" onClick={(e) => e.stopPropagation()}>
                           <button
                             onClick={() => setCardMenuId(cardMenuId === lead.id ? null : lead.id)}
-                            className="opacity-0 group-hover:opacity-100 p-1 rounded-lg hover:bg-gray-100 transition-opacity">
-                            <MoreVertical className="w-3.5 h-3.5 text-gray-400" />
+                            className="opacity-0 group-hover:opacity-100 p-1 rounded-lg hover:bg-muted/40 transition-opacity">
+                            <MoreVertical className="w-3.5 h-3.5 text-muted-foreground" />
                           </button>
                           {cardMenuId === lead.id && (
-                            <div className="absolute right-0 top-6 bg-white rounded-xl shadow-lg border border-gray-100 z-20 w-40 py-1">
+                            <div className="absolute right-0 top-6 bg-card rounded-xl shadow-lg border border-border z-20 w-40 py-1">
                               <button onClick={() => { openLeadPanel(lead, stage); setCardMenuId(null); }}
-                                className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                                className="w-full text-left px-3 py-2 text-sm text-foreground/80 hover:bg-muted/20">
                                 Ver detalhes
                               </button>
                               <button onClick={() => deleteLead(lead.id, stage.id)}
@@ -480,37 +480,37 @@ export default function FunilPage() {
                           )}
                         </div>
                       </div>
-                      {lead.contact.phone && <p className="text-xs text-gray-400 ml-9">{lead.contact.phone}</p>}
+                      {lead.contact.phone && <p className="text-xs text-muted-foreground ml-9">{lead.contact.phone}</p>}
                       {lead.value && <div className="ml-9 mt-1"><span className="text-xs font-semibold text-green-600">R$ {lead.value.toLocaleString("pt-BR")}</span></div>}
-                      {lead.notes && <p className="text-[10px] text-gray-400 ml-9 mt-1 truncate">{lead.notes}</p>}
+                      {lead.notes && <p className="text-[10px] text-muted-foreground ml-9 mt-1 truncate">{lead.notes}</p>}
                     </div>
                   ))}
 
                   {showNewLead === stage.id ? (
-                    <div className="bg-white rounded-2xl p-3 border border-brand-200 shadow-sm">
+                    <div className="bg-card border border-primary/30 rounded-2xl p-3 shadow-sm">
                       <input autoFocus value={newLead.name} onChange={(e) => setNewLead((p) => ({ ...p, name: e.target.value }))}
                         placeholder="Nome do lead *"
-                        className="w-full text-sm border-b border-gray-200 pb-1.5 mb-2 focus:outline-none focus:border-brand-400" />
+                        className="w-full text-sm border-b border-border pb-1.5 mb-2 focus:outline-none focus:border-primary bg-transparent text-foreground placeholder:text-muted-foreground" />
                       <input value={newLead.phone} onChange={(e) => setNewLead((p) => ({ ...p, phone: e.target.value }))}
                         placeholder="WhatsApp"
-                        className="w-full text-sm border-b border-gray-200 pb-1.5 mb-2 focus:outline-none focus:border-brand-400" />
+                        className="w-full text-sm border-b border-border pb-1.5 mb-2 focus:outline-none focus:border-primary bg-transparent text-foreground placeholder:text-muted-foreground" />
                       <input value={newLead.value} onChange={(e) => setNewLead((p) => ({ ...p, value: e.target.value }))}
                         placeholder="Valor (opcional)" type="number"
-                        className="w-full text-sm border-b border-gray-200 pb-1.5 mb-3 focus:outline-none focus:border-brand-400" />
+                        className="w-full text-sm border-b border-border pb-1.5 mb-3 focus:outline-none focus:border-primary" />
                       <div className="flex gap-2">
                         <button onClick={() => addLead(stage.id)} disabled={saving}
-                          className="flex-1 py-1.5 text-xs font-semibold text-white bg-brand-600 rounded-lg hover:bg-brand-700 disabled:opacity-50">
+                          className="flex-1 py-1.5 text-xs font-semibold text-white bg-gradient-primary rounded-lg hover:opacity-90 disabled:opacity-50">
                           {saving ? "..." : "Adicionar"}
                         </button>
                         <button onClick={() => { setShowNewLead(null); setNewLead({ name: "", phone: "", value: "" }); }}
-                          className="px-2.5 py-1.5 text-xs text-gray-500 border border-gray-200 rounded-lg hover:bg-gray-50">
+                          className="px-2.5 py-1.5 text-xs text-muted-foreground border border-border rounded-lg hover:bg-muted/50">
                           <X className="w-3.5 h-3.5" />
                         </button>
                       </div>
                     </div>
                   ) : (
                     <button onClick={() => setShowNewLead(stage.id)}
-                      className="w-full py-2 text-xs font-medium text-gray-400 border border-dashed border-gray-200 rounded-2xl hover:border-brand-300 hover:text-brand-500 hover:bg-brand-50 transition-all flex items-center justify-center gap-1">
+                      className="w-full py-2 text-xs font-medium text-muted-foreground border border-dashed border-border rounded-2xl hover:border-primary/40 hover:text-brand-500 hover:bg-primary/5 transition-all flex items-center justify-center gap-1">
                       <Plus className="w-3.5 h-3.5" />Adicionar lead
                     </button>
                   )}
@@ -522,12 +522,12 @@ export default function FunilPage() {
           {/* Add stage column */}
           <div className="w-56 sm:w-64 shrink-0">
             {showAddStage ? (
-              <div className="bg-white rounded-2xl p-4 border border-brand-200 shadow-sm">
-                <p className="text-sm font-semibold text-gray-700 mb-3">Nova Etapa</p>
+              <div className="bg-card rounded-2xl p-4 border border-primary/30 shadow-sm">
+                <p className="text-sm font-semibold text-foreground/80 mb-3">Nova Etapa</p>
                 <input autoFocus value={newStageName} onChange={(e) => setNewStageName(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && addStage()}
                   placeholder="Nome da etapa"
-                  className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 mb-3 focus:outline-none focus:ring-2 focus:ring-brand-500" />
+                  className="w-full text-sm border border-border rounded-lg px-3 py-2 mb-3 focus:outline-none focus:ring-2 focus:ring-brand-500" />
                 <div className="flex gap-1.5 flex-wrap mb-3">
                   {COLORS.map((c) => (
                     <button key={c} onClick={() => setNewStageColor(c)}
@@ -537,18 +537,18 @@ export default function FunilPage() {
                 </div>
                 <div className="flex gap-2">
                   <button onClick={addStage} disabled={saving}
-                    className="flex-1 py-1.5 text-xs font-semibold text-white bg-brand-600 rounded-lg hover:bg-brand-700 disabled:opacity-50">
+                    className="flex-1 py-1.5 text-xs font-semibold text-white bg-gradient-primary rounded-lg hover:opacity-90 disabled:opacity-50">
                     {saving ? "..." : "Criar"}
                   </button>
                   <button onClick={() => { setShowAddStage(false); setNewStageName(""); }}
-                    className="px-2.5 py-1.5 text-xs text-gray-500 border border-gray-200 rounded-lg hover:bg-gray-50">
+                    className="px-2.5 py-1.5 text-xs text-muted-foreground border border-border rounded-lg hover:bg-muted/50">
                     <X className="w-3.5 h-3.5" />
                   </button>
                 </div>
               </div>
             ) : (
               <button onClick={() => setShowAddStage(true)}
-                className="w-full py-3 text-xs font-medium text-gray-400 border-2 border-dashed border-gray-200 rounded-2xl hover:border-brand-300 hover:text-brand-500 hover:bg-brand-50 transition-all flex items-center justify-center gap-1.5">
+                className="w-full py-3 text-xs font-medium text-muted-foreground border-2 border-dashed border-border rounded-2xl hover:border-primary/40 hover:text-brand-500 hover:bg-primary/5 transition-all flex items-center justify-center gap-1.5">
                 <Plus className="w-3.5 h-3.5" />Nova etapa
               </button>
             )}
@@ -562,25 +562,25 @@ export default function FunilPage() {
           {/* Overlay para fechar */}
           <div className="fixed inset-0 z-30" onClick={() => setSelectedLead(null)} />
 
-          <div className="absolute top-0 right-0 h-full w-full sm:w-96 bg-white shadow-2xl border-l border-gray-200 z-40 flex flex-col overflow-hidden">
+          <div className="absolute top-0 right-0 h-full w-full sm:w-96 bg-card shadow-2xl border-l border-border z-40 flex flex-col overflow-hidden">
             {/* Header */}
-            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 shrink-0">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-border shrink-0">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-brand-100 text-brand-600 font-bold text-base flex items-center justify-center">
+                <div className="w-10 h-10 rounded-full bg-primary/10 text-primary font-bold text-base flex items-center justify-center">
                   {selectedLead.contact.name.charAt(0).toUpperCase()}
                 </div>
                 <div>
-                  <h2 className="text-base font-bold text-gray-900 leading-tight">{selectedLead.contact.name}</h2>
+                  <h2 className="text-base font-bold text-foreground leading-tight">{selectedLead.contact.name}</h2>
                   {selectedStage && (
                     <div className="flex items-center gap-1.5 mt-0.5">
                       <div className="w-2 h-2 rounded-full" style={{ backgroundColor: selectedStage.color }} />
-                      <span className="text-xs text-gray-400">{selectedStage.name}</span>
+                      <span className="text-xs text-muted-foreground">{selectedStage.name}</span>
                     </div>
                   )}
                 </div>
               </div>
-              <button onClick={() => setSelectedLead(null)} className="p-1.5 rounded-xl hover:bg-gray-100">
-                <X className="w-4 h-4 text-gray-400" />
+              <button onClick={() => setSelectedLead(null)} className="p-1.5 rounded-xl hover:bg-muted/40">
+                <X className="w-4 h-4 text-muted-foreground" />
               </button>
             </div>
 
@@ -590,8 +590,8 @@ export default function FunilPage() {
               {selectedLead.createdAt && (
                 <div className="bg-brand-50/50 border border-brand-100/50 rounded-2xl p-3.5 flex items-center justify-between">
                   <div className="flex items-center gap-2.5">
-                    <div className="p-1.5 bg-brand-100 rounded-lg">
-                      <Clock className="w-3.5 h-3.5 text-brand-600" />
+                    <div className="p-1.5 bg-primary/10 rounded-lg">
+                      <Clock className="w-3.5 h-3.5 text-primary" />
                     </div>
                     <span className="text-[11px] font-semibold text-brand-900 uppercase tracking-wider">Cadastrado em</span>
                   </div>
@@ -602,47 +602,47 @@ export default function FunilPage() {
               )}
 
               {loadingContact ? (
-                <div className="flex items-center justify-center py-10 text-gray-400">
+                <div className="flex items-center justify-center py-10 text-muted-foreground">
                   <RefreshCw className="w-5 h-5 animate-spin" />
                 </div>
               ) : (
                 <>
                   {/* Contato */}
                   <div>
-                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Contato</p>
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Contato</p>
                     <div className="space-y-2.5">
                       {contact?.phone && (
                         <div className="flex items-center gap-3">
-                          <div className="w-7 h-7 rounded-lg bg-green-50 flex items-center justify-center shrink-0">
+                          <div className="w-7 h-7 rounded-lg bg-green-500/10 flex items-center justify-center shrink-0">
                             <Phone className="w-3.5 h-3.5 text-green-600" />
                           </div>
                           <div>
-                            <p className="text-[10px] text-gray-400">WhatsApp</p>
+                            <p className="text-[10px] text-muted-foreground">WhatsApp</p>
                             <a href={`https://wa.me/${contact.phone?.replace(/\D/g, "")}`} target="_blank" rel="noopener noreferrer"
-                              className="text-sm font-medium text-gray-800 hover:text-brand-600">{contact.phone}</a>
+                              className="text-sm font-medium text-foreground hover:text-primary">{contact.phone}</a>
                           </div>
                         </div>
                       )}
                       {contact?.email && (
                         <div className="flex items-center gap-3">
-                          <div className="w-7 h-7 rounded-lg bg-blue-50 flex items-center justify-center shrink-0">
+                          <div className="w-7 h-7 rounded-lg bg-blue-500/10 flex items-center justify-center shrink-0">
                             <Mail className="w-3.5 h-3.5 text-blue-600" />
                           </div>
                           <div>
-                            <p className="text-[10px] text-gray-400">E-mail</p>
-                            <a href={`mailto:${contact.email}`} className="text-sm font-medium text-gray-800 hover:text-brand-600">{contact.email}</a>
+                            <p className="text-[10px] text-muted-foreground">E-mail</p>
+                            <a href={`mailto:${contact.email}`} className="text-sm font-medium text-foreground hover:text-primary">{contact.email}</a>
                           </div>
                         </div>
                       )}
                       {parsed?.instagram && (
                         <div className="flex items-center gap-3">
-                          <div className="w-7 h-7 rounded-lg bg-pink-50 flex items-center justify-center shrink-0">
+                          <div className="w-7 h-7 rounded-lg bg-pink-500/10 flex items-center justify-center shrink-0">
                             <Instagram className="w-3.5 h-3.5 text-pink-600" />
                           </div>
                           <div>
-                            <p className="text-[10px] text-gray-400">Instagram</p>
+                            <p className="text-[10px] text-muted-foreground">Instagram</p>
                             <a href={`https://instagram.com/${parsed.instagram.replace("@", "")}`} target="_blank" rel="noopener noreferrer"
-                              className="text-sm font-medium text-gray-800 hover:text-brand-600">@{parsed.instagram.replace("@", "")}</a>
+                              className="text-sm font-medium text-foreground hover:text-primary">@{parsed.instagram.replace("@", "")}</a>
                           </div>
                         </div>
                       )}
@@ -652,16 +652,16 @@ export default function FunilPage() {
                   {/* Dados do formulário */}
                   {(parsed?.faturamento || parsed?.modelo) && (
                     <div>
-                      <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Perfil do Negócio</p>
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Perfil do Negócio</p>
                       <div className="space-y-2.5">
                         {parsed?.faturamento && (
                           <div className="flex items-center gap-3">
-                            <div className="w-7 h-7 rounded-lg bg-green-50 flex items-center justify-center shrink-0">
+                            <div className="w-7 h-7 rounded-lg bg-green-500/10 flex items-center justify-center shrink-0">
                               <TrendingUp className="w-3.5 h-3.5 text-green-600" />
                             </div>
                             <div>
-                              <p className="text-[10px] text-gray-400">Faturamento mensal</p>
-                              <p className="text-sm font-medium text-gray-800">{parsed.faturamento}</p>
+                              <p className="text-[10px] text-muted-foreground">Faturamento mensal</p>
+                              <p className="text-sm font-medium text-foreground">{parsed.faturamento}</p>
                             </div>
                           </div>
                         )}
@@ -671,8 +671,8 @@ export default function FunilPage() {
                               <Tag className="w-3.5 h-3.5 text-purple-600" />
                             </div>
                             <div>
-                              <p className="text-[10px] text-gray-400">Modelo de venda</p>
-                              <p className="text-sm font-medium text-gray-800">{parsed.modelo}</p>
+                              <p className="text-[10px] text-muted-foreground">Modelo de venda</p>
+                              <p className="text-sm font-medium text-foreground">{parsed.modelo}</p>
                             </div>
                           </div>
                         )}
@@ -682,10 +682,10 @@ export default function FunilPage() {
 
                   {/* Valor no funil — editável */}
                   <div>
-                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Oportunidade</p>
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Oportunidade</p>
                     {editingValue ? (
                       <div className="flex items-center gap-2">
-                        <span className="text-sm text-gray-500">R$</span>
+                        <span className="text-sm text-muted-foreground">R$</span>
                         <input
                           autoFocus
                           type="number"
@@ -722,11 +722,11 @@ export default function FunilPage() {
                             }
                             setEditingValue(false);
                           }}
-                          className="text-xs bg-brand-600 text-white px-3 py-1.5 rounded-lg hover:bg-brand-700"
+                          className="text-xs bg-primary text-white px-3 py-1.5 rounded-lg hover:bg-primary/80"
                         >
                           Salvar
                         </button>
-                        <button onClick={() => setEditingValue(false)} className="text-xs text-gray-400 hover:text-gray-600">✕</button>
+                        <button onClick={() => setEditingValue(false)} className="text-xs text-muted-foreground hover:text-muted-foreground">✕</button>
                       </div>
                     ) : (
                       <div
@@ -747,9 +747,9 @@ export default function FunilPage() {
                   {/* UTM */}
                   {parsed?.utm && parsed.utm !== "-/-/-" && (
                     <div>
-                      <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Origem</p>
-                      <div className="bg-gray-50 rounded-xl p-3">
-                        <p className="text-xs text-gray-500 font-mono">{parsed.utm}</p>
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Origem</p>
+                      <div className="bg-muted/30 border border-border rounded-xl p-3">
+                        <p className="text-xs text-muted-foreground font-mono">{parsed.utm}</p>
                       </div>
                     </div>
                   )}
@@ -757,7 +757,7 @@ export default function FunilPage() {
                   {/* Tags adicionais */}
                   {contact?.tags && contact.tags.filter((t) => !t.startsWith("ig:")).length > 0 && (
                     <div>
-                      <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Tags</p>
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Tags</p>
                       <div className="flex flex-wrap gap-1.5">
                         {contact.tags.filter((t) => !t.startsWith("ig:")).map((tag) => (
                           <span key={tag} className="px-2.5 py-1 bg-brand-50 text-brand-700 text-xs font-medium rounded-full">{tag}</span>
@@ -769,7 +769,7 @@ export default function FunilPage() {
                   {/* Notas */}
                   {contact?.notes && (
                     <div>
-                      <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Notas</p>
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Notas</p>
                       <div className="bg-amber-50 rounded-xl p-3">
                         <p className="text-xs text-amber-800 whitespace-pre-wrap">{contact.notes}</p>
                       </div>
@@ -780,18 +780,18 @@ export default function FunilPage() {
             </div>
 
             {/* Footer actions */}
-            <div className="px-5 py-4 border-t border-gray-100 shrink-0 space-y-2">
+            <div className="px-5 py-4 border-t border-border shrink-0 space-y-2">
               {contact?.phone && (
                 <button
                   onClick={() => router.push(`/dashboard/conversas?phone=${encodeURIComponent(contact.phone || "")}&name=${encodeURIComponent(contact.name || "")}`)}
-                  className="w-full flex items-center justify-center gap-2 py-2.5 text-sm font-semibold text-white bg-brand-600 rounded-xl hover:bg-brand-700 transition-colors">
+                  className="w-full flex items-center justify-center gap-2 py-2.5 text-sm font-semibold text-white bg-gradient-primary rounded-xl hover:opacity-90 transition-colors">
                   <MessageCircle className="w-4 h-4" />
                   Abrir Chat
                 </button>
               )}
               <button
                 onClick={() => router.push(`/dashboard/contatos/${contact?.id}`)}
-                className="w-full flex items-center justify-center gap-2 py-2.5 text-sm font-medium text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors">
+                className="w-full flex items-center justify-center gap-2 py-2.5 text-sm font-medium text-muted-foreground border border-border rounded-xl hover:bg-muted/20 transition-colors">
                 <ExternalLink className="w-3.5 h-3.5" />
                 Ver perfil completo
               </button>

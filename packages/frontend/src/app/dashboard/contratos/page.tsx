@@ -22,7 +22,7 @@ const SERVICE_LABELS: Record<string, string> = {
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; icon: any }> = {
   ACTIVE: { label: "Ativo", color: "text-green-600 bg-green-50 border-green-200", icon: CheckCircle2 },
-  FINISHED: { label: "Encerrado", color: "text-gray-500 bg-gray-50 border-gray-200", icon: XCircle },
+  FINISHED: { label: "Encerrado", color: "text-muted-foreground bg-muted/20 border-border", icon: XCircle },
   CANCELLED: { label: "Cancelado", color: "text-red-600 bg-red-50 border-red-200", icon: XCircle },
 };
 
@@ -111,12 +111,12 @@ export default function ContratosPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-gray-900">Contratos</h1>
-          <p className="text-sm text-gray-500 mt-0.5">{contracts.filter(c => c.status === "ACTIVE").length} ativos · aniversários e oportunidades de upsell</p>
+          <h1 className="text-xl font-semibold text-foreground">Contratos</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">{contracts.filter(c => c.status === "ACTIVE").length} ativos · aniversários e oportunidades de upsell</p>
         </div>
         <button
           onClick={() => setShowForm(!showForm)}
-          className="flex items-center gap-2 bg-brand-600 text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-brand-700 transition-colors"
+          className="flex items-center gap-2 bg-primary text-white text-sm font-medium px-4 py-2 rounded-lg hover:opacity-90 transition-colors"
         >
           <Plus className="w-4 h-4" />
           Novo contrato
@@ -125,14 +125,14 @@ export default function ContratosPage() {
 
       {/* Alertas de upsell */}
       {upsellNow.length > 0 && (
-        <div className="bg-violet-50 border border-violet-200 rounded-xl p-4">
+        <div className="bg-violet-50 border border-primary/20 rounded-xl p-4">
           <div className="flex items-center gap-2 mb-2">
             <Star className="w-4 h-4 text-violet-600" />
-            <p className="text-sm font-semibold text-violet-700">Oportunidades de upsell agora</p>
+            <p className="text-sm font-semibold text-primary">Oportunidades de upsell agora</p>
           </div>
           <div className="flex flex-wrap gap-2">
             {upsellNow.map((c) => (
-              <span key={c.id} className="text-xs bg-white border border-violet-200 text-violet-700 rounded-lg px-3 py-1.5 font-medium">
+              <span key={c.id} className="text-xs bg-card border border-primary/20 text-primary rounded-lg px-3 py-1.5 font-medium">
                 {c.clientName} · {c.anniversaryInfo.monthsActive} meses
               </span>
             ))}
@@ -159,53 +159,53 @@ export default function ContratosPage() {
 
       {/* Formulário novo contrato */}
       {showForm && (
-        <div className="bg-white border border-gray-200 rounded-xl p-5 space-y-4">
-          <h2 className="text-sm font-semibold text-gray-800">Cadastrar contrato</h2>
+        <div className="bg-card border border-border rounded-xl p-5 space-y-4">
+          <h2 className="text-sm font-semibold text-foreground">Cadastrar contrato</h2>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs text-gray-500 mb-1">Cliente</label>
-              <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={form.clientName} onChange={e => setForm(p => ({ ...p, clientName: e.target.value }))} placeholder="Ex: Amiche" />
+              <label className="block text-xs text-muted-foreground mb-1">Cliente</label>
+              <input className="w-full border border-border rounded-lg px-3 py-2 text-sm" value={form.clientName} onChange={e => setForm(p => ({ ...p, clientName: e.target.value }))} placeholder="Ex: Amiche" />
             </div>
             <div>
-              <label className="block text-xs text-gray-500 mb-1">Serviço</label>
-              <select className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={form.serviceType} onChange={e => setForm(p => ({ ...p, serviceType: e.target.value }))}>
+              <label className="block text-xs text-muted-foreground mb-1">Serviço</label>
+              <select className="w-full border border-border rounded-lg px-3 py-2 text-sm" value={form.serviceType} onChange={e => setForm(p => ({ ...p, serviceType: e.target.value }))}>
                 {Object.entries(SERVICE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
               </select>
             </div>
             <div>
-              <label className="block text-xs text-gray-500 mb-1">Valor mensal (R$)</label>
-              <input type="number" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={form.monthlyValue} onChange={e => setForm(p => ({ ...p, monthlyValue: e.target.value }))} placeholder="2500" />
+              <label className="block text-xs text-muted-foreground mb-1">Valor mensal (R$)</label>
+              <input type="number" className="w-full border border-border rounded-lg px-3 py-2 text-sm" value={form.monthlyValue} onChange={e => setForm(p => ({ ...p, monthlyValue: e.target.value }))} placeholder="2500" />
             </div>
             <div>
-              <label className="block text-xs text-gray-500 mb-1">Parcelas (1 = recorrente)</label>
-              <input type="number" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={form.installments} onChange={e => setForm(p => ({ ...p, installments: e.target.value }))} />
+              <label className="block text-xs text-muted-foreground mb-1">Parcelas (1 = recorrente)</label>
+              <input type="number" className="w-full border border-border rounded-lg px-3 py-2 text-sm" value={form.installments} onChange={e => setForm(p => ({ ...p, installments: e.target.value }))} />
             </div>
             <div>
-              <label className="block text-xs text-gray-500 mb-1">Data de assinatura</label>
-              <input type="date" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={form.signedAt} onChange={e => setForm(p => ({ ...p, signedAt: e.target.value }))} />
+              <label className="block text-xs text-muted-foreground mb-1">Data de assinatura</label>
+              <input type="date" className="w-full border border-border rounded-lg px-3 py-2 text-sm" value={form.signedAt} onChange={e => setForm(p => ({ ...p, signedAt: e.target.value }))} />
             </div>
             <div>
-              <label className="block text-xs text-gray-500 mb-1">Início do contrato</label>
-              <input type="date" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={form.startsAt} onChange={e => setForm(p => ({ ...p, startsAt: e.target.value }))} />
+              <label className="block text-xs text-muted-foreground mb-1">Início do contrato</label>
+              <input type="date" className="w-full border border-border rounded-lg px-3 py-2 text-sm" value={form.startsAt} onChange={e => setForm(p => ({ ...p, startsAt: e.target.value }))} />
             </div>
             <div>
-              <label className="block text-xs text-gray-500 mb-1">Fim (deixe vazio se recorrente)</label>
-              <input type="date" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={form.endsAt} onChange={e => setForm(p => ({ ...p, endsAt: e.target.value }))} />
+              <label className="block text-xs text-muted-foreground mb-1">Fim (deixe vazio se recorrente)</label>
+              <input type="date" className="w-full border border-border rounded-lg px-3 py-2 text-sm" value={form.endsAt} onChange={e => setForm(p => ({ ...p, endsAt: e.target.value }))} />
             </div>
             <div>
-              <label className="block text-xs text-gray-500 mb-1">ID Clicksign (opcional)</label>
-              <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={form.clicksignDocId} onChange={e => setForm(p => ({ ...p, clicksignDocId: e.target.value }))} placeholder="Doc ID do Clicksign" />
+              <label className="block text-xs text-muted-foreground mb-1">ID Clicksign (opcional)</label>
+              <input className="w-full border border-border rounded-lg px-3 py-2 text-sm" value={form.clicksignDocId} onChange={e => setForm(p => ({ ...p, clicksignDocId: e.target.value }))} placeholder="Doc ID do Clicksign" />
             </div>
           </div>
           <div>
-            <label className="block text-xs text-gray-500 mb-1">Observações</label>
-            <textarea className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" rows={2} value={form.notes} onChange={e => setForm(p => ({ ...p, notes: e.target.value }))} />
+            <label className="block text-xs text-muted-foreground mb-1">Observações</label>
+            <textarea className="w-full border border-border rounded-lg px-3 py-2 text-sm" rows={2} value={form.notes} onChange={e => setForm(p => ({ ...p, notes: e.target.value }))} />
           </div>
           <div className="flex gap-2">
-            <button onClick={save} disabled={saving} className="bg-brand-600 text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-brand-700 transition-colors disabled:opacity-50">
+            <button onClick={save} disabled={saving} className="bg-primary text-white text-sm font-medium px-4 py-2 rounded-lg hover:opacity-90 transition-colors disabled:opacity-50">
               {saving ? "Salvando..." : "Salvar contrato"}
             </button>
-            <button onClick={() => setShowForm(false)} className="text-sm text-gray-500 px-4 py-2 rounded-lg border border-gray-200 hover:bg-gray-50">
+            <button onClick={() => setShowForm(false)} className="text-sm text-muted-foreground px-4 py-2 rounded-lg border border-border hover:bg-muted/20">
               Cancelar
             </button>
           </div>
@@ -216,7 +216,7 @@ export default function ContratosPage() {
       <div className="flex gap-2">
         {(["ALL", "ACTIVE", "FINISHED", "CANCELLED"] as const).map((f) => (
           <button key={f} onClick={() => setFilter(f)}
-            className={`text-xs font-medium px-3 py-1.5 rounded-lg border transition-colors ${filter === f ? "bg-brand-600 text-white border-brand-600" : "bg-white text-gray-500 border-gray-200 hover:bg-gray-50"}`}>
+            className={`text-xs font-medium px-3 py-1.5 rounded-lg border transition-colors ${filter === f ? "bg-primary text-white border-brand-600" : "bg-card text-muted-foreground border-border hover:bg-muted/20"}`}>
             {f === "ALL" ? "Todos" : f === "ACTIVE" ? "Ativos" : f === "FINISHED" ? "Encerrados" : "Cancelados"}
           </button>
         ))}
@@ -225,18 +225,18 @@ export default function ContratosPage() {
       {/* Modal de cancelamento */}
       {cancelModal && (
         <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl border border-gray-200 p-6 w-full max-w-md shadow-xl">
-            <h2 className="text-sm font-semibold text-gray-900 mb-1">Cancelar contrato</h2>
-            <p className="text-xs text-gray-500 mb-4">{cancelModal.name}</p>
-            <label className="block text-xs text-gray-500 mb-1">Motivo do cancelamento</label>
+          <div className="bg-card rounded-xl border border-border p-6 w-full max-w-md shadow-xl">
+            <h2 className="text-sm font-semibold text-foreground mb-1">Cancelar contrato</h2>
+            <p className="text-xs text-muted-foreground mb-4">{cancelModal.name}</p>
+            <label className="block text-xs text-muted-foreground mb-1">Motivo do cancelamento</label>
             <textarea
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mb-1"
+              className="w-full border border-border rounded-lg px-3 py-2 text-sm mb-1"
               rows={3}
               placeholder="Ex: Cliente faliu, problema pessoal, inadimplência, rescisão..."
               value={cancelReason}
               onChange={e => setCancelReason(e.target.value)}
             />
-            <p className="text-xs text-gray-400 mb-4">O contrato ficará registrado como cancelado com este motivo. Não será apagado.</p>
+            <p className="text-xs text-muted-foreground mb-4">O contrato ficará registrado como cancelado com este motivo. Não será apagado.</p>
             <div className="flex gap-2">
               <button
                 onClick={cancelContract}
@@ -245,7 +245,7 @@ export default function ContratosPage() {
               >
                 {cancelling ? "Cancelando..." : "Confirmar cancelamento"}
               </button>
-              <button onClick={() => { setCancelModal(null); setCancelReason(""); }} className="text-sm text-gray-500 px-4 py-2 rounded-lg border border-gray-200 hover:bg-gray-50">
+              <button onClick={() => { setCancelModal(null); setCancelReason(""); }} className="text-sm text-muted-foreground px-4 py-2 rounded-lg border border-border hover:bg-muted/20">
                 Voltar
               </button>
             </div>
@@ -255,14 +255,14 @@ export default function ContratosPage() {
 
       {/* Lista de contratos */}
       {loading ? (
-        <div className="flex items-center gap-2 text-gray-400 text-sm py-8 justify-center">
+        <div className="flex items-center gap-2 text-muted-foreground text-sm py-8 justify-center">
           <RefreshCw className="w-4 h-4 animate-spin" /> Carregando...
         </div>
       ) : filtered.length === 0 ? (
-        <div className="text-center py-16 text-gray-400">
+        <div className="text-center py-16 text-muted-foreground">
           <FileText className="w-12 h-12 mx-auto mb-3 opacity-30" />
           <p className="text-sm">Nenhum contrato cadastrado ainda.</p>
-          <button onClick={() => setShowForm(true)} className="mt-3 text-brand-600 text-sm font-medium hover:underline">Cadastrar o primeiro</button>
+          <button onClick={() => setShowForm(true)} className="mt-3 text-primary text-sm font-medium hover:underline">Cadastrar o primeiro</button>
         </div>
       ) : (
         <div className="space-y-3">
@@ -271,39 +271,39 @@ export default function ContratosPage() {
             const StatusIcon = statusConf.icon;
             const ann = c.anniversaryInfo;
             return (
-              <div key={c.id} className="bg-white rounded-xl border border-gray-100 p-4">
+              <div key={c.id} className="bg-card rounded-xl border border-border p-4">
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex items-start gap-3">
-                    <div className="w-10 h-10 rounded-full bg-brand-50 border border-brand-100 flex items-center justify-center text-sm font-semibold text-brand-700 shrink-0">
+                    <div className="w-10 h-10 rounded-full bg-brand-50 border border-brand-100 flex items-center justify-center text-sm font-semibold text-primary shrink-0">
                       {c.clientName.charAt(0).toUpperCase()}
                     </div>
                     <div>
                       <div className="flex items-center gap-2">
-                        <p className="text-sm font-semibold text-gray-900">{c.clientName}</p>
+                        <p className="text-sm font-semibold text-foreground">{c.clientName}</p>
                         <span className={`text-xs font-medium px-2 py-0.5 rounded-full border ${statusConf.color}`}>
                           {statusConf.label}
                         </span>
                         {ann?.isUpsellOpportunity && (
-                          <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-violet-50 border border-violet-200 text-violet-700 flex items-center gap-1">
+                          <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-violet-50 border border-primary/20 text-primary flex items-center gap-1">
                             <Star className="w-3 h-3" /> upsell
                           </span>
                         )}
                       </div>
-                      <p className="text-xs text-gray-500 mt-0.5">{SERVICE_LABELS[c.serviceType]} · {fmt(c.monthlyValue)}/mês</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">{SERVICE_LABELS[c.serviceType]} · {fmt(c.monthlyValue)}/mês</p>
                       {c.installments > 1 && (
-                        <p className="text-xs text-gray-400 mt-0.5">{c.installmentsPaid}/{c.installments} parcelas pagas</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">{c.installmentsPaid}/{c.installments} parcelas pagas</p>
                       )}
                     </div>
                   </div>
                   <div className="text-right shrink-0">
-                    <p className="text-xs text-gray-400">Assinou em</p>
-                    <p className="text-sm font-medium text-gray-700">{new Date(c.signedAt).toLocaleDateString("pt-BR")}</p>
+                    <p className="text-xs text-muted-foreground">Assinou em</p>
+                    <p className="text-sm font-medium text-foreground/80">{new Date(c.signedAt).toLocaleDateString("pt-BR")}</p>
                   </div>
                 </div>
 
                 {/* Info de aniversário */}
                 {ann && c.status === "ACTIVE" && (
-                  <div className="mt-3 pt-3 border-t border-gray-50 flex flex-wrap items-center gap-4 text-xs text-gray-500">
+                  <div className="mt-3 pt-3 border-t border-gray-50 flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
                     <span className="flex items-center gap-1">
                       <Calendar className="w-3 h-3" />
                       {ann.monthsActive} {ann.monthsActive === 1 ? "mês" : "meses"} de contrato
@@ -321,10 +321,10 @@ export default function ContratosPage() {
                   </div>
                 )}
                 {c.notes && (
-                  <p className="mt-2 text-xs text-gray-400 bg-gray-50 rounded-lg px-3 py-2">{c.notes}</p>
+                  <p className="mt-2 text-xs text-muted-foreground bg-muted/20 rounded-lg px-3 py-2">{c.notes}</p>
                 )}
                 {c.status === "CANCELLED" && (c as any).cancellationReason && (
-                  <div className="mt-2 text-xs bg-red-50 border border-red-100 rounded-lg px-3 py-2">
+                  <div className="mt-2 text-xs bg-red-50 border border-red-500/20 rounded-lg px-3 py-2">
                     <span className="font-medium text-red-600">Motivo: </span>
                     <span className="text-red-500">{(c as any).cancellationReason}</span>
                     {(c as any).cancelledAt && (

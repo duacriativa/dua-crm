@@ -61,7 +61,7 @@ export default function FinanceiroPage() {
 
   if (loading) return (
     <div className="flex items-center justify-center h-64">
-      <div className="flex items-center gap-3 text-gray-500">
+      <div className="flex items-center gap-3 text-muted-foreground">
         <RefreshCw className="w-5 h-5 animate-spin" />
         <span>Buscando dados do Asaas...</span>
       </div>
@@ -90,100 +90,100 @@ export default function FinanceiroPage() {
     <div className="p-6 space-y-6 max-w-6xl">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-gray-900">Financeiro</h1>
-          <p className="text-sm text-gray-500 mt-0.5">{monthLabel} · dados em tempo real do Asaas</p>
+          <h1 className="text-xl font-semibold text-foreground">Financeiro</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">{monthLabel} · dados em tempo real do Asaas</p>
         </div>
-        <button onClick={load} className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-700 border border-gray-200 rounded-lg px-3 py-1.5 transition-colors">
+        <button onClick={load} className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground/80 border border-border rounded-lg px-3 py-1.5 transition-colors">
           <RefreshCw className="w-4 h-4" /> Atualizar
         </button>
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-white rounded-xl border border-gray-100 p-4">
-          <p className="text-xs text-gray-500 mb-1">Total contratado</p>
-          <p className="text-2xl font-semibold text-gray-900">{fmt(data.total)}</p>
-          <p className="text-xs text-gray-400 mt-1">{(data.receivedCount ?? 0) + (data.pendingCount ?? 0)} clientes</p>
+        <div className="bg-card rounded-xl border border-border p-4">
+          <p className="text-xs text-muted-foreground mb-1">Total contratado</p>
+          <p className="text-2xl font-semibold text-foreground">{fmt(data.total)}</p>
+          <p className="text-xs text-muted-foreground mt-1">{(data.receivedCount ?? 0) + (data.pendingCount ?? 0)} clientes</p>
         </div>
-        <div className="bg-white rounded-xl border border-gray-100 p-4">
-          <p className="text-xs text-gray-500 mb-1">Já recebido</p>
+        <div className="bg-card rounded-xl border border-border p-4">
+          <p className="text-xs text-muted-foreground mb-1">Já recebido</p>
           <p className="text-2xl font-semibold text-green-600">{fmt(data.received)}</p>
           <div className="flex items-center gap-1 mt-1">
             <CheckCircle2 className="w-3 h-3 text-green-500" />
-            <p className="text-xs text-gray-400">{data.receivedCount ?? 0} pagamentos</p>
+            <p className="text-xs text-muted-foreground">{data.receivedCount ?? 0} pagamentos</p>
           </div>
         </div>
-        <div className="bg-white rounded-xl border border-gray-100 p-4">
-          <p className="text-xs text-gray-500 mb-1">Pendente</p>
+        <div className="bg-card rounded-xl border border-border p-4">
+          <p className="text-xs text-muted-foreground mb-1">Pendente</p>
           <p className="text-2xl font-semibold text-amber-600">{fmt(data.pending)}</p>
           <div className="flex items-center gap-1 mt-1">
             <Clock className="w-3 h-3 text-amber-500" />
-            <p className="text-xs text-gray-400">{data.pendingCount ?? 0} cobranças</p>
+            <p className="text-xs text-muted-foreground">{data.pendingCount ?? 0} cobranças</p>
           </div>
         </div>
-        <div className="bg-white rounded-xl border border-gray-100 p-4">
-          <p className="text-xs text-gray-500 mb-1">Em atraso</p>
+        <div className="bg-card rounded-xl border border-border p-4">
+          <p className="text-xs text-muted-foreground mb-1">Em atraso</p>
           <p className="text-2xl font-semibold text-red-600">{fmt(data.overdue)}</p>
           <div className="flex items-center gap-1 mt-1">
             <AlertCircle className="w-3 h-3 text-red-500" />
-            <p className="text-xs text-gray-400">{data.overdueCount ?? 0} cobranças</p>
+            <p className="text-xs text-muted-foreground">{data.overdueCount ?? 0} cobranças</p>
           </div>
         </div>
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-white rounded-xl border border-gray-100 p-4">
-          <p className="text-xs text-gray-500 mb-1">Ticket médio</p>
-          <p className="text-xl font-semibold text-gray-900">{fmt(data.ticketMedio ?? 0)}</p>
-          <p className="text-xs text-gray-400 mt-1">por cliente/mês</p>
+        <div className="bg-card rounded-xl border border-border p-4">
+          <p className="text-xs text-muted-foreground mb-1">Ticket médio</p>
+          <p className="text-xl font-semibold text-foreground">{fmt(data.ticketMedio ?? 0)}</p>
+          <p className="text-xs text-muted-foreground mt-1">por cliente/mês</p>
         </div>
-        <div className="bg-white rounded-xl border border-gray-100 p-4">
-          <p className="text-xs text-gray-500 mb-1">LTV estimado</p>
-          <p className="text-xl font-semibold text-gray-900">{fmt(data.ltv ?? 0)}</p>
-          <p className="text-xs text-gray-400 mt-1">por cliente (~8 meses)</p>
+        <div className="bg-card rounded-xl border border-border p-4">
+          <p className="text-xs text-muted-foreground mb-1">LTV estimado</p>
+          <p className="text-xl font-semibold text-foreground">{fmt(data.ltv ?? 0)}</p>
+          <p className="text-xs text-muted-foreground mt-1">por cliente (~8 meses)</p>
         </div>
-        <div className="bg-white rounded-xl border border-gray-100 p-4">
-          <p className="text-xs text-gray-500 mb-1">CAC</p>
-          <p className="text-xl font-semibold text-gray-900">{fmt(data.cac ?? 0)}</p>
-          <p className="text-xs text-gray-400 mt-1">custo de aquisição</p>
+        <div className="bg-card rounded-xl border border-border p-4">
+          <p className="text-xs text-muted-foreground mb-1">CAC</p>
+          <p className="text-xl font-semibold text-foreground">{fmt(data.cac ?? 0)}</p>
+          <p className="text-xs text-muted-foreground mt-1">custo de aquisição</p>
         </div>
-        <div className="bg-white rounded-xl border border-gray-100 p-4">
-          <p className="text-xs text-gray-500 mb-1">LTV / CAC</p>
-          <p className="text-xl font-semibold text-gray-900">{data.ltvCacRatio ?? 0}x</p>
+        <div className="bg-card rounded-xl border border-border p-4">
+          <p className="text-xs text-muted-foreground mb-1">LTV / CAC</p>
+          <p className="text-xl font-semibold text-foreground">{data.ltvCacRatio ?? 0}x</p>
           <div className="flex items-center gap-1 mt-1">
             {(data.ltvCacRatio ?? 0) >= 3
               ? <TrendingUp className="w-3 h-3 text-green-500" />
               : <TrendingDown className="w-3 h-3 text-red-500" />}
-            <p className="text-xs text-gray-400">meta: acima de 3x</p>
+            <p className="text-xs text-muted-foreground">meta: acima de 3x</p>
           </div>
         </div>
       </div>
 
-      <div className="bg-white rounded-xl border border-gray-100 p-4">
+      <div className="bg-card rounded-xl border border-border p-4">
         <div className="flex items-center justify-between mb-2">
-          <p className="text-sm font-medium text-gray-700">Taxa de inadimplência do mês</p>
+          <p className="text-sm font-medium text-foreground/80">Taxa de inadimplência do mês</p>
           <span className={`text-sm font-semibold ${(data.inadimplencyRate ?? 0) > 20 ? "text-red-600" : (data.inadimplencyRate ?? 0) > 10 ? "text-amber-600" : "text-green-600"}`}>
             {Math.round(data.inadimplencyRate ?? 0)}%
           </span>
         </div>
-        <div className="w-full bg-gray-100 rounded-full h-2">
+        <div className="w-full bg-muted/40 rounded-full h-2">
           <div
             className={`h-2 rounded-full transition-all ${(data.inadimplencyRate ?? 0) > 20 ? "bg-red-500" : (data.inadimplencyRate ?? 0) > 10 ? "bg-amber-400" : "bg-green-500"}`}
             style={{ width: `${Math.min(data.inadimplencyRate ?? 0, 100)}%` }}
           />
         </div>
-        <p className="text-xs text-gray-400 mt-1.5">Meta saudável: abaixo de 15%</p>
+        <p className="text-xs text-muted-foreground mt-1.5">Meta saudável: abaixo de 15%</p>
       </div>
 
       {(data.pendingByClient?.length ?? 0) > 0 && (
-        <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
-          <div className="px-4 py-3 border-b border-gray-100">
-            <h2 className="text-sm font-semibold text-gray-800">Cobranças pendentes por cliente</h2>
+        <div className="bg-card rounded-xl border border-border overflow-hidden">
+          <div className="px-4 py-3 border-b border-border">
+            <h2 className="text-sm font-semibold text-foreground">Cobranças pendentes por cliente</h2>
           </div>
           <div className="divide-y divide-gray-50">
             {data.pendingByClient.map((client, i) => (
               <div key={i}>
                 <button
-                  className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50 transition-colors text-left"
+                  className="w-full flex items-center justify-between px-4 py-3 hover:bg-muted/20 transition-colors text-left"
                   onClick={() => setExpanded(expanded === client.name ? null : client.name)}
                 >
                   <div className="flex items-center gap-3">
@@ -191,22 +191,22 @@ export default function FinanceiroPage() {
                       {client.name.charAt(0).toUpperCase()}
                     </div>
                     <div>
-                      <p className="text-sm font-medium text-gray-900">{client.name}</p>
-                      <p className="text-xs text-gray-400">{client.items.length} cobrança{client.items.length > 1 ? "s" : ""}</p>
+                      <p className="text-sm font-medium text-foreground">{client.name}</p>
+                      <p className="text-xs text-muted-foreground">{client.items.length} cobrança{client.items.length > 1 ? "s" : ""}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-semibold text-amber-600">{fmt(client.total)}</span>
-                    {expanded === client.name ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
+                    {expanded === client.name ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
                   </div>
                 </button>
                 {expanded === client.name && (
-                  <div className="px-4 pb-3 bg-gray-50">
+                  <div className="px-4 pb-3 bg-muted/20">
                     {client.items.map((item, j) => (
-                      <div key={j} className="flex items-center justify-between py-1.5 text-xs text-gray-600">
+                      <div key={j} className="flex items-center justify-between py-1.5 text-xs text-muted-foreground">
                         <span>{item.description || "Cobrança"}</span>
                         <div className="flex items-center gap-3">
-                          <span className="text-gray-400">vence {new Date(item.dueDate).toLocaleDateString("pt-BR")}</span>
+                          <span className="text-muted-foreground">vence {new Date(item.dueDate).toLocaleDateString("pt-BR")}</span>
                           <span className="font-medium">{fmt(item.value)}</span>
                         </div>
                       </div>
@@ -220,7 +220,7 @@ export default function FinanceiroPage() {
       )}
 
       {(data.overdueItems?.length ?? 0) > 0 && (
-        <div className="bg-white rounded-xl border border-red-100 overflow-hidden">
+        <div className="bg-card rounded-xl border border-red-100 overflow-hidden">
           <div className="px-4 py-3 border-b border-red-100 bg-red-50">
             <h2 className="text-sm font-semibold text-red-700 flex items-center gap-2">
               <AlertCircle className="w-4 h-4" /> Em atraso — ação necessária
@@ -230,8 +230,8 @@ export default function FinanceiroPage() {
             {data.overdueItems.map((item: any, i: number) => (
               <div key={i} className="flex items-center justify-between px-4 py-3">
                 <div>
-                  <p className="text-sm font-medium text-gray-900">{item.customerName || item.customer}</p>
-                  <p className="text-xs text-gray-400">{item.description || "Cobrança"} · venceu {new Date(item.dueDate).toLocaleDateString("pt-BR")}</p>
+                  <p className="text-sm font-medium text-foreground">{item.customerName || item.customer}</p>
+                  <p className="text-xs text-muted-foreground">{item.description || "Cobrança"} · venceu {new Date(item.dueDate).toLocaleDateString("pt-BR")}</p>
                 </div>
                 <span className="text-sm font-semibold text-red-600">{fmt(item.value)}</span>
               </div>
@@ -241,10 +241,10 @@ export default function FinanceiroPage() {
       )}
 
       {(data.commissions?.total ?? 0) > 0 && (
-        <div className="bg-white rounded-xl border border-gray-100 p-4">
-          <p className="text-xs text-gray-500 mb-1">Comissões do mês</p>
+        <div className="bg-card rounded-xl border border-border p-4">
+          <p className="text-xs text-muted-foreground mb-1">Comissões do mês</p>
           <p className="text-xl font-semibold text-violet-600">{fmt(data.commissions.total)}</p>
-          <p className="text-xs text-gray-400 mt-1">ex: comissão Kommo — não incluso no faturamento principal</p>
+          <p className="text-xs text-muted-foreground mt-1">ex: comissão Kommo — não incluso no faturamento principal</p>
         </div>
       )}
     </div>
