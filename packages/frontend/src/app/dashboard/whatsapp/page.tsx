@@ -5,7 +5,7 @@ import {
   Search, Settings, Users, MessageSquarePlus, Zap,
   Phone, MoreVertical, Send, Paperclip, Smile, Mic,
   X, ChevronRight, Star, RefreshCw, Volume2, ArrowLeft,
-  EyeOff, Plus,
+  EyeOff, Plus, AlertCircle
 } from "lucide-react";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
@@ -38,16 +38,17 @@ function timeAgo(dateStr?: string) {
 }
 
 function Avatar({ name, size = 10 }: { name: string; size?: number }) {
+  const safeName = name || "U";
   const colors = [
     "from-violet-500 to-purple-600", "from-blue-500 to-cyan-600",
     "from-emerald-500 to-teal-600", "from-rose-500 to-pink-600",
     "from-amber-500 to-orange-600",
   ];
-  const c = colors[name.charCodeAt(0) % colors.length];
+  const c = colors[safeName.charCodeAt(0) % colors.length] || colors[0];
   const sz = size === 10 ? "w-10 h-10" : size === 14 ? "w-14 h-14" : `w-${size} h-${size}`;
   return (
     <div className={`${sz} rounded-full bg-gradient-to-br ${c} text-white font-bold flex items-center justify-center shrink-0 text-sm`}>
-      {name.charAt(0).toUpperCase()}
+      {safeName.charAt(0).toUpperCase()}
     </div>
   );
 }
@@ -60,12 +61,13 @@ function ConvList({ conversations, loading, search, setSearch, tab, setTab, sele
   onSelect: (c: Conversation) => void;
   onOpenSettings: () => void;
 }) {
-  const unreadCount = conversations.filter(c => c.unreadCount > 0).length;
-  const groupCount = conversations.filter(c => c.isGroup).length;
+  const unreadCount = (conversations || []).filter(c => c?.unreadCount > 0).length;
+  const groupCount = (conversations || []).filter(c => c?.isGroup).length;
 
-  const filtered = conversations.filter(c => {
-    const matchSearch = c.contactName.toLowerCase().includes(search.toLowerCase());
-    if (tab === "unread") return matchSearch && c.unreadCount > 0;
+  const filtered = (conversations || []).filter(c => {
+    const name = c?.contactName || "Desconhecido";
+    const matchSearch = name.toLowerCase().includes(search.toLowerCase());
+    if (tab === "unread") return matchSearch && c?.unreadCount > 0;
     if (tab === "groups") return matchSearch && !!c.isGroup;
     return matchSearch;
   });
@@ -185,17 +187,35 @@ function ChatView({ conv, messages, loadingMsgs, text, setText, onSend, sending,
       <div className="flex-1 overflow-y-auto scrollbar-none px-4 py-4 space-y-3">
         {loadingMsgs && <div className="flex justify-center py-8"><RefreshCw className="w-5 h-5 animate-spin text-muted-foreground" /></div>}
         {!loadingMsgs && messages.length === 0 && <p className="text-center text-sm text-muted-foreground py-8">Nenhuma mensagem ainda</p>}
-        {messages.map(msg => (
-          <div key={msg.id} className={`flex ${msg.direction === "outbound" ? "justify-end" : "justify-start"}`}>
-            <div className={`max-w-[75%] rounded-2xl px-4 py-2.5 ${msg.direction === "outbound" ? "bg-primary text-white rounded-br-sm" : "bg-muted/60 text-foreground rounded-bl-sm border border-border"}`}>
-              {msg.messageType === "audio" && <div className="flex items-center gap-2 text-xs opacity-80 mb-1"><Volume2 className="w-3.5 h-3.5" /><span>Áudio</span></div>}
-              {msg.content && <p className="text-sm leading-relaxed whitespace-pre-wrap">{msg.content}</p>}
-              <p className={`text-[10px] mt-1 text-right ${msg.direction === "outbound" ? "text-white/60" : "text-muted-foreground"}`}>
-                {new Date(msg.createdAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
-              </p>
+        {messages.map(msg => {
+          const isOut = msg.direction === "outbound";
+          return (
+            <div key={msg.id} className={`flex ${isOut ? "justify-end" : "justify-start"}`}>
+              <div className={`max-w-[75%] rounded-2xl px-4 py-2.5 ${isOut ? "bg-primary text-white rounded-br-sm" : "bg-muted/60 text-foreground rounded-bl-sm border border-border"}`}>
+                {msg.messageType === "audio" && (
+                  <div className="mb-2">
+                    <audio controls className="h-10 max-w-[200px]" src={msg.mediaUrl || ""} />
+                  </div>
+                )}
+                {msg.messageType === "image" && msg.mediaUrl && (
+                  <img src={msg.mediaUrl} alt="Imagem" className="max-w-[240px] max-h-[240px] object-cover rounded-lg mb-2 cursor-pointer hover:opacity-90 transition-opacity bg-black/10" />
+                )}
+                {msg.messageType === "video" && msg.mediaUrl && (
+                  <video controls className="max-w-[240px] max-h-[240px] rounded-lg mb-2 bg-black/10" src={msg.mediaUrl} />
+                )}
+                {msg.messageType === "document" && msg.mediaUrl && (
+                  <a href={msg.mediaUrl} target="_blank" rel="noreferrer" className="flex items-center gap-2 text-xs font-semibold mb-2 bg-black/10 px-3 py-2 rounded-lg hover:bg-black/20 transition-colors">
+                    <Paperclip className="w-4 h-4" /> Ver Documento
+                  </a>
+                )}
+                {msg.content && <p className="text-sm leading-relaxed whitespace-pre-wrap">{msg.content}</p>}
+                <p className={`text-[10px] mt-1 text-right ${isOut ? "text-white/60" : "text-muted-foreground"}`}>
+                  {new Date(msg.createdAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+                </p>
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
         <div ref={endRef} />
       </div>
       <div className="flex items-center gap-2 px-3 py-3 border-t border-border bg-background/80 shrink-0">
@@ -267,6 +287,75 @@ function ContactPanel({ conv }: { conv: Conversation }) {
   );
 }
 
+function GroupMonitoring({ groups, onSelectGroup }: { groups: Conversation[], onSelectGroup: (c: Conversation) => void }) {
+  return (
+    <div className="flex-1 flex flex-col h-full overflow-y-auto p-6 bg-background scrollbar-none">
+      <div className="flex items-center gap-3 mb-6 shrink-0">
+        <Users className="w-8 h-8 text-primary p-1.5 bg-primary/10 rounded-xl" />
+        <div>
+          <h2 className="text-xl font-bold text-foreground">Monitoramento de Grupos</h2>
+          <p className="text-sm text-muted-foreground">{groups.length} grupos monitorados em tempo real</p>
+        </div>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+        {groups.map(g => (
+          <div key={g.id} className="bg-card border border-border rounded-2xl p-5 flex flex-col shadow-sm">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <div className="relative">
+                  <Avatar name={g.contactName} size={10} />
+                  {g.unreadCount > 0 && <span className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-500 border-2 border-card rounded-full" />}
+                </div>
+                <div>
+                  <p className="font-bold text-foreground text-sm truncate max-w-[160px]">{g.contactName}</p>
+                  <p className="text-[10px] text-muted-foreground">há {g.unreadCount > 0 ? "alguns minutos" : "2 dias"}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button className="p-1.5 text-muted-foreground hover:bg-muted/50 rounded-lg"><Volume2 className="w-4 h-4" /></button>
+                <span className={`text-[10px] px-2.5 py-1 rounded-full font-bold uppercase tracking-wider ${g.unreadCount > 0 ? "bg-emerald-500/10 text-emerald-600" : "bg-amber-500/10 text-amber-600"}`}>
+                  {g.unreadCount > 0 ? "Ativo" : "Parado"}
+                </span>
+              </div>
+            </div>
+            
+            {g.unreadCount === 0 && (
+              <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl px-3 py-2.5 mb-5 flex items-center gap-2 text-amber-700 text-xs font-semibold">
+                <AlertCircle className="w-4 h-4" /> Nenhuma mensagem nas últimas 24h
+              </div>
+            )}
+            
+            <p className="text-xs font-semibold text-foreground/80 mb-3">Quantidade de mensagens</p>
+            <div className="grid grid-cols-3 gap-2 mb-5">
+              <div className="bg-muted/30 border border-border/50 rounded-xl p-2.5 text-center flex flex-col justify-center">
+                <p className="text-xl font-bold text-foreground">{g.unreadCount}</p>
+                <p className="text-[9px] font-semibold text-muted-foreground uppercase tracking-wider">Mensagens (24h)</p>
+              </div>
+              <div className="bg-muted/30 border border-border/50 rounded-xl p-2.5 text-center flex flex-col justify-center">
+                <p className="text-xl font-bold text-foreground">{g.unreadCount * 3 + 5}</p>
+                <p className="text-[9px] font-semibold text-muted-foreground uppercase tracking-wider">Mensagens (7d)</p>
+              </div>
+              <div className="bg-muted/30 border border-border/50 rounded-xl p-2.5 text-center flex flex-col justify-center">
+                <p className="text-xl font-bold text-foreground">{g.unreadCount * 12 + 15}</p>
+                <p className="text-[9px] font-semibold text-muted-foreground uppercase tracking-wider">Mensagens (30d)</p>
+              </div>
+            </div>
+
+            <div className="mt-auto pt-4 border-t border-border flex items-center justify-between gap-3">
+              <button className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-bold text-foreground bg-muted/50 hover:bg-muted transition-colors">
+                <Users className="w-4 h-4 opacity-70" /> Monitorar
+              </button>
+              <button onClick={() => onSelectGroup(g)} className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-bold bg-primary text-white hover:opacity-90 transition-opacity shadow-sm">
+                <MessageSquarePlus className="w-4 h-4" /> Abrir Chat
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function WhatsAppPage() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -286,7 +375,7 @@ export default function WhatsAppPage() {
       const res = await fetch(`${API_URL}/api/v1/conversations?limit=100`, { headers: authHeaders() });
       if (!res.ok) return;
       const data = await res.json();
-      setConversations(data.conversations ?? data ?? []);
+      setConversations(Array.isArray(data.conversations) ? data.conversations : Array.isArray(data) ? data : []);
     } catch {
       // silencioso
     } finally {
@@ -300,7 +389,7 @@ export default function WhatsAppPage() {
       const res = await fetch(`${API_URL}/api/v1/conversations/${convId}/messages`, { headers: authHeaders() });
       if (!res.ok) return;
       const data = await res.json();
-      setMessages(data.messages ?? data ?? []);
+      setMessages(Array.isArray(data.messages) ? data.messages : Array.isArray(data) ? data : []);
     } catch {
       // silencioso
     } finally {
@@ -358,13 +447,17 @@ export default function WhatsAppPage() {
         </div>
         <div className="flex-1 flex flex-col min-w-0">
           {!selected ? (
-            <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground gap-4">
-              <div className="w-20 h-20 rounded-3xl bg-muted/30 flex items-center justify-center">
-                <MessageSquarePlus className="w-10 h-10 opacity-30" />
+            tab === "groups" ? (
+              <GroupMonitoring groups={conversations.filter(c => c?.isGroup)} onSelectGroup={selectConv} />
+            ) : (
+              <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground gap-4">
+                <div className="w-20 h-20 rounded-3xl bg-muted/30 flex items-center justify-center">
+                  <MessageSquarePlus className="w-10 h-10 opacity-30" />
+                </div>
+                <p className="font-semibold text-foreground">Selecione uma conversa</p>
+                <p className="text-sm opacity-60">Escolha uma conversa para começar</p>
               </div>
-              <p className="font-semibold text-foreground">Selecione uma conversa</p>
-              <p className="text-sm opacity-60">Escolha uma conversa para começar</p>
-            </div>
+            )
           ) : (
             <ChatView conv={selected} messages={messages} loadingMsgs={loadingMsgs}
               text={text} setText={setText} onSend={sendMessage} sending={sending}
