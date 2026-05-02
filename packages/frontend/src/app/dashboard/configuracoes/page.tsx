@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback, useEffect } from "react";
 import {
   User, Palette, RefreshCw, CreditCard, Smartphone, Bell,
   Zap, Puzzle, FileText, Plus, Trash2, Save, Check,
@@ -440,25 +440,20 @@ function TabNotificacoes() {
 /* ── INTEGRAÇÕES ── */
 function TabIntegracoes() {
   const router = useRouter();
+  const [waStatus, setWaStatus] = useState<"checking" | "connected" | "disconnected">("checking");
 
-  const integrations = [
-    {
-      key: "whatsapp",
-      name: "WhatsApp",
-      desc: "Conecte sua conta do WhatsApp",
-      icon: "💬",
-      status: "disconnected",
-      action: () => router.push("/dashboard/whatsapp"),
-    },
-    {
-      key: "asaas",
-      name: "Asaas",
-      desc: "Cobranças e pagamentos automáticos",
-      icon: "💳",
-      status: "connected",
-      action: () => {},
-    },
-  ];
+  const checkWaStatus = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_URL}/api/v1/whatsapp/status`, { headers: authHeaders() });
+      if (!res.ok) return;
+      const data = await res.json();
+      setWaStatus(data.connected ? "connected" : "disconnected");
+    } catch {
+      setWaStatus("disconnected");
+    }
+  }, []);
+
+  useEffect(() => { checkWaStatus(); }, [checkWaStatus]);
 
   const comingSoon = [
     { name: "Google Agenda", desc: "Sincronize compromissos", icon: "📅" },
@@ -473,36 +468,57 @@ function TabIntegracoes() {
     <div className="max-w-3xl space-y-6">
       <div>
         <h2 className="text-base font-bold text-foreground mb-4">Integrações Ativas</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {integrations.map(intg => (
-            <div key={intg.key} className="surface-card p-5">
-              <div className="flex items-start justify-between mb-3">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-muted/50 flex items-center justify-center text-xl">{intg.icon}</div>
-                  <div>
-                    <p className="font-semibold text-foreground text-sm">{intg.name}</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">{intg.desc}</p>
-                  </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
+          
+          {/* Card Especial do WhatsApp */}
+          <div className="surface-card p-5 flex flex-col">
+            <div className="flex items-start justify-between mb-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-muted/50 flex items-center justify-center text-xl">💬</div>
+                <div>
+                  <p className="font-semibold text-foreground text-sm">WhatsApp</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">Conecte sua conta do WhatsApp</p>
                 </div>
-                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-                  intg.status === "connected"
-                    ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30"
-                    : "bg-amber-500/15 text-amber-400 border-amber-500/30"
-                }`}>
-                  {intg.status === "connected" ? "Conectado" : "Desconectado"}
-                </span>
               </div>
-              <button
-                onClick={intg.action}
-                className={`w-full py-2 text-sm font-medium rounded-xl transition-colors ${
-                  intg.status === "connected"
-                    ? "border border-border text-muted-foreground hover:bg-muted/50"
-                    : "text-white bg-gradient-primary hover:opacity-90"
-                }`}>
-                {intg.status === "connected" ? "Gerenciar" : "Configurar"}
-              </button>
+              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                waStatus === "connected"
+                  ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30"
+                  : waStatus === "checking" ? "bg-muted text-muted-foreground" : "bg-amber-500/15 text-amber-400 border-amber-500/30"
+              }`}>
+                {waStatus === "connected" ? "Conectado" : waStatus === "checking" ? "Verificando..." : "Desconectado"}
+              </span>
             </div>
-          ))}
+
+            <button
+              onClick={() => router.push("/dashboard/whatsapp")}
+              className={`w-full py-2 mt-auto text-sm font-medium rounded-xl transition-colors ${
+                waStatus === "connected"
+                  ? "border border-border text-muted-foreground hover:bg-muted/50"
+                  : "text-white bg-gradient-primary hover:opacity-90"
+              }`}>
+              {waStatus === "connected" ? "Gerenciar" : "Configurar"}
+            </button>
+          </div>
+
+          {/* Card do Asaas */}
+          <div className="surface-card p-5 flex flex-col">
+            <div className="flex items-start justify-between mb-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-muted/50 flex items-center justify-center text-xl">💳</div>
+                <div>
+                  <p className="font-semibold text-foreground text-sm">Asaas</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">Cobranças e pagamentos automáticos</p>
+                </div>
+              </div>
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold border bg-emerald-500/15 text-emerald-400 border-emerald-500/30">
+                Conectado
+              </span>
+            </div>
+            <button className="w-full py-2 mt-auto text-sm font-medium rounded-xl transition-colors border border-border text-muted-foreground hover:bg-muted/50">
+              Gerenciar
+            </button>
+          </div>
+
         </div>
       </div>
 
