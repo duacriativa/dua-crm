@@ -234,16 +234,132 @@ function ChatView({ conv, messages, loadingMsgs, text, setText, onSend, sending,
 }
 
 function SettingsPanel({ onClose }: { onClose: () => void }) {
+  const [status, setStatus] = useState<"checking" | "connected" | "disconnected">("checking");
+  const [qrCode, setQrCode] = useState<string | null>(null);
+  const [generating, setGenerating] = useState(false);
+
+  const checkStatus = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_URL}/api/v1/whatsapp/status`, { headers: authHeaders() });
+      if (!res.ok) return;
+      const data = await res.json();
+      setStatus(data.connected ? "connected" : "disconnected");
+      if (data.connected) setQrCode(null);
+      return data.connected;
+    } catch {
+      setStatus("disconnected");
+      return false;
+    }
+  }, []);
+
+  useEffect(() => {
+    checkStatus();
+  }, [checkStatus]);
+
+  useEffect(() => {
+    if (qrCode && status !== "connected") {
+      const interval = setInterval(async () => {
+        const isConnected = await checkStatus();
+        if (isConnected) clearInterval(interval);
+      }, 5000);
+      return () => clearInterval(interval);
+    }
+  }, [qrCode, status, checkStatus]);
+
+  const generateQr = async () => {
+    setGenerating(true);
+    try {
+      const res = await fetch(`${API_URL}/api/v1/whatsapp/connect`, { method: "POST", headers: authHeaders() });
+      const data = await res.json();
+      if (data.connected) {
+        setStatus("connected");
+      } else if (data.qrCode) {
+        setQrCode(data.qrCode);
+        setStatus("disconnected");
+      }
+    } catch {
+      alert("Erro ao gerar QR Code");
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const disconnect = async () => {
+    if (!confirm("Tem certeza que deseja desconectar o WhatsApp?")) return;
+    try {
+      await fetch(`${API_URL}/api/v1/whatsapp/disconnect`, { method: "POST", headers: authHeaders() });
+      setStatus("disconnected");
+      setQrCode(null);
+    } catch {
+      alert("Erro ao desconectar");
+    }
+  };
+
   return (
     <div className="flex flex-col h-full">
       <div className="flex items-center justify-between px-5 py-4 border-b border-border shrink-0">
         <div>
-          <p className="font-bold text-foreground text-sm">Configurações & Automações</p>
-          <p className="text-xs text-muted-foreground mt-0.5">Gerencie automações de resposta</p>
+          <p className="font-bold text-foreground text-sm">Configurações do WhatsApp</p>
+          <p className="text-xs text-muted-foreground mt-0.5">Conexão e Automações</p>
         </div>
         <button onClick={onClose} className="p-1.5 rounded-lg text-muted-foreground hover:bg-muted/50"><X className="w-4 h-4" /></button>
       </div>
-      <div className="flex-1 p-5 space-y-5 overflow-y-auto scrollbar-none">
+      <div className="flex-1 p-5 space-y-6 overflow-y-auto scrollbar-none">
+        
+        {/* Sessão de Conexão */}
+        <div className="bg-card border border-border rounded-xl p-4">
+          <p className="text-sm font-semibold text-foreground mb-4">Conexão do Dispositivo</p>
+          
+          {status === "checking" && (
+            <div className="flex items-center justify-center py-6">
+              <RefreshCw className="w-5 h-5 animate-spin text-muted-foreground" />
+            </div>
+          )}
+          
+          {status === "connected" && (
+            <div className="flex flex-col items-center gap-3 py-2 text-center">
+              <div className="w-12 h-12 rounded-full bg-emerald-500/10 flex items-center justify-center">
+                <Zap className="w-6 h-6 text-emerald-500" />
+              </div>
+              <div>
+                <p className="text-sm font-bold text-emerald-500">WhatsApp Conectado</p>
+                <p className="text-xs text-muted-foreground mt-1">Sua instância está pronta para enviar e receber mensagens.</p>
+              </div>
+              <button onClick={disconnect} className="mt-2 px-4 py-2 text-xs font-semibold text-red-500 hover:bg-red-500/10 rounded-lg transition-colors border border-red-500/20">
+                Desconectar Aparelho
+              </button>
+            </div>
+          )}
+
+          {status === "disconnected" && !qrCode && (
+            <div className="flex flex-col items-center gap-3 py-2 text-center">
+              <Phone className="w-8 h-8 text-muted-foreground opacity-50" />
+              <div>
+                <p className="text-sm font-semibold text-foreground">WhatsApp Desconectado</p>
+                <p className="text-xs text-muted-foreground mt-1 px-2">Conecte seu WhatsApp Business escaneando o QR Code para começar a usar o CRM.</p>
+              </div>
+              <button onClick={generateQr} disabled={generating} className="mt-2 w-full flex items-center justify-center gap-2 px-4 py-2.5 text-xs font-bold text-white bg-primary rounded-xl hover:opacity-90 transition-opacity disabled:opacity-50">
+                {generating ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
+                Gerar QR Code
+              </button>
+            </div>
+          )}
+
+          {status === "disconnected" && qrCode && (
+            <div className="flex flex-col items-center gap-4 py-2 text-center">
+              <p className="text-xs font-medium text-foreground">Escaneie o QR Code com seu WhatsApp:</p>
+              <div className="p-2 bg-white rounded-xl shadow-sm border border-border">
+                <img src={qrCode} alt="QR Code WhatsApp" className="w-48 h-48" />
+              </div>
+              <p className="text-[10px] text-muted-foreground">Abra o WhatsApp no celular &gt; Aparelhos Conectados &gt; Conectar um Aparelho</p>
+              <button onClick={generateQr} disabled={generating} className="text-xs text-primary hover:underline">
+                Gerar novo código
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Sessão de Automações */}
         {[{ label: "Automações", Icon: Zap }, { label: "Respostas Rápidas", Icon: MessageSquarePlus }].map(({ label, Icon }) => (
           <div key={label}>
             <div className="flex items-center justify-between mb-3">
