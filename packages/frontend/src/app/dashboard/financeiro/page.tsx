@@ -5,6 +5,7 @@ import api from "@/lib/api";
 import {
   TrendingUp, TrendingDown, AlertCircle,
   CheckCircle2, Clock, RefreshCw, ChevronDown, ChevronUp,
+  Eye, EyeOff,
 } from "lucide-react";
 
 function fmt(val: number) {
@@ -43,6 +44,7 @@ export default function FinanceiroPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [hideValues, setHideValues] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -101,12 +103,12 @@ export default function FinanceiroPage() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-card rounded-xl border border-border p-4">
           <p className="text-xs text-muted-foreground mb-1">Total contratado</p>
-          <p className="text-2xl font-semibold text-foreground">{fmt(data.total)}</p>
+          <p className="text-2xl font-semibold text-foreground">{hideValues ? "R$ •••" : fmt(data.total)}</p>
           <p className="text-xs text-muted-foreground mt-1">{(data.receivedCount ?? 0) + (data.pendingCount ?? 0)} clientes</p>
         </div>
         <div className="bg-card rounded-xl border border-border p-4">
           <p className="text-xs text-muted-foreground mb-1">Já recebido</p>
-          <p className="text-2xl font-semibold text-green-600">{fmt(data.received)}</p>
+          <p className="text-2xl font-semibold text-green-600">{hideValues ? "R$ •••" : fmt(data.received)}</p>
           <div className="flex items-center gap-1 mt-1">
             <CheckCircle2 className="w-3 h-3 text-green-500" />
             <p className="text-xs text-muted-foreground">{data.receivedCount ?? 0} pagamentos</p>
@@ -114,7 +116,7 @@ export default function FinanceiroPage() {
         </div>
         <div className="bg-card rounded-xl border border-border p-4">
           <p className="text-xs text-muted-foreground mb-1">Pendente</p>
-          <p className="text-2xl font-semibold text-amber-600">{fmt(data.pending)}</p>
+          <p className="text-2xl font-semibold text-amber-600">{hideValues ? "R$ •••" : fmt(data.pending)}</p>
           <div className="flex items-center gap-1 mt-1">
             <Clock className="w-3 h-3 text-amber-500" />
             <p className="text-xs text-muted-foreground">{data.pendingCount ?? 0} cobranças</p>
@@ -122,7 +124,7 @@ export default function FinanceiroPage() {
         </div>
         <div className="bg-card rounded-xl border border-border p-4">
           <p className="text-xs text-muted-foreground mb-1">Em atraso</p>
-          <p className="text-2xl font-semibold text-red-600">{fmt(data.overdue)}</p>
+          <p className="text-2xl font-semibold text-red-600">{hideValues ? "R$ •••" : fmt(data.overdue)}</p>
           <div className="flex items-center gap-1 mt-1">
             <AlertCircle className="w-3 h-3 text-red-500" />
             <p className="text-xs text-muted-foreground">{data.overdueCount ?? 0} cobranças</p>
@@ -133,17 +135,17 @@ export default function FinanceiroPage() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-card rounded-xl border border-border p-4">
           <p className="text-xs text-muted-foreground mb-1">Ticket médio</p>
-          <p className="text-xl font-semibold text-foreground">{fmt(data.ticketMedio ?? 0)}</p>
+          <p className="text-xl font-semibold text-foreground">{hideValues ? "R$ •••" : fmt(data.ticketMedio ?? 0)}</p>
           <p className="text-xs text-muted-foreground mt-1">por cliente/mês</p>
         </div>
         <div className="bg-card rounded-xl border border-border p-4">
           <p className="text-xs text-muted-foreground mb-1">LTV estimado</p>
-          <p className="text-xl font-semibold text-foreground">{fmt(data.ltv ?? 0)}</p>
+          <p className="text-xl font-semibold text-foreground">{hideValues ? "R$ •••" : fmt(data.ltv ?? 0)}</p>
           <p className="text-xs text-muted-foreground mt-1">por cliente (~8 meses)</p>
         </div>
         <div className="bg-card rounded-xl border border-border p-4">
           <p className="text-xs text-muted-foreground mb-1">CAC</p>
-          <p className="text-xl font-semibold text-foreground">{fmt(data.cac ?? 0)}</p>
+          <p className="text-xl font-semibold text-foreground">{hideValues ? "R$ •••" : fmt(data.cac ?? 0)}</p>
           <p className="text-xs text-muted-foreground mt-1">custo de aquisição</p>
         </div>
         <div className="bg-card rounded-xl border border-border p-4">
@@ -196,7 +198,7 @@ export default function FinanceiroPage() {
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="text-sm font-semibold text-amber-600">{fmt(client.total)}</span>
+                    <span className="text-sm font-semibold text-amber-600">{hideValues ? "R$ •••" : fmt(client.total)}</span>
                     {expanded === client.name ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
                   </div>
                 </button>
@@ -207,7 +209,7 @@ export default function FinanceiroPage() {
                         <span>{item.description || "Cobrança"}</span>
                         <div className="flex items-center gap-3">
                           <span className="text-muted-foreground">vence {new Date(item.dueDate).toLocaleDateString("pt-BR")}</span>
-                          <span className="font-medium">{fmt(item.value)}</span>
+                          <span className="font-medium">{hideValues ? "R$ •••" : fmt(item.value)}</span>
                         </div>
                       </div>
                     ))}
@@ -233,7 +235,7 @@ export default function FinanceiroPage() {
                   <p className="text-sm font-medium text-foreground">{item.customerName || item.customer}</p>
                   <p className="text-xs text-muted-foreground">{item.description || "Cobrança"} · venceu {new Date(item.dueDate).toLocaleDateString("pt-BR")}</p>
                 </div>
-                <span className="text-sm font-semibold text-red-600">{fmt(item.value)}</span>
+                <span className="text-sm font-semibold text-red-600">{hideValues ? "R$ •••" : fmt(item.value)}</span>
               </div>
             ))}
           </div>
@@ -243,7 +245,7 @@ export default function FinanceiroPage() {
       {(data.commissions?.total ?? 0) > 0 && (
         <div className="bg-card rounded-xl border border-border p-4">
           <p className="text-xs text-muted-foreground mb-1">Comissões do mês</p>
-          <p className="text-xl font-semibold text-violet-600">{fmt(data.commissions.total)}</p>
+          <p className="text-xl font-semibold text-violet-600">{hideValues ? "R$ •••" : fmt(data.commissions.total)}</p>
           <p className="text-xs text-muted-foreground mt-1">ex: comissão Kommo — não incluso no faturamento principal</p>
         </div>
       )}
