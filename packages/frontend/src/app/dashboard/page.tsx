@@ -1,6 +1,7 @@
 "use client";
 
-import { TrendingUp, Users, DollarSign, Activity, ArrowUpRight, ArrowDownRight, MessageSquare, Sparkles } from "lucide-react";
+import { TrendingUp, Users, DollarSign, Activity, ArrowUpRight, ArrowDownRight, MessageSquare, Sparkles, Eye, EyeOff } from "lucide-react";
+import { useState } from "react";
 
 type Metric = {
   label: string; value: string; hint: string; badge: string;
@@ -26,7 +27,7 @@ const retention: Metric[] = [
   { label: "Em atraso",     value: "R$ 1.000",  hint: "1 cobrança vencida",         badge: "ação necessária",     icon: ArrowDownRight,trend: "down"    },
 ];
 
-function MetricCard({ m }: { m: Metric }) {
+function MetricCard({ m, hide }: { m: Metric; hide?: boolean }) {
   const Icon = m.icon;
   const trendColor = m.trend === "up" ? "text-success" : m.trend === "down" ? "text-destructive" : "text-muted-foreground";
   return (
@@ -40,11 +41,11 @@ function MetricCard({ m }: { m: Metric }) {
           </div>
         </div>
         <div>
-          <p className="text-3xl font-bold tracking-tight text-foreground">{m.value}</p>
+          <p className="text-3xl font-bold tracking-tight text-foreground">{hide ? "•••" : m.value}</p>
           <p className="text-xs text-muted-foreground mt-1">{m.hint}</p>
         </div>
         <span className="self-start text-xs px-2.5 py-1 rounded-full bg-muted/60 text-muted-foreground border border-border font-normal">
-          {m.badge}
+          {hide ? "•••" : m.badge}
         </span>
       </div>
     </div>
@@ -64,6 +65,7 @@ const recentConvos = [
 
 export default function DashboardPage() {
   const today = new Date().toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "long" });
+  const [hideValues, setHideValues] = useState(false);
 
   return (
     <div className="relative">
@@ -71,7 +73,16 @@ export default function DashboardPage() {
       <div className="relative p-6 md:p-8 max-w-[1600px] mx-auto animate-fade-in">
         <header className="mb-8 flex flex-col md:flex-row md:items-end md:justify-between gap-4">
           <div>
-            <h1 className="text-3xl md:text-4xl font-bold tracking-tight text-foreground">Dashboard</h1>
+            <div className="flex items-center gap-3">
+              <h1 className="text-3xl md:text-4xl font-bold tracking-tight text-foreground">Dashboard</h1>
+              <button
+                onClick={() => setHideValues(v => !v)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium border transition-all ${hideValues ? "bg-primary/10 border-primary/30 text-primary" : "border-border text-muted-foreground hover:bg-muted/50"}`}
+                title={hideValues ? "Mostrar valores" : "Esconder valores"}>
+                {hideValues ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                <span className="hidden sm:inline">{hideValues ? "Oculto" : "Ocultar"}</span>
+              </button>
+            </div>
             <p className="text-sm text-muted-foreground mt-1 capitalize">Hoje, {today}</p>
           </div>
           <span className="self-start text-xs px-3 py-1.5 rounded-full bg-success/10 text-success border border-success/20 font-medium">
@@ -82,21 +93,21 @@ export default function DashboardPage() {
         <section className="mb-10">
           <SectionTitle>Aquisição de leads</SectionTitle>
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-            {acquisition.map((m) => <MetricCard key={m.label} m={m} />)}
+            {acquisition.map((m) => <MetricCard key={m.label} m={m} hide={hideValues} />)}
           </div>
         </section>
 
         <section className="mb-10">
           <SectionTitle>Vendas e conversão</SectionTitle>
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-            {sales.map((m) => <MetricCard key={m.label} m={m} />)}
+            {sales.map((m) => <MetricCard key={m.label} m={m} hide={hideValues} />)}
           </div>
         </section>
 
         <section className="mb-10">
           <SectionTitle>Retenção e valor do cliente</SectionTitle>
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-            {retention.map((m) => <MetricCard key={m.label} m={m} />)}
+            {retention.map((m) => <MetricCard key={m.label} m={m} hide={hideValues} />)}
           </div>
         </section>
 
