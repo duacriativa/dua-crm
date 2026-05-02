@@ -37,17 +37,6 @@ export default function LoginPage() {
       {/* ── Painel esquerdo — formulário ── */}
       <div className="flex-1 flex flex-col justify-center px-8 sm:px-16 py-12 relative">
 
-        {/* Logo */}
-        <div className="absolute top-8 left-8 sm:left-16 flex items-center gap-2">
-          <div className="w-9 h-9 rounded-xl bg-primary flex items-center justify-center">
-            <span className="text-white font-black text-lg leading-none">D</span>
-          </div>
-          <div>
-            <p className="text-white font-black text-base leading-tight tracking-tight">dua<span className="text-[#CCFF00]">.</span></p>
-            <p className="text-white/40 text-[10px] leading-tight">CRM Interno</p>
-          </div>
-        </div>
-
         {/* Formulário */}
         <div className="max-w-sm w-full mx-auto">
           <h1 className="text-3xl font-black text-white mb-2 leading-tight">
@@ -119,35 +108,11 @@ export default function LoginPage() {
       <div className="hidden lg:flex flex-1 relative overflow-hidden">
         {/* Imagem de fundo */}
         <img
-          src="https://images.unsplash.com/photo-1529139574466-a303027c1d8b?w=1200&q=90&auto=format&fit=crop"
-          alt="Moda"
+          src="/login-bg.png"
+          alt="Dua Criativa"
           className="absolute inset-0 w-full h-full object-cover object-center"
         />
-        {/* Overlay escuro roxo */}
-        <div className="absolute inset-0 bg-gradient-to-br from-[#0e0a1a]/80 via-violet-950/60 to-[#0e0a1a]/40" />
 
-        {/* Logo flutuante */}
-        <div className="absolute top-8 left-8 flex items-center gap-2 z-10">
-          <div className="w-8 h-8 rounded-lg bg-white/10 backdrop-blur border border-white/20 flex items-center justify-center">
-            <span className="text-white font-black text-sm">D</span>
-          </div>
-          <span className="text-white font-black text-sm">dua<span className="text-[#CCFF00]">.</span></span>
-        </div>
-
-        {/* Texto sobre a imagem */}
-        <div className="absolute bottom-12 left-8 right-8 z-10">
-          <p className="text-white/90 text-2xl font-black leading-tight mb-2">
-            Gerencie sua agência<br />
-            <span className="text-violet-300">com inteligência.</span>
-          </p>
-          <p className="text-white/40 text-sm">
-            CRM exclusivo para marcas de moda.
-          </p>
-        </div>
-
-        {/* Grade decorativa */}
-        <div className="absolute inset-0 opacity-10"
-          style={{ backgroundImage: "linear-gradient(rgba(255,255,255,.05) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.05) 1px, transparent 1px)", backgroundSize: "40px 40px" }} />
       </div>
 
     </div>
