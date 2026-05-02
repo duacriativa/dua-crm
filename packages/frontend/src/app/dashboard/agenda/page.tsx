@@ -80,12 +80,7 @@ export default function AgendaPage() {
                 </button>
               ))}
             </div>
-            <button onClick={goToday} className="px-3 py-2 text-sm text-muted-foreground border border-border rounded-xl hover:bg-muted/50 transition-colors">
-              Hoje
-            </button>
-            <button className="px-3 py-2 text-sm text-muted-foreground border border-border rounded-xl hover:bg-muted/50 transition-colors">
-              <Calendar className="w-4 h-4" />
-            </button>
+
             <button onClick={() => setShowModal(true)}
               className="flex items-center gap-2 px-3 py-2 sm:px-4 text-sm font-semibold text-white bg-gradient-primary rounded-xl hover:opacity-90 transition-opacity shadow-elegant">
               <Plus className="w-4 h-4" />
@@ -109,13 +104,7 @@ export default function AgendaPage() {
                 <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all ${showHolidays ? "left-4" : "left-0.5"}`} />
               </button>
             </label>
-            <label className="flex items-center gap-2 cursor-pointer">
-              <span className="text-xs text-muted-foreground">Tarefas do quadro</span>
-              <button onClick={() => setShowTasks(v => !v)}
-                className={`w-9 h-5 rounded-full transition-colors relative ${showTasks ? "bg-primary" : "bg-muted"}`}>
-                <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all ${showTasks ? "left-4" : "left-0.5"}`} />
-              </button>
-            </label>
+
           </div>
         </div>
       </div>
@@ -172,21 +161,99 @@ export default function AgendaPage() {
           </div>
         )}
 
-        {view === "semana" && (
-          <div className="flex flex-col items-center justify-center py-20 text-muted-foreground gap-3">
-            <Calendar className="w-12 h-12 opacity-20" />
-            <p className="font-medium">Visualização semanal</p>
-            <p className="text-xs opacity-60">Em desenvolvimento — use a visão mensal por enquanto</p>
-          </div>
-        )}
+        {view === "semana" && (() => {
+          const weekStart = new Date(year, month - (month !== new Date().getMonth() || year !== new Date().getFullYear() ? 0 : 0), 1);
+          // Calcular início da semana atual (domingo)
+          const today2 = new Date();
+          const dayOfWeek = today2.getDay();
+          const startOfWeek = new Date(today2);
+          startOfWeek.setDate(today2.getDate() - dayOfWeek);
+          const weekDays = Array.from({ length: 7 }, (_, i) => {
+            const d = new Date(startOfWeek);
+            d.setDate(startOfWeek.getDate() + i);
+            return d;
+          });
+          const hours = Array.from({ length: 24 }, (_, i) => i);
+          return (
+            <div className="flex flex-col h-full">
+              {/* Header dos dias */}
+              <div className="grid grid-cols-8 border-b border-border shrink-0">
+                <div className="py-3" />
+                {weekDays.map((d, i) => {
+                  const isToday = d.toDateString() === new Date().toDateString();
+                  const holiday = Object.entries(BR_HOLIDAYS_2026).find(([k]) => k === `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`);
+                  return (
+                    <div key={i} className="text-center py-2 border-l border-border">
+                      <p className="text-xs text-muted-foreground">{["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"][d.getDay()]}</p>
+                      <div className={`w-8 h-8 rounded-full mx-auto flex items-center justify-center text-sm font-bold mt-0.5 ${isToday ? "bg-primary text-white" : "text-foreground"}`}>
+                        {d.getDate()}
+                      </div>
+                      {holiday && <div className="text-[9px] text-primary truncate px-1">{holiday[1]}</div>}
+                    </div>
+                  );
+                })}
+              </div>
+              {/* Grid de horas */}
+              <div className="flex-1 overflow-y-auto scrollbar-none">
+                {hours.map(h => (
+                  <div key={h} className="grid grid-cols-8 border-b border-border/40 min-h-[48px]">
+                    <div className="text-[10px] text-muted-foreground px-2 py-1 shrink-0">{String(h).padStart(2,'0')}:00</div>
+                    {weekDays.map((d, i) => {
+                      const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+                      const dayEvs = events.filter(e => e.date === key && e.time?.startsWith(String(h).padStart(2,'0')));
+                      return (
+                        <div key={i} className="border-l border-border/40 px-1 py-0.5">
+                          {dayEvs.map(ev => (
+                            <div key={ev.id} className="text-[9px] font-medium text-white rounded px-1 truncate mb-0.5"
+                              style={{ backgroundColor: ev.color }}>{ev.time} {ev.title}</div>
+                          ))}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
 
-        {view === "dia" && (
-          <div className="flex flex-col items-center justify-center py-20 text-muted-foreground gap-3">
-            <Calendar className="w-12 h-12 opacity-20" />
-            <p className="font-medium">Visualização diária</p>
-            <p className="text-xs opacity-60">Em desenvolvimento — use a visão mensal por enquanto</p>
-          </div>
-        )}
+        {view === "dia" && (() => {
+          const today2 = new Date();
+          const dayKey = `${today2.getFullYear()}-${String(today2.getMonth()+1).padStart(2,'0')}-${String(today2.getDate()).padStart(2,'0')}`;
+          const hours = Array.from({ length: 24 }, (_, i) => i);
+          const holiday = BR_HOLIDAYS_2026[dayKey];
+          return (
+            <div className="flex flex-col h-full">
+              <div className="flex items-center justify-center gap-3 py-4 border-b border-border shrink-0">
+                <div className="w-12 h-12 rounded-full bg-primary text-white font-black text-xl flex items-center justify-center">
+                  {today2.getDate()}
+                </div>
+                <div>
+                  <p className="font-bold text-foreground">{["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"][today2.getDay()]}</p>
+                  {holiday && <p className="text-xs text-primary">{holiday}</p>}
+                </div>
+              </div>
+              <div className="flex-1 overflow-y-auto scrollbar-none">
+                {hours.map(h => {
+                  const dayEvs = events.filter(e => e.date === dayKey && e.time?.startsWith(String(h).padStart(2,'0')));
+                  return (
+                    <div key={h} className="flex gap-3 border-b border-border/40 min-h-[56px] px-4 py-1">
+                      <span className="text-xs text-muted-foreground w-10 shrink-0 pt-1">{String(h).padStart(2,'0')}:00</span>
+                      <div className="flex-1">
+                        {dayEvs.map(ev => (
+                          <div key={ev.id} className="text-xs font-medium text-white rounded-lg px-2 py-1 mb-0.5 flex items-center gap-2"
+                            style={{ backgroundColor: ev.color }}>
+                            <span>{ev.time}</span><span>{ev.title}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()}
       </div>
 
       {/* Modal novo compromisso */}

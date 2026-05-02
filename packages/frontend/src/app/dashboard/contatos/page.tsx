@@ -55,6 +55,42 @@ const EMPTY_FORM = {
   city:"", state:"", projectInterest:"", tags:"", notes:"",
 };
 
+
+function TagInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const tags = value ? value.split(",").map(t => t.trim()).filter(Boolean) : [];
+  const [input, setInput] = useState("");
+
+  const addTag = (tag: string) => {
+    const t = tag.trim();
+    if (!t || tags.includes(t)) return;
+    onChange([...tags, t].join(","));
+    setInput("");
+  };
+
+  const removeTag = (tag: string) => onChange(tags.filter(t => t !== tag).join(","));
+
+  const handleKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "," || e.key === "Enter") { e.preventDefault(); addTag(input); }
+    if (e.key === "Backspace" && !input && tags.length) removeTag(tags[tags.length - 1]);
+  };
+
+  return (
+    <div className="min-h-[42px] flex flex-wrap gap-1.5 px-3 py-2 bg-muted/50 border border-border rounded-xl focus-within:ring-2 focus-within:ring-primary/50 cursor-text"
+      onClick={() => document.getElementById("tag-input-field")?.focus()}>
+      {tags.map(tag => (
+        <span key={tag} className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-primary/10 text-primary border border-primary/20">
+          {tag}
+          <button type="button" onClick={e => { e.stopPropagation(); removeTag(tag); }} className="hover:text-red-400 transition-colors">×</button>
+        </span>
+      ))}
+      <input id="tag-input-field" value={input} onChange={e => setInput(e.target.value)} onKeyDown={handleKey}
+        onBlur={() => { if (input.trim()) addTag(input); }}
+        placeholder={tags.length === 0 ? "Branding, Urgente..." : ""}
+        className="flex-1 min-w-[80px] bg-transparent outline-none text-sm text-foreground placeholder:text-muted-foreground" />
+    </div>
+  );
+}
+
 export default function ContatosPage() {
   const router = useRouter();
   const [contacts, setContacts] = useState<Contact[]>([]);
@@ -463,14 +499,13 @@ export default function ContatosPage() {
                 </div>
               </div>
 
-              {/* Tags */}
+              {/* Tags — chips interativos */}
               <div>
                 <label className="text-sm font-medium text-foreground block mb-1.5 flex items-center gap-1.5">
                   <Tag className="w-3.5 h-3.5 text-muted-foreground"/>Tags
                 </label>
-                <input value={form.tags} onChange={e=>setForm(f=>({...f,tags:e.target.value}))}
-                  placeholder="Branding, Urgente" className={inp}/>
-                <p className="text-xs text-muted-foreground mt-1">Separe com vírgula</p>
+                <TagInput value={form.tags} onChange={v => setForm(f => ({...f, tags: v}))} />
+                <p className="text-xs text-muted-foreground mt-1">Digite e pressione vírgula ou Enter para adicionar</p>
               </div>
 
               {/* Observações */}

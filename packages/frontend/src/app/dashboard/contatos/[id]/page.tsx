@@ -52,6 +52,119 @@ const LOADING_STEPS = [
   "Escrevendo mensagem...",
 ];
 
+
+/* ── NotesEditor ── */
+function NotesEditor({ contactId, initialNotes }: { contactId: string; initialNotes: string }) {
+  const [notes, setNotes] = useState(initialNotes);
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const save = async () => {
+    setSaving(true);
+    try {
+      await fetch(`${API_URL}/api/v1/contacts/${contactId}`, {
+        method: "PATCH", headers: authHeaders(), body: JSON.stringify({ notes }),
+      });
+      setEditing(false);
+    } finally { setSaving(false); }
+  };
+  if (editing) return (
+    <div className="space-y-2">
+      <textarea rows={5} value={notes} onChange={e => setNotes(e.target.value)} autoFocus
+        className="w-full px-4 py-3 text-sm bg-muted/50 border border-primary/50 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/50 text-foreground resize-none" />
+      <div className="flex gap-2">
+        <button onClick={save} disabled={saving} className="px-4 py-2 text-xs font-semibold text-white bg-gradient-primary rounded-xl hover:opacity-90 disabled:opacity-50">
+          {saving ? "Salvando..." : "Salvar"}
+        </button>
+        <button onClick={() => setEditing(false)} className="px-4 py-2 text-xs text-muted-foreground border border-border rounded-xl hover:bg-muted/50">Cancelar</button>
+      </div>
+    </div>
+  );
+  return (
+    <div className="bg-muted/30 rounded-2xl p-5 border border-border cursor-pointer hover:border-primary/30 transition-colors" onClick={() => setEditing(true)}>
+      <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">
+        {notes || <span className="text-muted-foreground italic">Clique para adicionar uma nota...</span>}
+      </p>
+    </div>
+  );
+}
+
+/* ── BusinessProfileEditor ── */
+const FATURAMENTO_OPTIONS = ["Menos de R$ 50k/mês","R$ 50k – R$ 100k/mês","R$ 100k – R$ 150k/mês","Acima de R$ 150k/mês"];
+const MODELO_VENDA_OPTIONS = ["E-commerce próprio","Instagram/WhatsApp","Marketplace (Shopee, Mercado Livre)","Loja física + online","Atacado"];
+
+function BusinessProfileEditor({ contact, onSave }: { contact: any; onSave: (f: any) => void }) {
+  const [open, setOpen] = useState(false);
+  const [form, setForm] = useState({ faturamento: "", investimento: "", modelo: "", interesse: "", instagram: contact.instagramHandle || "" });
+  const [saving, setSaving] = useState(false);
+  useEffect(() => {
+    if (contact.notes) {
+      const n = contact.notes;
+      setForm(f => ({
+        ...f,
+        faturamento: n.includes("Faturamento:") ? n.split("Faturamento:")[1].split("\n")[0].trim() : f.faturamento,
+        investimento: n.includes("Investimento atual:") ? n.split("Investimento atual:")[1].split("\n")[0].trim() : f.investimento,
+        modelo: n.includes("Modelo de venda:") ? n.split("Modelo de venda:")[1].split("\n")[0].trim() : f.modelo,
+        interesse: n.includes("Interesse:") ? n.split("Interesse:")[1].split("\n")[0].trim() : f.interesse,
+      }));
+    }
+  }, [contact.notes]);
+  const save = async () => {
+    setSaving(true);
+    try {
+      const profileBlock = [
+        form.faturamento && `Faturamento: ${form.faturamento}`,
+        form.investimento && `Investimento atual: ${form.investimento}`,
+        form.modelo && `Modelo de venda: ${form.modelo}`,
+        form.interesse && `Interesse: ${form.interesse}`,
+      ].filter(Boolean).join("\n");
+      const cleanNotes = (contact.notes || "").split("\n")
+        .filter((l: string) => !l.startsWith("Faturamento:") && !l.startsWith("Investimento atual:") && !l.startsWith("Modelo de venda:") && !l.startsWith("Interesse:"))
+        .join("\n").trim();
+      const body: any = { instagramHandle: form.instagram || null, notes: [profileBlock, cleanNotes].filter(Boolean).join("\n") };
+      await fetch(`${API_URL}/api/v1/contacts/${contact.id}`, { method: "PATCH", headers: authHeaders(), body: JSON.stringify(body) });
+      onSave({ faturamento: form.faturamento, investimento: form.investimento, interesse: form.interesse });
+      setOpen(false);
+    } finally { setSaving(false); }
+  };
+  const inp = "w-full px-3 py-2 text-sm bg-muted/50 border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/50 text-foreground placeholder:text-muted-foreground";
+  return (
+    <>
+      <button onClick={() => setOpen(true)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-primary border border-primary/30 rounded-xl hover:bg-primary/5 transition-colors ml-auto">
+        <Edit size={12} /> Editar
+      </button>
+      {open && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-card border border-border rounded-3xl shadow-2xl w-full max-w-md p-6 max-h-[85vh] overflow-y-auto scrollbar-none">
+            <h3 className="text-lg font-bold text-foreground mb-4">Editar Perfil do Negócio</h3>
+            <div className="space-y-3">
+              <div><label className="text-xs font-medium text-muted-foreground block mb-1">@Instagram</label>
+                <input value={form.instagram} onChange={e => setForm(f => ({...f, instagram: e.target.value}))} placeholder="@suamarca" className={inp} /></div>
+              <div><label className="text-xs font-medium text-muted-foreground block mb-1">Faturamento Mensal</label>
+                <select value={form.faturamento} onChange={e => setForm(f => ({...f, faturamento: e.target.value}))} className={`${inp} appearance-none`}>
+                  <option value="">Selecione...</option>{FATURAMENTO_OPTIONS.map(o => <option key={o}>{o}</option>)}
+                </select></div>
+              <div><label className="text-xs font-medium text-muted-foreground block mb-1">Modelo de Venda</label>
+                <select value={form.modelo} onChange={e => setForm(f => ({...f, modelo: e.target.value}))} className={`${inp} appearance-none`}>
+                  <option value="">Selecione...</option>{MODELO_VENDA_OPTIONS.map(o => <option key={o}>{o}</option>)}
+                </select></div>
+              <div><label className="text-xs font-medium text-muted-foreground block mb-1">Investimento Atual em Marketing</label>
+                <input value={form.investimento} onChange={e => setForm(f => ({...f, investimento: e.target.value}))} placeholder="Ex: R$ 1.000/mês em ads" className={inp} /></div>
+              <div><label className="text-xs font-medium text-muted-foreground block mb-1">Interesse / Serviço</label>
+                <input value={form.interesse} onChange={e => setForm(f => ({...f, interesse: e.target.value}))} placeholder="Ex: Social Media, Tráfego" className={inp} /></div>
+            </div>
+            <div className="flex gap-3 mt-5">
+              <button onClick={() => setOpen(false)} className="flex-1 py-2.5 text-sm text-muted-foreground border border-border rounded-xl hover:bg-muted/50">Cancelar</button>
+              <button onClick={save} disabled={saving} className="flex-1 py-2.5 text-sm font-semibold text-white bg-gradient-primary rounded-xl hover:opacity-90 disabled:opacity-50">
+                {saving ? "Salvando..." : "Salvar"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 export default function ContactProfilePage() {
   const { id } = useParams();
   const router = useRouter();
@@ -153,10 +266,10 @@ export default function ContactProfilePage() {
 
   if (loading) {
     return (
-      <div className="h-full flex items-center justify-center bg-gray-50/50">
+      <div className="h-full flex items-center justify-center bg-muted/30/50">
         <div className="flex flex-col items-center gap-3">
           <div className="w-12 h-12 border-4 border-brand-200 border-t-brand-600 rounded-full animate-spin" />
-          <p className="text-sm text-gray-400 font-medium">Carregando perfil...</p>
+          <p className="text-sm text-muted-foreground font-medium">Carregando perfil...</p>
         </div>
       </div>
     );
@@ -164,13 +277,13 @@ export default function ContactProfilePage() {
 
   if (error || !contact) {
     return (
-      <div className="h-full flex flex-col items-center justify-center bg-gray-50 text-gray-500">
+      <div className="h-full flex flex-col items-center justify-center bg-muted/30 text-muted-foreground">
         <User className="w-16 h-16 mb-4 opacity-20" />
-        <h2 className="text-xl font-bold text-gray-900 mb-2">Contato não encontrado</h2>
+        <h2 className="text-xl font-bold text-foreground mb-2">Contato não encontrado</h2>
         <p className="max-w-xs text-center text-sm mb-6">{error || "O perfil solicitado não está disponível ou foi removido."}</p>
         <button
           onClick={() => router.back()}
-          className="flex items-center gap-2 px-6 py-2.5 bg-white border border-gray-200 rounded-xl font-semibold text-gray-700 hover:bg-gray-50 transition-all shadow-sm"
+          className="flex items-center gap-2 px-6 py-2.5 bg-card border border-border rounded-xl font-semibold text-foreground/80 hover:bg-muted/30 transition-all shadow-none border border-border"
         >
           <ArrowLeft className="w-4 h-4" />
           Voltar para contatos
@@ -192,28 +305,29 @@ export default function ContactProfilePage() {
     return fields;
   };
 
-  const aditionalFields = parseFields();
+  const [aditionalFields, setAditionalFields] = useState<any>({});
+  useEffect(() => { if(contact) setAditionalFields(parseFields()); }, [contact]);
 
   return (
     <div className="h-full flex flex-col bg-[#F9FAFB]">
       {/* ── Header ── */}
-      <header className="bg-white/80 backdrop-blur-md border-b border-gray-200 px-6 py-4 sticky top-0 z-10">
+      <header className="bg-card/80 backdrop-blur-md border-b border-border px-6 py-4 sticky top-0 z-10">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
             <button
               onClick={() => router.back()}
-              className="p-2.5 rounded-xl hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors bg-gray-50 border border-gray-100"
+              className="p-2.5 rounded-xl hover:bg-muted/50 text-muted-foreground hover:text-muted-foreground transition-colors bg-muted/30 border border-border"
             >
               <ArrowLeft className="w-5 h-5" />
             </button>
             <div>
-              <h1 className="text-xl font-bold text-gray-900">{contact.name}</h1>
+              <h1 className="text-xl font-bold text-foreground">{contact.name}</h1>
               <div className="flex items-center gap-2 mt-0.5">
-                <span className="text-xs text-gray-400 flex items-center gap-1">
+                <span className="text-xs text-muted-foreground flex items-center gap-1">
                   <User size={12} /> Perfil do Contato
                 </span>
                 <span className="w-1 h-1 rounded-full bg-gray-300" />
-                <span className="text-xs font-semibold text-brand-600 uppercase tracking-widest bg-brand-50 px-2 py-0.5 rounded-full">
+                <span className="text-xs font-semibold text-primary uppercase tracking-widest bg-primary/10 px-2 py-0.5 rounded-full">
                   {contact.segment || "NEW"}
                 </span>
               </div>
@@ -228,7 +342,7 @@ export default function ContactProfilePage() {
               <MessageCircle className="w-4 h-4" />
               Abrir Chat
             </button>
-            <button className="p-2.5 rounded-xl border border-gray-200 hover:bg-gray-50 text-gray-400">
+            <button className="p-2.5 rounded-xl border border-border hover:bg-muted/30 text-muted-foreground">
               <MoreVertical className="w-5 h-5" />
             </button>
           </div>
@@ -243,62 +357,63 @@ export default function ContactProfilePage() {
           <div className="lg:col-span-2 space-y-6">
 
             {/* Card: Dados do Perfil */}
-            <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-sm relative overflow-hidden">
+            <div className="bg-card surface-card p-6 shadow-none border border-border relative overflow-hidden">
               <div className="absolute top-0 right-0 p-8 opacity-[0.03] pointer-events-none">
                 <User size={120} />
               </div>
 
               <div className="flex items-start gap-3 mb-8">
-                <div className="w-12 h-12 rounded-2xl bg-brand-50 flex items-center justify-center text-brand-600">
+                <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center text-primary">
                   <Briefcase size={24} />
                 </div>
-                <div>
-                  <h2 className="text-lg font-bold text-gray-900">Perfil do Negócio</h2>
-                  <p className="text-sm text-gray-400">Informações coletadas durante o cadastro</p>
+                <div className="flex-1">
+                  <h2 className="text-lg font-bold text-foreground">Perfil do Negócio</h2>
+                  <p className="text-sm text-muted-foreground">Informações coletadas durante o cadastro</p>
                 </div>
+                <BusinessProfileEditor contact={contact} onSave={(fields) => setAditionalFields(fields)} />
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mt-6">
                 <div className="space-y-6">
-                  <div className="flex items-center gap-4 p-4 rounded-2xl bg-gray-50 border border-gray-100 transition-all hover:bg-white hover:shadow-md hover:scale-[1.02]">
-                    <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center shadow-sm text-green-600">
+                  <div className="flex items-center gap-4 p-4 rounded-2xl bg-muted/30 border border-border transition-all hover:bg-card hover:shadow-md hover:scale-[1.02]">
+                    <div className="w-10 h-10 rounded-xl bg-card flex items-center justify-center shadow-none border border-border text-green-600">
                       <DollarSign size={20} />
                     </div>
                     <div>
-                      <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Faturamento Mensal</p>
-                      <p className="text-sm font-semibold text-gray-800">{aditionalFields.faturamento || "Não informado"}</p>
+                      <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Faturamento Mensal</p>
+                      <p className="text-sm font-semibold text-foreground">{aditionalFields.faturamento || "Não informado"}</p>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-4 p-4 rounded-2xl bg-gray-50 border border-gray-100 transition-all hover:bg-white hover:shadow-md hover:scale-[1.02]">
-                    <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center shadow-sm text-purple-600">
+                  <div className="flex items-center gap-4 p-4 rounded-2xl bg-muted/30 border border-border transition-all hover:bg-card hover:shadow-md hover:scale-[1.02]">
+                    <div className="w-10 h-10 rounded-xl bg-card flex items-center justify-center shadow-none border border-border text-purple-600">
                       <Tag size={20} />
                     </div>
                     <div>
-                      <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Modelo de Venda</p>
-                      <p className="text-sm font-semibold text-gray-800">Instagram/WhatsApp</p>
+                      <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Modelo de Venda</p>
+                      <p className="text-sm font-semibold text-foreground">Instagram/WhatsApp</p>
                     </div>
                   </div>
                 </div>
 
                 <div className="space-y-6">
-                  <div className="flex items-center gap-4 p-4 rounded-2xl bg-gray-50 border border-gray-100 transition-all hover:bg-white hover:shadow-md hover:scale-[1.02]">
-                    <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center shadow-sm text-blue-600">
+                  <div className="flex items-center gap-4 p-4 rounded-2xl bg-muted/30 border border-border transition-all hover:bg-card hover:shadow-md hover:scale-[1.02]">
+                    <div className="w-10 h-10 rounded-xl bg-card flex items-center justify-center shadow-none border border-border text-blue-600">
                       <Filter size={20} />
                     </div>
                     <div>
-                      <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Investimento Atual</p>
-                      <p className="text-sm font-semibold text-gray-800">{aditionalFields.investimento || "Não informado"}</p>
+                      <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Investimento Atual</p>
+                      <p className="text-sm font-semibold text-foreground">{aditionalFields.investimento || "Não informado"}</p>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-4 p-4 rounded-2xl bg-gray-50 border border-gray-100 transition-all hover:bg-white hover:shadow-md hover:scale-[1.02]">
-                    <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center shadow-sm text-orange-600">
+                  <div className="flex items-center gap-4 p-4 rounded-2xl bg-muted/30 border border-border transition-all hover:bg-card hover:shadow-md hover:scale-[1.02]">
+                    <div className="w-10 h-10 rounded-xl bg-card flex items-center justify-center shadow-none border border-border text-orange-600">
                       <ArrowLeft size={20} className="rotate-180" />
                     </div>
                     <div>
-                      <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Interesse</p>
-                      <p className="text-sm font-semibold text-gray-800">{aditionalFields.interesse || "Não informado"}</p>
+                      <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Interesse</p>
+                      <p className="text-sm font-semibold text-foreground">{aditionalFields.interesse || "Não informado"}</p>
                     </div>
                   </div>
                 </div>
@@ -306,45 +421,41 @@ export default function ContactProfilePage() {
             </div>
 
             {/* Card: Notas e Observações */}
-            <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-sm">
+            <div className="bg-card surface-card p-6 shadow-none border border-border">
               <div className="flex items-center justify-between mb-6">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center text-amber-600">
+                  <div className="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center text-amber-600">
                     <Filter size={20} />
                   </div>
-                  <h2 className="text-lg font-bold text-gray-900">Notas e Observações</h2>
+                  <h2 className="text-lg font-bold text-foreground">Notas e Observações</h2>
                 </div>
-                <button className="text-sm text-brand-600 font-bold hover:underline flex items-center gap-1">
+                <button className="text-sm text-primary font-bold hover:underline flex items-center gap-1">
                   <Edit size={14} /> Editar
                 </button>
               </div>
-              <div className="bg-amber-50/30 rounded-2xl p-6 border border-amber-100/50">
-                <p className="text-sm text-amber-900 leading-relaxed whitespace-pre-wrap">
-                  {contact.notes || "Nenhuma nota adicionada a este contato."}
-                </p>
-              </div>
+              <NotesEditor contactId={contact.id} initialNotes={contact.notes || ""} />
             </div>
 
             {/* ── Card: Análise de Perfil Instagram ── */}
-            <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-sm">
+            <div className="bg-card surface-card p-6 shadow-none border border-border">
               <div className="flex items-center gap-3 mb-6">
                 <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-pink-500 to-purple-600 flex items-center justify-center text-white">
                   <Instagram size={20} />
                 </div>
                 <div>
-                  <h2 className="text-lg font-bold text-gray-900">Análise de Perfil Instagram</h2>
-                  <p className="text-xs text-gray-400">
+                  <h2 className="text-lg font-bold text-foreground">Análise de Perfil Instagram</h2>
+                  <p className="text-xs text-muted-foreground">
                     {contact.instagramHandle
                       ? `@${contact.instagramHandle.replace("@", "")}`
                       : "Nenhum Instagram cadastrado"}
                   </p>
                 </div>
                 {parsedAnalysis?.score !== undefined && (
-                  <div className="ml-auto flex items-center gap-2 px-4 py-2 rounded-xl bg-purple-50 border border-purple-100">
+                  <div className="ml-auto flex items-center gap-2 px-4 py-2 rounded-xl bg-primary/10 border border-primary/20">
                     <Sparkles size={14} className="text-purple-600" />
-                    <span className="text-sm font-bold text-purple-700">Score</span>
+                    <span className="text-sm font-bold text-primary">Score</span>
                     <span className="text-xl font-black text-purple-600">{parsedAnalysis.score}</span>
-                    <span className="text-xs text-purple-400">/100</span>
+                    <span className="text-xs text-muted-foreground">/100</span>
                   </div>
                 )}
               </div>
@@ -364,7 +475,7 @@ export default function ContactProfilePage() {
               {analysisLoading && (
                 <div className="flex flex-col items-center gap-6 py-8">
                   <div className="relative w-16 h-16">
-                    <div className="absolute inset-0 rounded-full border-4 border-purple-100" />
+                    <div className="absolute inset-0 rounded-full border-4 border-primary/20" />
                     <div className="absolute inset-0 rounded-full border-4 border-t-purple-600 animate-spin" />
                     <div className="absolute inset-0 flex items-center justify-center">
                       <Instagram size={20} className="text-purple-600" />
@@ -376,7 +487,7 @@ export default function ContactProfilePage() {
                         key={step}
                         className={`flex items-center gap-2 text-sm transition-all duration-500 ${
                           i === analysisStep
-                            ? "text-purple-700 font-bold scale-105"
+                            ? "text-primary font-bold scale-105"
                             : i < analysisStep
                             ? "text-green-500 line-through opacity-60"
                             : "text-gray-300"
@@ -397,14 +508,14 @@ export default function ContactProfilePage() {
               {!analysisLoading && parsedAnalysis && (
                 <div className="space-y-5 mt-2">
                   {parsedAnalysis.resumo && (
-                    <div className="bg-purple-50 rounded-2xl p-4 border border-purple-100">
+                    <div className="bg-primary/10 rounded-2xl p-4 border border-primary/20">
                       <p className="text-sm text-purple-900 leading-relaxed">{parsedAnalysis.resumo}</p>
                     </div>
                   )}
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {parsedAnalysis.pontos_fortes && parsedAnalysis.pontos_fortes.length > 0 && (
-                      <div className="bg-green-50 rounded-2xl p-4 border border-green-100">
+                      <div className="bg-green-500/10 rounded-2xl p-4 border border-green-100">
                         <div className="flex items-center gap-2 mb-3">
                           <Star size={14} className="text-green-600" />
                           <span className="text-xs font-bold text-green-700 uppercase tracking-wider">Pontos Fortes</span>
@@ -420,7 +531,7 @@ export default function ContactProfilePage() {
                     )}
 
                     {parsedAnalysis.oportunidades && parsedAnalysis.oportunidades.length > 0 && (
-                      <div className="bg-blue-50 rounded-2xl p-4 border border-blue-100">
+                      <div className="bg-blue-500/10 rounded-2xl p-4 border border-blue-100">
                         <div className="flex items-center gap-2 mb-3">
                           <TrendingUp size={14} className="text-blue-600" />
                           <span className="text-xs font-bold text-blue-700 uppercase tracking-wider">Oportunidades</span>
@@ -436,7 +547,7 @@ export default function ContactProfilePage() {
                     )}
 
                     {parsedAnalysis.alertas && parsedAnalysis.alertas.length > 0 && (
-                      <div className="bg-amber-50 rounded-2xl p-4 border border-amber-100">
+                      <div className="bg-amber-500/10 rounded-2xl p-4 border border-amber-100">
                         <div className="flex items-center gap-2 mb-3">
                           <AlertTriangle size={14} className="text-amber-600" />
                           <span className="text-xs font-bold text-amber-700 uppercase tracking-wider">Alertas</span>
@@ -463,7 +574,7 @@ export default function ContactProfilePage() {
                   </div>
 
                   {parsedAnalysis.mensagem_whatsapp && (
-                    <div className="bg-green-50 rounded-2xl p-4 border border-green-200">
+                    <div className="bg-green-500/10 rounded-2xl p-4 border border-green-200">
                       <div className="flex items-center gap-2 mb-3">
                         <MessageCircle size={14} className="text-green-600" />
                         <span className="text-xs font-bold text-green-700 uppercase tracking-wider">Mensagem WhatsApp Pronta</span>
@@ -477,7 +588,7 @@ export default function ContactProfilePage() {
               {/* Textarea (raw/edit mode) */}
               {!analysisLoading && analysisText && (
                 <div className="mt-4 space-y-3">
-                  <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Texto bruto / editar</label>
+                  <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Texto bruto / editar</label>
                   <textarea
                     value={analysisText}
                     onChange={(e) => {
@@ -485,20 +596,20 @@ export default function ContactProfilePage() {
                       tryParseAnalysis(e.target.value);
                     }}
                     rows={6}
-                    className="w-full border border-gray-200 rounded-2xl p-4 text-sm text-gray-700 leading-relaxed resize-y focus:outline-none focus:border-purple-400 focus:ring-2 focus:ring-purple-100 transition-all"
+                    className="w-full border border-border rounded-2xl p-4 text-sm text-foreground/80 leading-relaxed resize-y focus:outline-none focus:border-purple-400 focus:ring-2 focus:ring-purple-100 transition-all"
                   />
                   <div className="flex items-center gap-3">
                     <button
                       onClick={handleSaveAnalysis}
                       disabled={analysisSaving}
-                      className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm text-white bg-purple-600 hover:bg-purple-700 transition-colors disabled:opacity-50 shadow-sm"
+                      className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm text-white bg-purple-600 hover:bg-purple-700 transition-colors disabled:opacity-50 shadow-none border border-border"
                     >
                       <Save size={14} />
                       {analysisSaving ? "Salvando..." : analysisSaved ? "✓ Salvo!" : "Salvar análise"}
                     </button>
                     <button
                       onClick={handleGenerateAnalysis}
-                      className="flex items-center gap-2 px-4 py-2.5 rounded-xl font-semibold text-sm text-purple-700 bg-purple-50 hover:bg-purple-100 transition-colors border border-purple-100"
+                      className="flex items-center gap-2 px-4 py-2.5 rounded-xl font-semibold text-sm text-primary bg-primary/10 hover:bg-purple-100 transition-colors border border-primary/20"
                     >
                       <Search size={14} /> Regenerar
                     </button>
@@ -527,42 +638,42 @@ export default function ContactProfilePage() {
           <div className="space-y-6">
 
             {/* Contato Rápido */}
-            <div className="bg-white rounded-3xl p-6 border border-gray-100 shadow-sm">
-              <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-6 px-1">Informações de Contato</h3>
+            <div className="bg-card surface-card p-5 shadow-none border border-border">
+              <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-widest mb-6 px-1">Informações de Contato</h3>
 
               <div className="space-y-4">
-                <div className="group flex items-center justify-between p-3 rounded-2xl hover:bg-gray-50 transition-colors">
+                <div className="group flex items-center justify-between p-3 rounded-2xl hover:bg-muted/30 transition-colors">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-green-50 flex items-center justify-center text-green-600">
+                    <div className="w-10 h-10 rounded-xl bg-green-500/10 flex items-center justify-center text-green-600">
                       <Phone size={18} />
                     </div>
                     <div>
-                      <p className="text-[10px] text-gray-400 font-bold uppercase tracking-tighter leading-none mb-1">WhatsApp</p>
-                      <p className="text-sm font-semibold text-gray-800">{contact.phone || "—"}</p>
+                      <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-tighter leading-none mb-1">WhatsApp</p>
+                      <p className="text-sm font-semibold text-foreground">{contact.phone || "—"}</p>
                     </div>
                   </div>
                 </div>
 
-                <div className="group flex items-center justify-between p-3 rounded-2xl hover:bg-gray-50 transition-colors">
+                <div className="group flex items-center justify-between p-3 rounded-2xl hover:bg-muted/30 transition-colors">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center text-blue-600">
+                    <div className="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center text-blue-600">
                       <Mail size={18} />
                     </div>
                     <div>
-                      <p className="text-[10px] text-gray-400 font-bold uppercase tracking-tighter leading-none mb-1">E-mail</p>
-                      <p className="text-sm font-semibold text-gray-800 truncate max-w-[140px]">{contact.email || "—"}</p>
+                      <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-tighter leading-none mb-1">E-mail</p>
+                      <p className="text-sm font-semibold text-foreground truncate max-w-[140px]">{contact.email || "—"}</p>
                     </div>
                   </div>
                 </div>
 
-                <div className="group flex items-center justify-between p-3 rounded-2xl hover:bg-gray-50 transition-colors">
+                <div className="group flex items-center justify-between p-3 rounded-2xl hover:bg-muted/30 transition-colors">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-xl bg-pink-50 flex items-center justify-center text-pink-600">
                       <Instagram size={18} />
                     </div>
                     <div>
-                      <p className="text-[10px] text-gray-400 font-bold uppercase tracking-tighter leading-none mb-1">Instagram</p>
-                      <p className="text-sm font-semibold text-gray-800">{contact.instagramHandle ? `@${contact.instagramHandle.replace('@', '')}` : "—"}</p>
+                      <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-tighter leading-none mb-1">Instagram</p>
+                      <p className="text-sm font-semibold text-foreground">{contact.instagramHandle ? `@${contact.instagramHandle.replace('@', '')}` : "—"}</p>
                     </div>
                   </div>
                 </div>
@@ -570,22 +681,22 @@ export default function ContactProfilePage() {
             </div>
 
             {/* Timeline do Lead */}
-            <div className="bg-white rounded-3xl p-6 border border-gray-100 shadow-sm">
-              <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-6 px-1">Histórico do CRM</h3>
+            <div className="bg-card surface-card p-5 shadow-none border border-border">
+              <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-widest mb-6 px-1">Histórico do CRM</h3>
 
               <div className="space-y-6">
-                <div className="relative pl-6 border-l-2 border-gray-100 pb-1">
-                  <div className="absolute -left-[9px] top-0 w-4 h-4 rounded-full bg-white border-2 border-brand-500 shadow-sm" />
-                  <p className="text-xs font-bold text-gray-800">Primeiro Cadastro</p>
-                  <p className="text-xs text-gray-400 mt-1 flex items-center gap-1">
+                <div className="relative pl-6 border-l-2 border-border pb-1">
+                  <div className="absolute -left-[9px] top-0 w-4 h-4 rounded-full bg-card border-2 border-brand-500 shadow-none border border-border" />
+                  <p className="text-xs font-bold text-foreground">Primeiro Cadastro</p>
+                  <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
                     <Calendar size={10} /> {new Date(contact.createdAt).toLocaleDateString("pt-BR")} às {new Date(contact.createdAt).toLocaleTimeString("pt-BR", { hour: '2-digit', minute: '2-digit' })}
                   </p>
                 </div>
 
-                <div className="relative pl-6 border-l-2 border-gray-100 pb-1">
-                  <div className="absolute -left-[9px] top-0 w-4 h-4 rounded-full bg-white border-2 border-gray-200 shadow-sm" />
-                  <p className="text-xs font-bold text-gray-600">Última Atualização</p>
-                  <p className="text-xs text-gray-400 mt-1 flex items-center gap-1">
+                <div className="relative pl-6 border-l-2 border-border pb-1">
+                  <div className="absolute -left-[9px] top-0 w-4 h-4 rounded-full bg-card border-2 border-border shadow-none border border-border" />
+                  <p className="text-xs font-bold text-muted-foreground">Última Atualização</p>
+                  <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
                     <Clock size={10} /> {new Date(contact.updatedAt).toLocaleDateString("pt-BR")}
                   </p>
                 </div>
@@ -593,12 +704,12 @@ export default function ContactProfilePage() {
             </div>
 
             {/* Tags */}
-            <div className="bg-white rounded-3xl p-6 border border-gray-100 shadow-sm">
-              <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4 px-1">Tags</h3>
+            <div className="bg-card surface-card p-5 shadow-none border border-border">
+              <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-widest mb-4 px-1">Tags</h3>
               <div className="flex flex-wrap gap-2">
                 {contact.tags && contact.tags.length > 0 ? (
                   contact.tags.map(tag => (
-                    <span key={tag} className="px-3 py-1.5 bg-gray-50 border border-gray-100 text-gray-600 text-[11px] font-bold rounded-xl whitespace-nowrap">
+                    <span key={tag} className="px-3 py-1.5 bg-muted/30 border border-border text-muted-foreground text-[11px] font-bold rounded-xl whitespace-nowrap">
                       {tag}
                     </span>
                   ))

@@ -32,7 +32,18 @@ function TabPerfil() {
 
   const inp = "w-full px-4 py-2.5 text-sm bg-muted/50 border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/50 text-foreground placeholder:text-muted-foreground";
 
-  const save = () => { setSaved(true); setTimeout(() => setSaved(false), 2000); };
+  const save = () => {
+    localStorage.setItem("dua-crm-profile", JSON.stringify(form));
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+  };
+
+  // Carregar ao montar
+  useState(() => {
+    if (typeof window === "undefined") return;
+    const saved = localStorage.getItem("dua-crm-profile");
+    if (saved) try { setForm(JSON.parse(saved)); } catch {}
+  });
 
   return (
     <div className="space-y-6 max-w-2xl">
@@ -386,10 +397,21 @@ function TabAparencia() {
 
 /* ── NOTIFICAÇÕES ── */
 function TabNotificacoes() {
-  const [notifs, setNotifs] = useState({
-    novoLead: true, contratoVencendo: true, pagamentoPendente: true,
-    mensagemWhatsapp: false, relatorioSemanal: true,
+  const [notifs, setNotifs] = useState(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("dua-crm-notifs");
+      if (saved) try { return JSON.parse(saved); } catch {}
+    }
+    return { novoLead: true, contratoVencendo: true, pagamentoPendente: true, mensagemWhatsapp: false, relatorioSemanal: true };
   });
+
+  const toggleNotif = (key: string) => {
+    setNotifs((n: any) => {
+      const updated = { ...n, [key]: !n[key] };
+      localStorage.setItem("dua-crm-notifs", JSON.stringify(updated));
+      return updated;
+    });
+  };
   return (
     <div className="max-w-2xl space-y-3">
       <h2 className="text-base font-bold text-foreground mb-4">Notificações</h2>
@@ -405,7 +427,7 @@ function TabNotificacoes() {
             <p className="text-sm font-medium text-foreground">{label}</p>
             <p className="text-xs text-muted-foreground mt-0.5">{sub}</p>
           </div>
-          <button onClick={() => setNotifs(n => ({...n, [key]: !(n as any)[key]}))}
+          <button onClick={() => toggleNotif(key)}
             className={`w-11 h-6 rounded-full transition-colors relative shrink-0 ${(notifs as any)[key] ? "bg-primary" : "bg-muted"}`}>
             <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all ${(notifs as any)[key] ? "left-5" : "left-0.5"}`} />
           </button>
@@ -423,7 +445,7 @@ function TabIntegracoes() {
     {
       key: "whatsapp",
       name: "WhatsApp",
-      desc: "Conecte sua conta via Evolution API",
+      desc: "Conecte sua conta do WhatsApp",
       icon: "💬",
       status: "disconnected",
       action: () => router.push("/dashboard/whatsapp"),
