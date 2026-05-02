@@ -96,7 +96,7 @@ export class WhatsAppService {
         try {
           const createRes = await axios.post(
             `${url}/instance/create`,
-            { instanceName, qrcode: true },
+            { instanceName, qrcode: true, integration: "WHATSAPP-BAILEYS", reject_call: false },
             { headers: this.headers, timeout },
           );
           this.logger.log(`[connect] Instância criada. Status: ${createRes.status}`);
@@ -200,6 +200,14 @@ export class WhatsAppService {
   }
 
   async disconnect(instanceName: string) {
+    try {
+      await axios.delete(
+        `${this.evolutionUrl}/instance/logout/${instanceName}`,
+        { headers: this.headers },
+      );
+    } catch (err: any) {
+      // ignora se não estiver conectada
+    }
     try {
       await axios.delete(
         `${this.evolutionUrl}/instance/delete/${instanceName}`,
