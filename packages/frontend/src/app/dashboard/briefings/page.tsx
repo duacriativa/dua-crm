@@ -470,7 +470,10 @@ export default function BriefingsPage() {
             <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)}
               className="flex-1 px-3 py-2.5 text-sm bg-muted/50 border border-border rounded-xl focus:outline-none text-foreground appearance-none">
               <option value="all">Todos os tipos</option>
-              {Object.entries(TYPE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              {Object.entries({
+                logo:"Logo", landing:"Landing Page", social:"Social Media",
+                branding:"Branding", video:"Vídeo / Motion", personalizado:"Personalizado"
+              }).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
             </select>
           </div>
         </div>
