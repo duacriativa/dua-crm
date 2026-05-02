@@ -52,7 +52,7 @@ export class WhatsAppService {
   }
 
   async connect(instanceName: string) {
-    const timeout = 15000;
+    const timeout = 30000;
     const url = this.evolutionUrl;
     const key = process.env.EVOLUTION_API_KEY;
 
@@ -97,7 +97,7 @@ export class WhatsAppService {
           const createRes = await axios.post(
             `${url}/instance/create`,
             { instanceName, qrcode: true, integration: "WHATSAPP-BAILEYS", reject_call: false },
-            { headers: this.headers, timeout },
+            { headers: this.headers, timeout: 30000 },
           );
           this.logger.log(`[connect] Instância criada. Status: ${createRes.status}`);
 
