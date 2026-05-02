@@ -41,6 +41,22 @@ export default function AgendaPage() {
   const [showTasks, setShowTasks] = useState(true);
   const [events, setEvents] = useState<Event[]>([]);
   const [showModal, setShowModal] = useState(false);
+  const [isLoaded, setIsLoaded] = useState(false);
+
+  useEffect(() => {
+    const saved = localStorage.getItem("agenda_events");
+    if (saved) {
+      try { setEvents(JSON.parse(saved)); } catch (e) {}
+    }
+    setIsLoaded(true);
+  }, []);
+
+  useEffect(() => {
+    if (isLoaded) {
+      localStorage.setItem("agenda_events", JSON.stringify(events));
+    }
+  }, [events, isLoaded]);
+
   const [newEvent, setNewEvent] = useState({ title: "", date: "", time: "", color: "#8B5CF6" });
 
   const prevMonth = () => { if (month === 0) { setMonth(11); setYear(y => y-1); } else setMonth(m => m-1); };

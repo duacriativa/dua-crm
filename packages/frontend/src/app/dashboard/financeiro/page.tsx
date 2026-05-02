@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import api from "@/lib/api";
+import { LoaderOne } from "@/components/ui/loader-one";
 import {
   TrendingUp, TrendingDown, AlertCircle,
   CheckCircle2, Clock, RefreshCw, ChevronDown, ChevronUp,
@@ -63,10 +64,7 @@ export default function FinanceiroPage() {
 
   if (loading) return (
     <div className="flex items-center justify-center h-64">
-      <div className="flex items-center gap-3 text-muted-foreground">
-        <RefreshCw className="w-5 h-5 animate-spin" />
-        <span>Buscando dados do Asaas...</span>
-      </div>
+      <LoaderOne />
     </div>
   );
 

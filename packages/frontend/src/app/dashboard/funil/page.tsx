@@ -103,9 +103,10 @@ export default function FunilPage() {
       if (stageMenuRef.current && !stageMenuRef.current.contains(e.target as Node)) {
         setStageMenuId(null);
       }
+      setCardMenuId(null);
     };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
+    document.addEventListener("click", handler);
+    return () => document.removeEventListener("click", handler);
   }, []);
 
   const deleteLead = async (leadId: string, stageId: string) => {
