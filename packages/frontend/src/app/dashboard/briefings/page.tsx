@@ -415,55 +415,64 @@ export default function BriefingsPage() {
     <div className="h-full flex flex-col bg-background">
       {/* Header */}
       <div className="border-b border-border bg-background/80 backdrop-blur-xl px-6 py-5 shrink-0">
-        <div className="flex items-start justify-between gap-3 mb-5 flex-wrap">
-          <div className="min-w-0">
-            <h1 className="text-2xl font-bold text-foreground">Briefings</h1>
-            <p className="text-sm text-muted-foreground mt-0.5">Gerencie os briefings dos seus clientes</p>
-          </div>
-          <div className="flex items-center gap-2 shrink-0">
+        <div className="mb-5">
+          <h1 className="text-2xl font-bold text-foreground">Briefings</h1>
+          <p className="text-sm text-muted-foreground mt-0.5 mb-4">Gerencie os briefings dos seus clientes</p>
+          <div className="flex gap-2 flex-wrap">
             <button onClick={() => setShowTemplatesMgr(true)}
-              className="flex items-center gap-1.5 px-3 py-2 text-sm text-muted-foreground border border-border rounded-xl hover:bg-muted/50 transition-colors whitespace-nowrap">
-              <Layout className="w-4 h-4" /><span className="hidden sm:inline">Meus </span>Templates
+              className="flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium text-foreground border border-border rounded-xl hover:bg-muted/50 transition-colors whitespace-nowrap">
+              <Layout className="w-4 h-4" />Meus Templates
             </button>
-            <button onClick={() => setShowTypeSelect(true)}
-              className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-gradient-primary rounded-xl hover:opacity-90 transition-opacity shadow-elegant whitespace-nowrap">
-              <Plus className="w-4 h-4" />Novo Briefing
+            <button
+              className="flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium text-foreground border border-border rounded-xl hover:bg-muted/50 transition-colors whitespace-nowrap">
+              <Settings className="w-4 h-4" />Perguntas Extra
             </button>
           </div>
+          <button onClick={() => setShowTypeSelect(true)}
+            className="mt-2 flex items-center gap-2 px-5 py-2.5 text-sm font-semibold text-white bg-gradient-primary rounded-xl hover:opacity-90 transition-opacity shadow-elegant whitespace-nowrap">
+            <Plus className="w-4 h-4" />Novo Briefing
+          </button>
         </div>
 
         {/* Stats */}
-        <div className="grid grid-cols-4 gap-3 mb-4">
+        <div className="grid grid-cols-2 gap-3 mb-4">
           {[
             { label: "Total", value: stats.total, icon: FileText, color: "text-violet-400" },
             { label: "Pendentes", value: stats.pending, icon: Clock, color: "text-amber-400" },
-            { label: "Respondido", value: stats.answered, icon: CheckCircle, color: "text-emerald-400" },
-            { label: "Templates", value: stats.types, icon: Layers, color: "text-blue-400" },
+            { label: "Respondidos", value: stats.answered, icon: CheckCircle, color: "text-emerald-400" },
+            { label: "Tipos", value: stats.types, icon: Layers, color: "text-blue-400" },
           ].map(({ label, value, icon: Icon, color }) => (
             <div key={label} className="surface-card p-4 flex items-center gap-3">
               <Icon className={`w-5 h-5 ${color} shrink-0`} />
-              <div className="min-w-0">
+              <div>
                 <p className="text-xl font-bold text-foreground">{value}</p>
-                <p className="text-xs text-muted-foreground truncate">{label}</p>
+                <p className="text-xs text-muted-foreground">{label}</p>
               </div>
             </div>
           ))}
         </div>
 
         {/* Filtros */}
-        <div className="flex items-center gap-2 flex-wrap">
-          <div className="relative flex-1 min-w-[200px]">
+        <div className="flex flex-col gap-2">
+          <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar por cliente ou briefing..."
-              className="w-full pl-9 pr-4 py-2 text-sm bg-muted/50 border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/50 text-foreground placeholder:text-muted-foreground" />
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar por cliente..."
+              className="w-full pl-9 pr-4 py-2.5 text-sm bg-muted/50 border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/50 text-foreground placeholder:text-muted-foreground" />
           </div>
-          <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
-            className="px-3 py-2 text-sm bg-muted/50 border border-border rounded-xl focus:outline-none text-foreground">
-            <option value="all">Todos os status</option>
-            <option value="pending">Pendente</option>
-            <option value="answered">Respondido</option>
-            <option value="draft">Rascunho</option>
-          </select>
+          <div className="flex gap-2">
+            <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
+              className="flex-1 px-3 py-2.5 text-sm bg-muted/50 border border-border rounded-xl focus:outline-none text-foreground appearance-none">
+              <option value="all">Todos os status</option>
+              <option value="pending">Pendente</option>
+              <option value="answered">Respondido</option>
+              <option value="draft">Rascunho</option>
+            </select>
+            <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)}
+              className="flex-1 px-3 py-2.5 text-sm bg-muted/50 border border-border rounded-xl focus:outline-none text-foreground appearance-none">
+              <option value="all">Todos os tipos</option>
+              {Object.entries(TYPE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+            </select>
+          </div>
         </div>
       </div>
 
