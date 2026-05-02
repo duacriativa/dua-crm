@@ -192,9 +192,11 @@ export class WhatsAppService {
         `${this.evolutionUrl}/instance/connectionState/${instanceName}`,
         { headers: this.headers },
       );
-      const state = res.data?.instance?.state || res.data?.state;
-      return { connected: state === 'open' };
-    } catch {
+      const state = res.data?.instance?.state || res.data?.state || res.data?.status || res.data?.instance?.status;
+      this.logger.log(`[getStatus] instância=${instanceName} status=${state}`);
+      return { connected: state === 'open' || state === 'connected' };
+    } catch (err: any) {
+      this.logger.warn(`[getStatus] erro ao buscar status de ${instanceName}: ${err.message}`);
       return { connected: false };
     }
   }
