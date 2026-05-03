@@ -263,6 +263,16 @@ function SettingsPanel({ onClose }: { onClose: () => void }) {
         <div className="pt-6 border-t border-border">
           <p className="text-sm font-semibold text-foreground mb-4">Ações da Conta</p>
           <div className="space-y-2">
+            <button className="w-full flex items-center gap-2 px-3 py-2 text-sm font-medium text-emerald-500 rounded-xl hover:bg-emerald-500/10 transition-colors text-left" onClick={async () => {
+              try {
+                await fetch(`${API_URL}/api/v1/whatsapp/connect`, { method: "POST", headers: authHeaders() });
+                alert("Webhook re-sincronizado com sucesso!");
+              } catch {
+                alert("Erro ao sincronizar webhook.");
+              }
+            }}>
+              <Zap className="w-4 h-4" /> Forçar Sincronização (Webhook)
+            </button>
             <button className="w-full flex items-center gap-2 px-3 py-2 text-sm font-medium text-muted-foreground rounded-xl hover:bg-muted/50 hover:text-foreground transition-colors text-left" onClick={() => alert("Função em desenvolvimento")}>
               <RefreshCw className="w-4 h-4" /> Limpar histórico de conversas
             </button>
@@ -432,8 +442,8 @@ export default function WhatsAppPage() {
     }
   };
 
-  const fetchConversations = useCallback(async () => {
-    setLoading(true);
+  const fetchConversations = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const res = await fetch(`${API_URL}/api/v1/conversations?limit=100`, { headers: authHeaders() });
       if (!res.ok) return;
@@ -442,12 +452,12 @@ export default function WhatsAppPage() {
     } catch {
       // silencioso
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, []);
 
-  const fetchMessages = useCallback(async (convId: string) => {
-    setLoadingMsgs(true);
+  const fetchMessages = useCallback(async (convId: string, silent = false) => {
+    if (!silent) setLoadingMsgs(true);
     try {
       const res = await fetch(`${API_URL}/api/v1/conversations/${convId}/messages`, { headers: authHeaders() });
       if (!res.ok) return;
@@ -456,20 +466,20 @@ export default function WhatsAppPage() {
     } catch {
       // silencioso
     } finally {
-      setLoadingMsgs(false);
+      if (!silent) setLoadingMsgs(false);
     }
   }, []);
 
   useEffect(() => {
     fetchConversations();
-    const interval = setInterval(fetchConversations, 5000);
+    const interval = setInterval(() => fetchConversations(true), 5000);
     return () => clearInterval(interval);
   }, [fetchConversations]);
 
   useEffect(() => {
     if (!selected) return;
     const interval = setInterval(() => {
-      fetchMessages(selected.id);
+      fetchMessages(selected.id, true);
     }, 3000);
     return () => clearInterval(interval);
   }, [selected, fetchMessages]);
