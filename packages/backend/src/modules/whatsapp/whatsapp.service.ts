@@ -225,7 +225,7 @@ export class WhatsAppService {
     const phone = WhatsAppService.formatPhone(to);
     const res = await axios.post(
       `${this.evolutionUrl}/message/sendText/${instanceName}`,
-      { number: phone, text },
+      { number: phone, textMessage: { text } },
       { headers: this.headers },
     );
     return res.data;
@@ -235,14 +235,19 @@ export class WhatsAppService {
     try {
       const event = payload?.event;
       const instance = payload?.instance;
-      this.logger.log(`Webhook recebido: event=${event} instance=${instance}`);
+      this.logger.log(`[Webhook] INÍCIO: event=${event} instance=${instance}`);
 
       if (event === 'messages.upsert') {
         const msg = payload?.data?.messages?.[0] || payload?.data;
-        if (!msg) return;
+        this.logger.log(`[Webhook] MSG OBJECT: ${JSON.stringify(msg).substring(0, 200)}`);
+        if (!msg) {
+          this.logger.warn(`[Webhook] msg is empty`);
+          return;
+        }
 
         const isFromMe = msg.key?.fromMe === true;
         const remoteJid = msg.key?.remoteJid || '';
+        this.logger.log(`[Webhook] isFromMe=${isFromMe} remoteJid=${remoteJid}`);
         if (remoteJid.endsWith('@g.us')) return;
 
         const rawId = remoteJid.replace('@s.whatsapp.net', '').replace('@lid', '');
@@ -250,7 +255,19 @@ export class WhatsAppService {
         const phone = isLid ? `lid:${rawId}` : `+${rawId}`;
         const pushName = msg.pushName || phone;
 
-        let content = '';
+        this.logger.log(`[Webhook] Buscando tenant com slug ou id: ${instance}`);
+        const tenant = await this.prisma.tenant.findFirst({
+          where: {
+            OR: [
+              { slug: instance },
+              { id: instance }
+            ]
+          }
+        });
+        if (!tenant) {
+          this.logger.warn(`[Webhook] Tenant com identificador ${instance} não encontrado! Abortando.`);
+          return;
+        }
         let msgType: 'TEXT' | 'IMAGE' | 'VIDEO' | 'AUDIO' | 'DOCUMENT' = 'TEXT';
         let mediaUrl: string | null = null;
         let quotedContent: string | null = null;
