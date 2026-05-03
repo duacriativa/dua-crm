@@ -235,19 +235,15 @@ export class WhatsAppService {
     try {
       const event = payload?.event;
       const instance = payload?.instance;
-      this.logger.log(`[Webhook] INÍCIO: event=${event} instance=${instance}`);
-
+      // A Evolution API pode enviar a mensagem aninhada em messages[0] ou direto no data
       if (event === 'messages.upsert' || event === 'MESSAGES_UPSERT') {
-        let msg = payload?.data?.messages?.[0] || payload?.data?.message || payload?.data;
-        
-        // As vezes a Evolution aninha demais
-        if (msg && !msg.key && msg.message?.key) {
-           msg = msg.message;
-        }
+        let msg = payload?.data?.messages?.[0] || payload?.data;
+        if (msg && !msg.key && msg.message?.key) msg = msg.message;
 
         this.logger.log(`[Webhook] MSG OBJECT: ${JSON.stringify(msg).substring(0, 300)}`);
+        
         if (!msg || !msg.key) {
-          this.logger.warn(`[Webhook] msg is empty or invalid format`);
+          this.logger.warn(`[Webhook] msg is empty or missing key`);
           return;
         }
 
@@ -261,7 +257,6 @@ export class WhatsAppService {
         const phone = isLid ? `lid:${rawId}` : `+${rawId}`;
         const pushName = msg.pushName || phone;
 
-        this.logger.log(`[Webhook] Buscando tenant com slug ou id: ${instance}`);
         const tenant = await this.prisma.tenant.findFirst({
           where: {
             OR: [
@@ -274,6 +269,7 @@ export class WhatsAppService {
           this.logger.warn(`[Webhook] Tenant com identificador ${instance} não encontrado! Abortando.`);
           return;
         }
+
         let msgType: 'TEXT' | 'IMAGE' | 'VIDEO' | 'AUDIO' | 'DOCUMENT' = 'TEXT';
         let mediaUrl: string | null = null;
         let quotedContent: string | null = null;
@@ -281,6 +277,7 @@ export class WhatsAppService {
         let quotedType: string | null = null;
 
         const m = msg.message;
+        let content = '';
 
         const ctx = m?.extendedTextMessage?.contextInfo
           || m?.imageMessage?.contextInfo
@@ -330,7 +327,6 @@ export class WhatsAppService {
 
         this.logger.log(`Mensagem de ${phone} fromMe=${isFromMe} [${msgType}]: ${content}`);
 
-
         const msgExternalId = msg.key?.id;
 
         // Verifica duplicata antes de qualquer coisa
@@ -344,59 +340,68 @@ export class WhatsAppService {
 
         let conversationId: string;
 
-        if (isFromMe) {
-          // Mensagem enviada pelo celular — busca conversa existente sem criar contato novo
-          // Tenta os dois formatos: com e sem o 9 do celular brasileiro
-          const phoneVariants = [phone];
-          if (!isLid && rawId.startsWith('55') && rawId.length === 12) {
-            // 12 dígitos sem o 9 → adiciona o 9 após DDD
-            phoneVariants.push(`+${rawId.slice(0, 4)}9${rawId.slice(4)}`);
-          } else if (!isLid && rawId.startsWith('55') && rawId.length === 13) {
-            // 13 dígitos com o 9 → tenta também sem o 9
-            phoneVariants.push(`+${rawId.slice(0, 4)}${rawId.slice(5)}`);
-          }
+        // Busca a conversa por telefone
+        const phoneVariants = [phone];
+        if (!isLid && rawId.startsWith('55') && rawId.length === 12) {
+          phoneVariants.push(`+${rawId.slice(0, 4)}9${rawId.slice(4)}`);
+        } else if (!isLid && rawId.startsWith('55') && rawId.length === 13) {
+          phoneVariants.push(`+${rawId.slice(0, 4)}${rawId.slice(5)}`);
+        }
 
-          const existingConv = await this.prisma.conversation.findFirst({
-            where: { tenantId: tenant.id, externalId: { in: phoneVariants } },
+        let conv = await this.prisma.conversation.findFirst({
+          where: {
+            tenantId: tenant.id,
+            channel: 'WHATSAPP',
+            contactPhone: { in: phoneVariants }
+          }
+        });
+
+        if (!conv) {
+          this.logger.log(`[Webhook] Conversa não encontrada para ${phone}. Criando nova conversa.`);
+          
+          let contact = await this.prisma.contact.findFirst({
+            where: {
+              tenantId: tenant.id,
+              phone: { in: phoneVariants },
+            },
           });
 
-          if (!existingConv) {
-            this.logger.log(`[fromMe] Nenhuma conversa encontrada para ${phoneVariants.join(', ')} — ignorado`);
-            return;
+          if (!contact) {
+            contact = await this.prisma.contact.create({
+              data: {
+                tenantId: tenant.id,
+                name: pushName,
+                phone,
+                leadScore: 0,
+                status: 'COLD',
+              },
+            });
           }
 
-          conversationId = existingConv.id;
-          await this.prisma.conversation.update({
-            where: { id: conversationId },
-            data: { updatedAt: new Date() },
+          conv = await this.prisma.conversation.create({
+            data: {
+              tenantId: tenant.id,
+              channel: 'WHATSAPP',
+              status: 'open',
+              contactName: pushName,
+              contactPhone: phone,
+              contactId: contact.id,
+              externalId: remoteJid,
+              unreadCount: isFromMe ? 0 : 1,
+            },
           });
         } else {
-          // Mensagem recebida — cria contato/conversa se necessário
-          let resolvedPhone = phone;
-          if (isLid && pushName && !pushName.startsWith('lid:')) {
-            const existing = await this.prisma.contact.findFirst({
-              where: { tenantId: tenant.id, name: pushName, NOT: { phone: { startsWith: 'lid:' } } },
-            });
-            if (existing) {
-              resolvedPhone = existing.phone;
-              this.logger.log(`[webhook] LID ${phone} → ${existing.phone} (${pushName})`);
-            }
-          }
-
-          const contact = await this.prisma.contact.upsert({
-            where: { tenantId_phone: { tenantId: tenant.id, phone: resolvedPhone } },
-            create: { tenantId: tenant.id, phone: resolvedPhone, name: pushName },
-            update: {},
+          // Atualiza a data e mensagens não lidas
+          await this.prisma.conversation.update({
+            where: { id: conv.id },
+            data: {
+              lastMessageAt: new Date(),
+              unreadCount: isFromMe ? undefined : { increment: 1 },
+            },
           });
-
-          const conversation = await this.prisma.conversation.upsert({
-            where: { tenantId_externalId: { tenantId: tenant.id, externalId: resolvedPhone } },
-            create: { tenantId: tenant.id, contactId: contact.id, channel: 'WHATSAPP', externalId: resolvedPhone, status: 'OPEN' },
-            update: { status: 'OPEN', updatedAt: new Date() },
-          });
-
-          conversationId = conversation.id;
         }
+
+        conversationId = conv.id;
 
         await this.prisma.message.create({
           data: {
