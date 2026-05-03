@@ -86,11 +86,10 @@ function ConvList({ conversations, loading, search, setSearch, tab, setTab, sele
         <div className="flex items-center justify-between mb-3">
           <h1 className="text-lg font-bold text-foreground">WhatsApp</h1>
           <div className="flex items-center gap-0.5">
-            <button className="p-1.5 rounded-lg text-muted-foreground hover:bg-muted/50 transition-colors"><EyeOff className="w-4 h-4" /></button>
-            <button className="p-1.5 rounded-lg text-emerald-400 hover:bg-muted/50 transition-colors"><Zap className="w-4 h-4" /></button>
-            <button className="p-1.5 rounded-lg text-muted-foreground hover:bg-muted/50 transition-colors"><Users className="w-4 h-4" /></button>
-            <button className="p-1.5 rounded-lg text-muted-foreground hover:bg-muted/50 transition-colors"><MessageSquarePlus className="w-4 h-4" /></button>
-            <button onClick={onOpenSettings} className="p-1.5 rounded-lg text-muted-foreground hover:bg-muted/50 transition-colors"><Settings className="w-4 h-4" /></button>
+            <button title="Automações" className="p-1.5 rounded-lg text-emerald-400 hover:bg-muted/50 transition-colors"><Zap className="w-4 h-4" /></button>
+            <button title="Monitoramento de grupos" onClick={() => setTab("groups")} className="p-1.5 rounded-lg text-muted-foreground hover:bg-muted/50 transition-colors"><Users className="w-4 h-4" /></button>
+            <button title="Adicionar uma conversa" className="p-1.5 rounded-lg text-muted-foreground hover:bg-muted/50 transition-colors"><MessageSquarePlus className="w-4 h-4" /></button>
+            <button title="Configurações" onClick={onOpenSettings} className="p-1.5 rounded-lg text-muted-foreground hover:bg-muted/50 transition-colors"><Settings className="w-4 h-4" /></button>
           </div>
         </div>
         <div className="relative mb-3">
@@ -260,6 +259,18 @@ function SettingsPanel({ onClose }: { onClose: () => void }) {
             </div>
           </div>
         ))}
+
+        <div className="pt-6 border-t border-border">
+          <p className="text-sm font-semibold text-foreground mb-4">Ações da Conta</p>
+          <div className="space-y-2">
+            <button className="w-full flex items-center gap-2 px-3 py-2 text-sm font-medium text-muted-foreground rounded-xl hover:bg-muted/50 hover:text-foreground transition-colors text-left" onClick={() => alert("Função em desenvolvimento")}>
+              <RefreshCw className="w-4 h-4" /> Limpar histórico de conversas
+            </button>
+            <button className="w-full flex items-center gap-2 px-3 py-2 text-sm font-medium text-rose-500 rounded-xl hover:bg-rose-500/10 transition-colors text-left" onClick={() => alert("Função em desenvolvimento")}>
+              <AlertCircle className="w-4 h-4" /> Desconectar WhatsApp
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -449,7 +460,19 @@ export default function WhatsAppPage() {
     }
   }, []);
 
-  useEffect(() => { fetchConversations(); }, [fetchConversations]);
+  useEffect(() => {
+    fetchConversations();
+    const interval = setInterval(fetchConversations, 5000);
+    return () => clearInterval(interval);
+  }, [fetchConversations]);
+
+  useEffect(() => {
+    if (!selected) return;
+    const interval = setInterval(() => {
+      fetchMessages(selected.id);
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [selected, fetchMessages]);
 
   const selectConv = (conv: Conversation) => {
     setSelected(conv);
