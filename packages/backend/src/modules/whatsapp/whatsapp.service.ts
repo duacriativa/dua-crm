@@ -340,7 +340,7 @@ export class WhatsAppService {
 
         let conversationId: string;
 
-        // Busca a conversa por telefone
+        // Busca a conversa por telefone usando o Contato
         const phoneVariants = [phone];
         if (!isLid && rawId.startsWith('55') && rawId.length === 12) {
           phoneVariants.push(`+${rawId.slice(0, 4)}9${rawId.slice(4)}`);
@@ -352,7 +352,9 @@ export class WhatsAppService {
           where: {
             tenantId: tenant.id,
             channel: 'WHATSAPP',
-            contactPhone: { in: phoneVariants }
+            contact: {
+              phone: { in: phoneVariants }
+            }
           }
         });
 
@@ -382,21 +384,17 @@ export class WhatsAppService {
             data: {
               tenantId: tenant.id,
               channel: 'WHATSAPP',
-              status: 'open',
-              contactName: pushName,
-              contactPhone: phone,
+              status: 'OPEN',
               contactId: contact.id,
               externalId: remoteJid,
-              unreadCount: isFromMe ? 0 : 1,
             },
           });
         } else {
-          // Atualiza a data e mensagens não lidas
+          // Atualiza a data de updatedAt para que suba na lista de conversas
           await this.prisma.conversation.update({
             where: { id: conv.id },
             data: {
-              lastMessageAt: new Date(),
-              unreadCount: isFromMe ? undefined : { increment: 1 },
+              updatedAt: new Date(),
             },
           });
         }
