@@ -408,6 +408,8 @@ export class WhatsAppService {
 
         conversationId = conv.id;
 
+        const instanceName = tenant.slug || instance;
+
         // Tenta buscar a foto de perfil assincronamente
         this.fetchAndSaveProfilePic(tenant.id, instanceName, rawId, conv.contactId, conversationId).catch(() => {});
 
