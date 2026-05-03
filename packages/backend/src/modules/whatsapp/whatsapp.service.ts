@@ -240,7 +240,7 @@ export class WhatsAppService {
         let msg = payload?.data?.messages?.[0] || payload?.data;
         if (msg && !msg.key && msg.message?.key) msg = msg.message;
 
-        this.logger.log(`[Webhook] MSG OBJECT: ${JSON.stringify(msg).substring(0, 300)}`);
+        this.logger.log(`[Webhook] MSG OBJECT: ${JSON.stringify(msg)}`);
         
         if (!msg || !msg.key) {
           this.logger.warn(`[Webhook] msg is empty or missing key`);
@@ -249,13 +249,20 @@ export class WhatsAppService {
 
         const isFromMe = msg.key?.fromMe === true;
         const remoteJid = msg.key?.remoteJid || '';
-        this.logger.log(`[Webhook] isFromMe=${isFromMe} remoteJid=${remoteJid}`);
-        if (remoteJid.endsWith('@g.us')) return;
+        const participant = msg.key?.participant || msg.participant || payload?.data?.participant || '';
+        const isGroup = remoteJid.endsWith('@g.us');
+        
+        let rawId = remoteJid.replace('@s.whatsapp.net', '').replace('@lid', '').replace('@g.us', '');
+        let isLid = remoteJid.endsWith('@lid');
+        
+        // Se for LID e tivermos o participant (que geralmente é o número real)
+        if (isLid && participant && participant.includes('@s.whatsapp.net')) {
+           rawId = participant.replace('@s.whatsapp.net', '');
+           isLid = false;
+        }
 
-        const rawId = remoteJid.replace('@s.whatsapp.net', '').replace('@lid', '');
-        const isLid = remoteJid.endsWith('@lid');
-        const phone = isLid ? `lid:${rawId}` : `+${rawId}`;
-        const pushName = msg.pushName || phone;
+        const phone = isGroup ? rawId : (isLid ? `lid:${rawId}` : `+${rawId}`);
+        const pushName = isGroup ? (msg.pushName || 'Grupo') : (msg.pushName || phone);
 
         const tenant = await this.prisma.tenant.findFirst({
           where: {
@@ -401,6 +408,9 @@ export class WhatsAppService {
 
         conversationId = conv.id;
 
+        // Tenta buscar a foto de perfil assincronamente
+        this.fetchAndSaveProfilePic(tenant.id, instanceName, rawId, conv.contactId, conversationId).catch(() => {});
+
         await this.prisma.message.create({
           data: {
             conversationId,
@@ -419,6 +429,29 @@ export class WhatsAppService {
       }
     } catch (err: any) {
       this.logger.error('Erro no webhook:', err.message);
+    }
+  }
+
+  private async fetchAndSaveProfilePic(tenantId: string, instanceName: string, phone: string, contactId: string, conversationId: string) {
+    try {
+      const evolutionUrl = `${this.evolutionUrl}/chat/fetchProfilePictureUrl/${instanceName}`;
+      // A maioria das versões do Evolution v1+ espera { "number": "..." } em POST
+      const res = await axios.post(evolutionUrl, { number: phone }, { headers: this.headers, timeout: 5000 });
+      const profilePicUrl = res.data?.profilePictureUrl || res.data?.picture;
+      
+      if (profilePicUrl) {
+        await this.prisma.contact.update({
+          where: { id: contactId },
+          data: { profilePicUrl }
+        });
+        await this.prisma.conversation.update({
+          where: { id: conversationId },
+          data: { profilePicUrl }
+        });
+        this.logger.log(`[Webhook] Avatar puxado com sucesso para ${phone}`);
+      }
+    } catch (err: any) {
+      this.logger.debug(`[Webhook] Sem avatar para ${phone} (ou erro na API)`);
     }
   }
 }

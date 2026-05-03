@@ -207,10 +207,11 @@ model Contact {
   utmSource           String?
   utmMedium           String?
   utmCampaign         String?
-  type            ContactType    @default(LEAD)
-  clientSince     DateTime?
-  createdAt       DateTime       @default(now())
-  updatedAt       DateTime       @updatedAt
+  type                ContactType    @default(LEAD)
+  profilePicUrl       String?
+  clientSince         DateTime?
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
 
   conversations  Conversation[]
   orders         Order[]
@@ -231,10 +232,11 @@ model Conversation {
   contact    Contact            @relation(fields: [contactId], references: [id])
   channel    Channel
   status     ConversationStatus @default(OPEN)
-  assignedTo String?            // userId
-  externalId String?            // ID da conversa no Meta
-  createdAt  DateTime           @default(now())
-  updatedAt  DateTime           @updatedAt
+  assignedTo    String?            // userId
+  externalId    String?            // ID da conversa no Meta
+  profilePicUrl String?            // Avatar URL
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
 
   messages Message[]
 

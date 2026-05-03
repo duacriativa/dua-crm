@@ -44,7 +44,7 @@ export class ConversationsService {
         orderBy: { updatedAt: 'desc' },
         include: {
           contact: {
-            select: { id: true, name: true, phone: true, email: true, tags: true, segment: true },
+            select: { id: true, name: true, phone: true, email: true, tags: true, segment: true, profilePicUrl: true },
           },
           messages: {
             orderBy: { sentAt: 'desc' },
@@ -68,6 +68,10 @@ export class ConversationsService {
         });
         return {
           ...conv,
+          contactName: conv.contact.name,
+          contactPhone: conv.contact.phone,
+          profilePicUrl: conv.profilePicUrl || conv.contact.profilePicUrl,
+          isGroup: conv.externalId?.endsWith('@g.us'),
           lastMessage: conv.messages[0]?.content ?? null,
           unreadCount,
           messages: undefined, // não retorna array completo
