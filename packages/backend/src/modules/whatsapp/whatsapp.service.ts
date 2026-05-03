@@ -203,7 +203,14 @@ export class WhatsAppService {
       );
       const state = res.data?.instance?.state || res.data?.state || res.data?.status || res.data?.instance?.status;
       this.logger.log(`[getStatus] instância=${instanceName} status=${state}`);
-      return { connected: state === 'open' || state === 'connected' };
+      const connected = state === 'open' || state === 'connected';
+      
+      // Proativo: se está conectado, garante que o webhook está configurado
+      if (connected) {
+        this.ensureWebhook(instanceName).catch(() => {});
+      }
+
+      return { connected };
     } catch (err: any) {
       this.logger.warn(`[getStatus] erro ao buscar status de ${instanceName}: ${err.message}`);
       return { connected: false };
