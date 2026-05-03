@@ -232,7 +232,23 @@ function ChatView({ conv, messages, loadingMsgs, text, setText, onSend, sending,
   );
 }
 
-function SettingsPanel({ onClose }: { onClose: () => void }) {
+function SettingsPanel({ onClose, onDisconnect }: { onClose: () => void; onDisconnect: () => void }) {
+  const [disconnecting, setDisconnecting] = useState(false);
+
+  const handleDisconnect = async () => {
+    if (!confirm("Tem certeza que deseja desconectar o WhatsApp? Você precisará escanear o QR Code novamente.")) return;
+    setDisconnecting(true);
+    try {
+      await fetch(`${API_URL}/api/v1/whatsapp/disconnect`, { method: "POST", headers: authHeaders() });
+      onDisconnect();
+      onClose();
+    } catch {
+      alert("Erro ao desconectar. Tente novamente.");
+    } finally {
+      setDisconnecting(false);
+    }
+  };
+
   return (
     <div className="flex flex-col h-full">
       <div className="flex items-center justify-between px-5 py-4 border-b border-border shrink-0">
@@ -266,8 +282,13 @@ function SettingsPanel({ onClose }: { onClose: () => void }) {
             <button className="w-full flex items-center gap-2 px-3 py-2 text-sm font-medium text-muted-foreground rounded-xl hover:bg-muted/50 hover:text-foreground transition-colors text-left" onClick={() => alert("Função em desenvolvimento")}>
               <RefreshCw className="w-4 h-4" /> Limpar histórico de conversas
             </button>
-            <button className="w-full flex items-center gap-2 px-3 py-2 text-sm font-medium text-rose-500 rounded-xl hover:bg-rose-500/10 transition-colors text-left" onClick={() => alert("Função em desenvolvimento")}>
-              <AlertCircle className="w-4 h-4" /> Desconectar WhatsApp
+            <button
+              className="w-full flex items-center gap-2 px-3 py-2 text-sm font-medium text-rose-500 rounded-xl hover:bg-rose-500/10 transition-colors text-left disabled:opacity-50"
+              onClick={handleDisconnect}
+              disabled={disconnecting}
+            >
+              {disconnecting ? <RefreshCw className="w-4 h-4 animate-spin" /> : <AlertCircle className="w-4 h-4" />}
+              {disconnecting ? "Desconectando..." : "Desconectar WhatsApp"}
             </button>
           </div>
         </div>
@@ -556,7 +577,7 @@ export default function WhatsAppPage() {
             text={text} setText={setText} onSend={sendMessage} sending={sending}
             onBack={() => setMobileView("list")} isMobile />
         )}
-        {mobileView === "settings" && <SettingsPanel onClose={() => setMobileView("list")} />}
+        {mobileView === "settings" && <SettingsPanel onClose={() => setMobileView("list")} onDisconnect={() => setWaStatus("disconnected")} />}
       </div>
 
       {/* ── Desktop ── */}
@@ -590,7 +611,7 @@ export default function WhatsAppPage() {
         )}
         {showSettings && (
           <div className="w-80 shrink-0 border-l border-border bg-background">
-            <SettingsPanel onClose={() => setShowSettings(false)} />
+            <SettingsPanel onClose={() => setShowSettings(false)} onDisconnect={() => setWaStatus("disconnected")} />
           </div>
         )}
       </div>
