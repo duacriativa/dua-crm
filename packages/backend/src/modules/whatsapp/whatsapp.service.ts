@@ -518,7 +518,7 @@ export class WhatsAppService {
       if (!pushName) return null;
       const res = await axios.post(
         `${this.evolutionUrl}/chat/findContacts/${instanceName}`,
-        {}, { headers: this.headers, timeout: 8000 }
+        {}, { headers: this.headers, timeout: 3000 }
       );
       const contacts = Array.isArray(res.data) ? res.data : [];
       for (const ec of contacts) {
@@ -557,6 +557,7 @@ export class WhatsAppService {
   }
 
   /** Sincroniza a agenda do WhatsApp → popula DB com contatos reais e avatares */
+  /** Sincroniza a agenda do WhatsApp → popula DB com contatos reais e mapeia LIDs */
   async syncContacts(instanceName: string, tenantId: string) {
     this.logger.log(`[Sync] Iniciando sincronização de ${instanceName}...`);
     try {
@@ -567,29 +568,41 @@ export class WhatsAppService {
       const contacts: any[] = Array.isArray(res.data) ? res.data : [];
       this.logger.log(`[Sync] ${contacts.length} contatos encontrados na agenda`);
 
+      // 1) Mapeia Nomes para Telefones Reais (@s.whatsapp.net)
+      const nameToRealPhone = new Map<string, string>();
+      for (const ec of contacts) {
+        if (ec.id?.endsWith('@s.whatsapp.net')) {
+          const phone = ec.id.replace('@s.whatsapp.net', '');
+          const name = (ec.pushName || ec.name || '').toLowerCase().trim();
+          if (name && !nameToRealPhone.has(name)) {
+            nameToRealPhone.set(name, phone);
+          }
+        }
+      }
+
       let synced = 0;
       for (const ec of contacts) {
-        if (!ec.id) continue;
-        // Ignora grupos e broadcasts
-        if (ec.id.endsWith('@g.us') || ec.id.endsWith('@broadcast')) continue;
+        if (!ec.id || ec.id.endsWith('@g.us') || ec.id.endsWith('@broadcast')) continue;
 
-        let phone: string | null = null;
-        let isLid = false;
+        let phone: string;
+        const pushName = ec.pushName || ec.name || '';
+        const nameKey = pushName.toLowerCase().trim();
 
-        if (ec.id.endsWith('@s.whatsapp.net')) {
-          phone = `+${ec.id.replace('@s.whatsapp.net', '')}`;
-        } else if (ec.id.endsWith('@lid')) {
-          // Para LIDs, guarda como lid:XXXX por enquanto
-          phone = `lid:${ec.id.replace('@lid', '')}`;
-          isLid = true;
+        if (ec.id.endsWith('@lid')) {
+          // É um LID. Tenta ver se temos o telefone real para esse nome
+          const real = nameToRealPhone.get(nameKey);
+          if (real) {
+            phone = `+${real}`;
+            this.logger.debug(`[Sync] Mapeando LID ${ec.id} para número real ${phone} via nome "${pushName}"`);
+          } else {
+            phone = `lid:${ec.id.replace('@lid', '')}`;
+          }
         } else {
-          continue;
+          phone = `+${ec.id.replace('@s.whatsapp.net', '')}`;
         }
 
-        const pushName = ec.pushName || ec.name || phone;
-
         try {
-          // Upsert pelo telefone (cria ou atualiza)
+          // Upsert pelo telefone
           const existing = await this.prisma.contact.findFirst({
             where: { tenantId, phone }
           });
@@ -598,7 +611,7 @@ export class WhatsAppService {
             await this.prisma.contact.create({
               data: {
                 tenantId,
-                name: pushName,
+                name: pushName || phone,
                 phone,
                 leadScore: 0,
                 qualification: 'UNQUALIFIED',
@@ -606,26 +619,16 @@ export class WhatsAppService {
               }
             });
             synced++;
-          } else if (!existing.profilePicUrl) {
-            // Tenta buscar avatar para contatos sem foto
-            try {
-              const picRes = await axios.post(
-                `${this.evolutionUrl}/chat/fetchProfilePictureUrl/${instanceName}`,
-                { number: ec.id }, { headers: this.headers, timeout: 5000 }
-              );
-              const profilePicUrl = picRes.data?.profilePictureUrl;
-              if (profilePicUrl) {
-                await this.prisma.contact.update({
-                  where: { id: existing.id },
-                  data: { profilePicUrl, name: pushName }
-                });
-              }
-            } catch { /* sem avatar, ok */ }
           }
-        } catch { /* ignora erros individuais de contato */ }
+          
+          // Se não tem foto, tenta buscar (limita para evitar rate limit)
+          if ((!existing || !existing.profilePicUrl) && synced < 50) {
+            this.fetchAndSaveProfilePic(tenantId, instanceName, ec.id, existing?.id || 'new', 'none').catch(() => {});
+          }
+        } catch { /* ignora */ }
       }
 
-      this.logger.log(`[Sync] Concluído! ${synced} novos contatos adicionados.`);
+      this.logger.log(`[Sync] Concluído! ${synced} contatos processados.`);
     } catch (err: any) {
       this.logger.warn(`[Sync] Erro: ${err.message}`);
     }

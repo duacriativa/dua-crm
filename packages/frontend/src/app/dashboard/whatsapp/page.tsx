@@ -286,6 +286,15 @@ function SettingsPanel({ onClose, onDisconnect }: { onClose: () => void; onDisco
         <div className="pt-6 border-t border-border">
           <p className="text-sm font-semibold text-foreground mb-4">Ações da Conta</p>
           <div className="space-y-2">
+            <button
+              className="w-full flex items-center gap-2 px-3 py-2 text-sm font-medium text-muted-foreground rounded-xl hover:bg-muted/50 hover:text-foreground transition-colors text-left"
+              onClick={async () => {
+                const res = await fetch(`${API_URL}/api/v1/whatsapp/sync`, { method: "POST", headers: authHeaders() });
+                if (res.ok) alert("Sincronização de contatos iniciada! Em alguns minutos os nomes e fotos aparecerão.");
+              }}
+            >
+              <Users className="w-4 h-4" /> Sincronizar contatos (Agenda)
+            </button>
             <button className="w-full flex items-center gap-2 px-3 py-2 text-sm font-medium text-muted-foreground rounded-xl hover:bg-muted/50 hover:text-foreground transition-colors text-left" onClick={async () => {
               if (!confirm("Apagar TODAS as conversas e mensagens? Esta ação não pode ser desfeita!")) return;
               await fetch(`${API_URL}/api/v1/conversations/history`, { method: "DELETE", headers: authHeaders() });
@@ -518,12 +527,19 @@ export default function WhatsAppPage() {
     if (!text.trim() || !selected || sending) return;
     setSending(true);
     try {
-      await fetch(`${API_URL}/api/v1/conversations/${selected.id}/messages`, {
+      const res = await fetch(`${API_URL}/api/v1/conversations/${selected.id}/messages`, {
         method: "POST", headers: authHeaders(),
         body: JSON.stringify({ content: text.trim(), type: "text" }),
       });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert(`Erro ao enviar: ${err.message || "Erro desconhecido"}`);
+        return;
+      }
       setText("");
       fetchMessages(selected.id);
+    } catch (e: any) {
+      alert(`Erro de rede: ${e.message}`);
     } finally {
       setSending(false);
     }

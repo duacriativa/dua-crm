@@ -37,6 +37,14 @@ export class WhatsAppController {
     return this.whatsapp.disconnect(instanceName);
   }
 
+  @Post('sync')
+  @UseGuards(JwtAuthGuard)
+  async sync(@Req() req: any) {
+    const instanceName = await this.getInstanceName(req.user.tenantId);
+    this.whatsapp.syncContacts(instanceName, req.user.tenantId).catch(console.error);
+    return { success: true, message: 'Sincronização iniciada' };
+  }
+
   @Post('webhook')
   @HttpCode(200)
   async webhook(@Body() payload: any) {
