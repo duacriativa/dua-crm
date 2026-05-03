@@ -18,8 +18,9 @@ type MobileView = "list" | "chat" | "settings";
 interface Conversation {
   id: string; contactName: string; contactPhone?: string;
   lastMessage?: string; lastMessageAt?: string; unreadCount: number;
-  isGroup?: boolean; channel: string; status: string;
-  contactId?: string; externalId?: string; profilePicUrl?: string;
+  status: string; channel: string; externalId?: string;
+  profilePicUrl?: string; isGroup?: boolean;
+  contact?: { qualification?: string; type?: string };
 }
 interface Message {
   id: string; content: string; direction: "inbound" | "outbound";
@@ -129,8 +130,8 @@ function ConvList({ conversations, loading, search, setSearch, tab, setTab, sele
                 <p className="text-sm font-semibold text-foreground truncate">{conv.contactName}</p>
                 <span className="text-[10px] text-muted-foreground shrink-0 ml-2">{timeAgo(conv.lastMessageAt)}</span>
               </div>
-              <div className="flex items-center justify-between">
-                <p className="text-xs text-muted-foreground truncate max-w-[200px]">
+              <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                <p className="text-xs text-muted-foreground truncate max-w-[180px]">
                   {conv.lastMessage?.startsWith("[imagem]") ? "📷 Imagem"
                     : conv.lastMessage?.startsWith("[áudio]") || conv.lastMessage?.startsWith("[audio]") ? "🎵 Áudio"
                     : conv.lastMessage?.startsWith("[sticker]") || conv.lastMessage?.startsWith("[figurinha]") ? "🎭 Figurinha"
@@ -138,8 +139,14 @@ function ConvList({ conversations, loading, search, setSearch, tab, setTab, sele
                     : conv.lastMessage?.startsWith("[documento]") ? "📄 Documento"
                     : conv.lastMessage ?? (conv.isGroup ? "Grupo" : "Sem mensagens")}
                 </p>
+                {conv.contact?.qualification === 'ULTRA' && <span className="px-1.5 py-0.5 text-[9px] font-bold rounded-full bg-amber-500/20 text-amber-400 shrink-0">Quente</span>}
+                {conv.contact?.qualification === 'QUALIFIED' && <span className="px-1.5 py-0.5 text-[9px] font-bold rounded-full bg-emerald-500/20 text-emerald-400 shrink-0">Qualificado</span>}
+                {(!conv.contact?.qualification || conv.contact?.qualification === 'UNQUALIFIED') && !conv.isGroup && <span className="px-1.5 py-0.5 text-[9px] font-bold rounded-full bg-primary/20 text-primary shrink-0">Novo Lead</span>}
+                {conv.contact?.type === 'CLIENT' && <span className="px-1.5 py-0.5 text-[9px] font-bold rounded-full bg-violet-500/20 text-violet-400 shrink-0">Cliente</span>}
+              </div>
+              <div className="flex items-center justify-between">
                 {conv.unreadCount > 0 && (
-                  <span className="w-5 h-5 rounded-full bg-primary text-white text-[10px] font-bold flex items-center justify-center shrink-0 ml-2">
+                  <span className="w-5 h-5 rounded-full bg-primary text-white text-[10px] font-bold flex items-center justify-center shrink-0 ml-auto">
                     {conv.unreadCount > 9 ? "9+" : conv.unreadCount}
                   </span>
                 )}
@@ -279,7 +286,12 @@ function SettingsPanel({ onClose, onDisconnect }: { onClose: () => void; onDisco
         <div className="pt-6 border-t border-border">
           <p className="text-sm font-semibold text-foreground mb-4">Ações da Conta</p>
           <div className="space-y-2">
-            <button className="w-full flex items-center gap-2 px-3 py-2 text-sm font-medium text-muted-foreground rounded-xl hover:bg-muted/50 hover:text-foreground transition-colors text-left" onClick={() => alert("Função em desenvolvimento")}>
+            <button className="w-full flex items-center gap-2 px-3 py-2 text-sm font-medium text-muted-foreground rounded-xl hover:bg-muted/50 hover:text-foreground transition-colors text-left" onClick={async () => {
+              if (!confirm("Apagar TODAS as conversas e mensagens? Esta ação não pode ser desfeita!")) return;
+              await fetch(`${API_URL}/api/v1/conversations/history`, { method: "DELETE", headers: authHeaders() });
+              onClose();
+              window.location.reload();
+            }}>
               <RefreshCw className="w-4 h-4" /> Limpar histórico de conversas
             </button>
             <button

@@ -44,7 +44,7 @@ export class ConversationsService {
         orderBy: { updatedAt: 'desc' },
         include: {
           contact: {
-            select: { id: true, name: true, phone: true, email: true, tags: true, segment: true, profilePicUrl: true },
+            select: { id: true, name: true, phone: true, email: true, tags: true, segment: true, profilePicUrl: true, qualification: true, type: true },
           },
           messages: {
             orderBy: { sentAt: 'desc' },
@@ -277,6 +277,20 @@ export class ConversationsService {
       where: { id: conversationId, tenantId },
     });
     return { ok: true };
+  }
+
+  async clearHistory(tenantId: string) {
+    // Apaga todas as mensagens de todas as conversas do tenant
+    const convIds = await this.prisma.conversation.findMany({
+      where: { tenantId },
+      select: { id: true },
+    });
+    const ids = convIds.map(c => c.id);
+    if (ids.length > 0) {
+      await this.prisma.message.deleteMany({ where: { conversationId: { in: ids } } });
+    }
+    await this.prisma.conversation.deleteMany({ where: { tenantId } });
+    return { ok: true, deleted: ids.length };
   }
 
   async startConversation(

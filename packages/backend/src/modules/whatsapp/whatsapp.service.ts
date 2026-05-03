@@ -395,9 +395,10 @@ export class WhatsAppService {
               data: {
                 tenantId: tenant.id,
                 name: pushName,
-                phone,
+                phone: isLid ? null : phone,
                 leadScore: 0,
-                status: 'COLD',
+                qualification: 'UNQUALIFIED',
+                type: 'LEAD',
               },
             });
           }

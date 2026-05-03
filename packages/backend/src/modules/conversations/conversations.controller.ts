@@ -92,6 +92,12 @@ export class ConversationsController {
     );
   }
 
+  /** DELETE /conversations/history — apaga todas as conversas e mensagens */
+  @Delete('history')
+  clearHistory(@Request() req: any) {
+    return this.conversationsService.clearHistory(req.user.tenantId);
+  }
+
   /** DELETE /conversations/:id — exclui conversa e mensagens */
   @Delete(':id')
   remove(@Request() req: any, @Param('id') id: string) {
