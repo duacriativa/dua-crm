@@ -151,11 +151,17 @@ export class ConversationsService {
     });
     if (!conv) throw new NotFoundException('Conversa não encontrada.');
 
-    // Suporte a LID (lid:123456) e número normal (+5521...)
-    const externalId = conv.externalId;
+    // Suporte a LID (@lid suffix), formato antigo (lid:) e número normal (+5521...)
+    const externalId = conv.externalId || '';
     let number: string;
     let remoteJid: string;
-    if (externalId.startsWith('lid:')) {
+
+    if (externalId.endsWith('@lid')) {
+      // Formato nativo: "101868151812267@lid"
+      number = externalId;
+      remoteJid = externalId;
+    } else if (externalId.startsWith('lid:')) {
+      // Formato legado: "lid:101868151812267"
       const lid = externalId.replace('lid:', '');
       number = `${lid}@lid`;
       remoteJid = `${lid}@lid`;

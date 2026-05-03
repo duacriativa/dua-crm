@@ -40,7 +40,8 @@ export class WhatsAppController {
   @Post('webhook')
   @HttpCode(200)
   async webhook(@Body() payload: any) {
-    this.whatsapp.processWebhook(payload).catch(console.error);
+    console.log(`[WEBHOOK RAW] event=${payload?.event} instance=${payload?.instance} keys=${Object.keys(payload || {}).join(',')}`);
+    this.whatsapp.processWebhook(payload).catch(err => console.error('[WEBHOOK ERROR]', err.message));
     return { received: true };
   }
 }
