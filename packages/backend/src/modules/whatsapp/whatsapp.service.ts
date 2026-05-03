@@ -237,11 +237,17 @@ export class WhatsAppService {
       const instance = payload?.instance;
       this.logger.log(`[Webhook] INÍCIO: event=${event} instance=${instance}`);
 
-      if (event === 'messages.upsert') {
-        const msg = payload?.data?.messages?.[0] || payload?.data;
-        this.logger.log(`[Webhook] MSG OBJECT: ${JSON.stringify(msg).substring(0, 200)}`);
-        if (!msg) {
-          this.logger.warn(`[Webhook] msg is empty`);
+      if (event === 'messages.upsert' || event === 'MESSAGES_UPSERT') {
+        let msg = payload?.data?.messages?.[0] || payload?.data?.message || payload?.data;
+        
+        // As vezes a Evolution aninha demais
+        if (msg && !msg.key && msg.message?.key) {
+           msg = msg.message;
+        }
+
+        this.logger.log(`[Webhook] MSG OBJECT: ${JSON.stringify(msg).substring(0, 300)}`);
+        if (!msg || !msg.key) {
+          this.logger.warn(`[Webhook] msg is empty or invalid format`);
           return;
         }
 
