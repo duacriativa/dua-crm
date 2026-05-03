@@ -23,7 +23,7 @@ interface Conversation {
 }
 interface Message {
   id: string; content: string; direction: "inbound" | "outbound";
-  createdAt: string; messageType?: string; mediaUrl?: string;
+  createdAt: string; sentAt?: string; messageType?: string; mediaUrl?: string;
 }
 
 function timeAgo(dateStr?: string) {
