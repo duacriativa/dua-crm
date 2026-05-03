@@ -187,7 +187,7 @@ function ChatView({ conv, messages, loadingMsgs, text, setText, onSend, sending,
         {loadingMsgs && <div className="flex justify-center py-8"><RefreshCw className="w-5 h-5 animate-spin text-muted-foreground" /></div>}
         {!loadingMsgs && messages.length === 0 && <p className="text-center text-sm text-muted-foreground py-8">Nenhuma mensagem ainda</p>}
         {messages.map(msg => {
-          const isOut = msg.direction === "outbound";
+          const isOut = msg.direction === "outbound" || msg.direction === "OUTBOUND";
           return (
             <div key={msg.id} className={`flex ${isOut ? "justify-end" : "justify-start"}`}>
               <div className={`max-w-[75%] rounded-2xl px-4 py-2.5 ${isOut ? "bg-primary text-white rounded-br-sm" : "bg-muted/60 text-foreground rounded-bl-sm border border-border"}`}>
@@ -209,7 +209,7 @@ function ChatView({ conv, messages, loadingMsgs, text, setText, onSend, sending,
                 )}
                 {msg.content && <p className="text-sm leading-relaxed whitespace-pre-wrap">{msg.content}</p>}
                 <p className={`text-[10px] mt-1 text-right ${isOut ? "text-white/60" : "text-muted-foreground"}`}>
-                  {new Date(msg.createdAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+                  {msg.sentAt ? new Date(msg.sentAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : ""}
                 </p>
               </div>
             </div>

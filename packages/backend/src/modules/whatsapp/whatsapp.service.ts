@@ -96,7 +96,16 @@ export class WhatsAppService {
         try {
           const createRes = await axios.post(
             `${url}/instance/create`,
-            { instanceName, qrcode: true, integration: "WHATSAPP-BAILEYS", reject_call: false },
+            { 
+              instanceName, 
+              qrcode: true, 
+              integration: "WHATSAPP-BAILEYS", 
+              reject_call: false,
+              // Flags para forçar a resolução nativa de LIDs em diversas versões da Evolution API
+              resolveLid: true,
+              resolveLids: true,
+              alwaysOnline: true
+            },
             { headers: this.headers, timeout: 30000 },
           );
           this.logger.log(`[connect] Instância criada. Status: ${createRes.status}`);
@@ -252,30 +261,36 @@ export class WhatsAppService {
         const participant = msg.key?.participant || msg.participant || payload?.data?.participant || '';
         const isGroup = remoteJid.endsWith('@g.us');
         
-        let rawId = remoteJid.replace('@s.whatsapp.net', '').replace('@lid', '').replace('@g.us', '');
-        let isLid = remoteJid.endsWith('@lid');
-        
-        // Se for LID e tivermos o participant (que geralmente é o número real)
-        if (isLid && participant && participant.includes('@s.whatsapp.net')) {
-           rawId = participant.replace('@s.whatsapp.net', '');
-           isLid = false;
-        }
-
-        const phone = isGroup ? rawId : (isLid ? `lid:${rawId}` : `+${rawId}`);
-        const pushName = isGroup ? (msg.pushName || 'Grupo') : (msg.pushName || phone);
-
         const tenant = await this.prisma.tenant.findFirst({
-          where: {
-            OR: [
-              { slug: instance },
-              { id: instance }
-            ]
-          }
+          where: { OR: [{ slug: instance }, { id: instance }] }
         });
         if (!tenant) {
           this.logger.warn(`[Webhook] Tenant com identificador ${instance} não encontrado! Abortando.`);
           return;
         }
+        
+        const instanceName = tenant.slug || instance;
+
+        let rawId = remoteJid.replace('@s.whatsapp.net', '').replace('@lid', '').replace('@g.us', '');
+        let isLid = remoteJid.endsWith('@lid');
+        
+        // Se for LID e tivermos o participant
+        if (isLid && participant && participant.includes('@s.whatsapp.net')) {
+           rawId = participant.replace('@s.whatsapp.net', '');
+           isLid = false;
+        }
+
+        // Tenta resolver o LID pela lista de contatos da Evolution API cruzando o PushName
+        if (isLid) {
+           const resolved = await this.resolveLid(instanceName, rawId, msg.pushName);
+           if (resolved) {
+             rawId = resolved;
+             isLid = false;
+           }
+        }
+
+        const phone = isGroup ? rawId : (isLid ? `lid:${rawId}` : `+${rawId}`);
+        const pushName = isGroup ? (msg.pushName || 'Grupo') : (msg.pushName || phone);
 
         let msgType: 'TEXT' | 'IMAGE' | 'VIDEO' | 'AUDIO' | 'DOCUMENT' = 'TEXT';
         let mediaUrl: string | null = null;
@@ -455,5 +470,25 @@ export class WhatsAppService {
     } catch (err: any) {
       this.logger.debug(`[Webhook] Sem avatar para ${phone} (ou erro na API)`);
     }
+  }
+
+  private async resolveLid(instanceName: string, lid: string, pushName: string): Promise<string | null> {
+    try {
+      if (!pushName) return null;
+      const evolutionUrl = `${this.evolutionUrl}/chat/findContacts/${instanceName}`;
+      const res = await axios.post(evolutionUrl, {}, { headers: this.headers, timeout: 5000 });
+      const contacts = Array.isArray(res.data) ? res.data : [];
+      
+      for (const ec of contacts) {
+        if (ec.id?.endsWith('@s.whatsapp.net') && ec.pushName?.toLowerCase().trim() === pushName.toLowerCase().trim()) {
+          const realPhone = ec.id.replace('@s.whatsapp.net', '');
+          this.logger.log(`[Webhook] LID ${lid} resolvido para o número real ${realPhone} via pushName (${pushName})`);
+          return realPhone;
+        }
+      }
+    } catch (err) {
+      this.logger.debug(`[Webhook] Falha ao tentar resolver LID ${lid}`);
+    }
+    return null;
   }
 }
