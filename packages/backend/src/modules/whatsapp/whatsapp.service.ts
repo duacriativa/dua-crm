@@ -324,8 +324,6 @@ export class WhatsAppService {
 
         this.logger.log(`Mensagem de ${phone} fromMe=${isFromMe} [${msgType}]: ${content}`);
 
-        const tenant = await this.prisma.tenant.findFirst({ where: { slug: instance } });
-        if (!tenant) return;
 
         const msgExternalId = msg.key?.id;
 
