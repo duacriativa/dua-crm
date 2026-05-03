@@ -244,6 +244,28 @@ export class WhatsAppService {
     try {
       const event = payload?.event;
       const instance = payload?.instance;
+
+      // ── CONNECTION_UPDATE: quando o WhatsApp conecta, sincroniza agenda ──
+      if (event === 'connection.update' || event === 'CONNECTION_UPDATE') {
+        const state = payload?.data?.state || payload?.data?.status;
+        if (state === 'open' || state === 'OPEN') {
+          this.logger.log(`[Webhook] WhatsApp conectado (${instance}). Iniciando sync de agenda...`);
+          const tenant = await this.prisma.tenant.findFirst({
+            where: { OR: [{ slug: instance }, { id: instance }] }
+          });
+          if (tenant) {
+            const instanceName = tenant.slug || instance;
+            // Registra webhook automaticamente ao conectar
+            this.ensureWebhook(instanceName).catch(() => {});
+            // Sincroniza agenda em background
+            this.syncContacts(instanceName, tenant.id).catch(err =>
+              this.logger.warn(`[Sync] Falha parcial: ${err.message}`)
+            );
+          }
+        }
+        return;
+      }
+
       // A Evolution API pode enviar a mensagem aninhada em messages[0] ou direto no data
       if (event === 'messages.upsert' || event === 'MESSAGES_UPSERT') {
         let msg = payload?.data?.messages?.[0] || payload?.data;
@@ -282,7 +304,7 @@ export class WhatsAppService {
 
         // Tenta resolver o LID pela lista de contatos da Evolution API cruzando o PushName
         if (isLid) {
-           const resolved = await this.resolveLid(instanceName, rawId, msg.pushName);
+           const resolved = await this.resolveLid(instanceName, rawId, msg.pushName, tenant.id);
            if (resolved) {
              rawId = resolved;
              isLid = false;
@@ -471,23 +493,135 @@ export class WhatsAppService {
     }
   }
 
-  private async resolveLid(instanceName: string, lid: string, pushName: string): Promise<string | null> {
+  /** Resolve LID → número real: primeiro checa DB, depois tenta cruzar a agenda */
+  public async resolveLid(instanceName: string, lid: string, pushName: string, tenantId?: string): Promise<string | null> {
     try {
+      // 1) Tenta achar no banco um contato com esse LID já salvo
+      if (tenantId) {
+        const existing = await this.prisma.contact.findFirst({
+          where: { tenantId, OR: [{ phone: `lid:${lid}` }, { phone: `+${lid}` }] }
+        });
+        if (existing?.phone && !existing.phone.startsWith('lid:')) {
+          this.logger.log(`[LID] Resolvido via DB: ${lid} → ${existing.phone}`);
+          return existing.phone.replace(/\D/g, '');
+        }
+      }
+
+      // 2) Tenta via agenda do WhatsApp cruzando pushName
       if (!pushName) return null;
-      const evolutionUrl = `${this.evolutionUrl}/chat/findContacts/${instanceName}`;
-      const res = await axios.post(evolutionUrl, {}, { headers: this.headers, timeout: 5000 });
+      const res = await axios.post(
+        `${this.evolutionUrl}/chat/findContacts/${instanceName}`,
+        {}, { headers: this.headers, timeout: 8000 }
+      );
       const contacts = Array.isArray(res.data) ? res.data : [];
-      
       for (const ec of contacts) {
-        if (ec.id?.endsWith('@s.whatsapp.net') && ec.pushName?.toLowerCase().trim() === pushName.toLowerCase().trim()) {
+        if (ec.id?.endsWith('@s.whatsapp.net') &&
+            ec.pushName?.toLowerCase().trim() === pushName.toLowerCase().trim()) {
           const realPhone = ec.id.replace('@s.whatsapp.net', '');
-          this.logger.log(`[Webhook] LID ${lid} resolvido para o número real ${realPhone} via pushName (${pushName})`);
+          this.logger.log(`[LID] ${lid} → ${realPhone} (via pushName "${pushName}")`);
           return realPhone;
         }
       }
     } catch (err) {
-      this.logger.debug(`[Webhook] Falha ao tentar resolver LID ${lid}`);
+      this.logger.debug(`[LID] Falha ao resolver ${lid}`);
     }
     return null;
   }
+
+  /** Garante que o webhook está registrado na Evolution API */
+  async ensureWebhook(instanceName: string) {
+    const webhookUrl = process.env.WEBHOOK_URL ||
+      `https://renewed-youth-production-7d32.up.railway.app/api/v1/whatsapp/webhook`;
+    try {
+      await axios.post(
+        `${this.evolutionUrl}/webhook/set/${instanceName}`,
+        {
+          url: webhookUrl,
+          webhook_by_events: false,
+          webhook_base64: false,
+          events: ['MESSAGES_UPSERT', 'MESSAGES_UPDATE', 'CONNECTION_UPDATE', 'QRCODE_UPDATED'],
+        },
+        { headers: this.headers, timeout: 10000 },
+      );
+      this.logger.log(`[Webhook] Webhook registrado para ${instanceName}`);
+    } catch (err: any) {
+      this.logger.warn(`[Webhook] Falha ao registrar webhook: ${err.message}`);
+    }
+  }
+
+  /** Sincroniza a agenda do WhatsApp → popula DB com contatos reais e avatares */
+  async syncContacts(instanceName: string, tenantId: string) {
+    this.logger.log(`[Sync] Iniciando sincronização de ${instanceName}...`);
+    try {
+      const res = await axios.post(
+        `${this.evolutionUrl}/chat/findContacts/${instanceName}`,
+        {}, { headers: this.headers, timeout: 30000 }
+      );
+      const contacts: any[] = Array.isArray(res.data) ? res.data : [];
+      this.logger.log(`[Sync] ${contacts.length} contatos encontrados na agenda`);
+
+      let synced = 0;
+      for (const ec of contacts) {
+        if (!ec.id) continue;
+        // Ignora grupos e broadcasts
+        if (ec.id.endsWith('@g.us') || ec.id.endsWith('@broadcast')) continue;
+
+        let phone: string | null = null;
+        let isLid = false;
+
+        if (ec.id.endsWith('@s.whatsapp.net')) {
+          phone = `+${ec.id.replace('@s.whatsapp.net', '')}`;
+        } else if (ec.id.endsWith('@lid')) {
+          // Para LIDs, guarda como lid:XXXX por enquanto
+          phone = `lid:${ec.id.replace('@lid', '')}`;
+          isLid = true;
+        } else {
+          continue;
+        }
+
+        const pushName = ec.pushName || ec.name || phone;
+
+        try {
+          // Upsert pelo telefone (cria ou atualiza)
+          const existing = await this.prisma.contact.findFirst({
+            where: { tenantId, phone }
+          });
+
+          if (!existing) {
+            await this.prisma.contact.create({
+              data: {
+                tenantId,
+                name: pushName,
+                phone,
+                leadScore: 0,
+                qualification: 'UNQUALIFIED',
+                type: 'LEAD',
+              }
+            });
+            synced++;
+          } else if (!existing.profilePicUrl) {
+            // Tenta buscar avatar para contatos sem foto
+            try {
+              const picRes = await axios.post(
+                `${this.evolutionUrl}/chat/fetchProfilePictureUrl/${instanceName}`,
+                { number: ec.id }, { headers: this.headers, timeout: 5000 }
+              );
+              const profilePicUrl = picRes.data?.profilePictureUrl;
+              if (profilePicUrl) {
+                await this.prisma.contact.update({
+                  where: { id: existing.id },
+                  data: { profilePicUrl, name: pushName }
+                });
+              }
+            } catch { /* sem avatar, ok */ }
+          }
+        } catch { /* ignora erros individuais de contato */ }
+      }
+
+      this.logger.log(`[Sync] Concluído! ${synced} novos contatos adicionados.`);
+    } catch (err: any) {
+      this.logger.warn(`[Sync] Erro: ${err.message}`);
+    }
+  }
 }
+

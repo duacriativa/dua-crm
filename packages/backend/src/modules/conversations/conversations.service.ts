@@ -1,10 +1,14 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import axios from 'axios';
+import { WhatsAppService } from '../whatsapp/whatsapp.service';
 
 @Injectable()
 export class ConversationsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly whatsappService: WhatsAppService,
+  ) {}
 
   private get evolutionHeaders() {
     return {
@@ -174,6 +178,18 @@ export class ConversationsService {
     // Envia via Evolution API (instanceName = tenant slug)
     const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { slug: true } });
     const instanceName = tenant?.slug ?? tenantId;
+
+    // Se ainda for LID, tenta resolver via agenda antes de enviar
+    if (number.endsWith('@lid')) {
+      const lid = number.replace('@lid', '');
+      const resolved = await this.whatsappService.resolveLid(instanceName, lid, conv.contact.name, tenantId);
+      if (resolved) {
+        number = `${resolved}@s.whatsapp.net`;
+        remoteJid = number;
+        console.log(`[SendMessage] LID resolvido para ${number} antes do envio`);
+      }
+    }
+
     const evolutionUrl = `${process.env.EVOLUTION_API_URL}/message/sendText/${instanceName}`;
 
     const body: any = { number, textMessage: { text: content } };
