@@ -18,7 +18,7 @@ export class PipelinesController {
           orderBy: { position: 'asc' },
           include: {
             leads: {
-              include: { contact: { select: { id: true, name: true, phone: true } } },
+              include: { contact: { select: { id: true, name: true, phone: true, tags: true, instagramHandle: true, notes: true } } },
               orderBy: { position: 'asc' },
             },
           },

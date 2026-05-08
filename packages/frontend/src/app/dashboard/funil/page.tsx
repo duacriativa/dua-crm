@@ -14,7 +14,7 @@ function authHeaders() { return { "Content-Type": "application/json", Authorizat
 
 const COLORS = ["#6366F1", "#E8501F", "#10B981", "#F59E0B", "#3B82F6", "#8B5CF6", "#EF4444", "#EC4899", "#14B8A6"];
 
-interface Contact { id: string; name: string; phone?: string | null; email?: string | null; tags?: string[]; notes?: string | null; createdAt?: string; }
+interface Contact { id: string; name: string; phone?: string | null; email?: string | null; tags?: string[]; notes?: string | null; instagramHandle?: string | null; createdAt?: string; }
 interface Lead { id: string; contactId: string; contact: Contact; value?: number; notes?: string | null; position: number; stageId: string; createdAt?: string; }
 interface Stage { id: string; name: string; color: string; position: number; leads: Lead[]; }
 interface Pipeline { id: string; name: string; stages: Stage[]; }
@@ -22,7 +22,7 @@ interface Pipeline { id: string; name: string; stages: Stage[]; }
 // Parse tags e notes para campos legíveis
 function parseContactFields(contact: Contact, leadNotes?: string | null) {
   const tags = contact.tags || [];
-  const instagram = tags.find((t) => t.startsWith("ig:"))?.replace("ig:", "") || null;
+  const instagram = contact.instagramHandle || tags.find((t) => t.startsWith("ig:"))?.replace("ig:", "") || null;
   const faturamentoTag = tags.find((t) => !t.startsWith("ig:") && t.includes("R$") || ["Até R$ 10k","R$ 10k–50k","R$ 50k–200k","Acima de R$ 200k"].includes(t)) || null;
   const modeloTag = tags.find((t) => ["Varejo","Atacado","Misto","Dropshipping","Marketplace","Outro"].includes(t)) || null;
 
