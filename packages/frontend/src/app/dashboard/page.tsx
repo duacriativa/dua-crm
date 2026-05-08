@@ -1,51 +1,38 @@
 "use client";
 
-import { TrendingUp, Users, DollarSign, Activity, ArrowUpRight, ArrowDownRight, MessageSquare, Sparkles, Eye, EyeOff } from "lucide-react";
-import { useState } from "react";
+import { TrendingUp, Users, DollarSign, Activity, ArrowUpRight, ArrowDownRight, MessageSquare, Sparkles, Eye, EyeOff, RefreshCw } from "lucide-react";
+import { useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 
-type Metric = {
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
+function getToken() { return typeof window !== "undefined" ? localStorage.getItem("access_token") : ""; }
+function authHeaders() { return { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` }; }
+
+function fmt(v: number) {
+  return v >= 1000 ? `R$ ${v.toLocaleString("pt-BR")}` : `R$ ${v}`;
+}
+
+function MetricCard({ label, value, hint, badge, trend, icon: Icon, accent, hide }: {
   label: string; value: string; hint: string; badge: string;
-  trend?: "up" | "down" | "neutral"; icon: any; accent?: boolean;
-};
-
-const acquisition: Metric[] = [
-  { label: "Leads recebidos",          value: "151",        hint: "total na base",        badge: "este mês",        icon: Users,       trend: "up"      },
-  { label: "Leads ultra qualificados", value: "0",          hint: "dentro do ICP",        badge: "0% dos leads",    icon: Sparkles,    trend: "neutral", accent: true },
-  { label: "Leads qualificados",       value: "0",          hint: "potencial médio",      badge: "0% dos leads",    icon: Activity,    trend: "neutral" },
-  { label: "Leads frios",              value: "132",        hint: "pouco qualificados",   badge: "87% dos leads",   icon: TrendingUp,  trend: "down"    },
-];
-const sales: Metric[] = [
-  { label: "Faturamento do mês", value: "R$ 49.259", hint: "contratado em abril",   badge: "R$ 40.959 recebido", icon: DollarSign,    trend: "up"     },
-  { label: "Já recebido",        value: "R$ 40.959", hint: "22 pagamentos",         badge: "81% do total",       icon: ArrowUpRight,  trend: "up"     },
-  { label: "Ticket médio",       value: "R$ 2.007",  hint: "por cliente/mês",       badge: "24 contratos ativos",icon: TrendingUp,    trend: "up"     },
-  { label: "CAC",                value: "R$ 240",    hint: "custo de aquisição",    badge: "R$ 1.200 ads ÷ novos",icon: Users,        trend: "neutral"},
-];
-const retention: Metric[] = [
-  { label: "LTV estimado",  value: "R$ 16.058", hint: "por cliente (~8 meses)",     badge: "ticket × retenção",  icon: TrendingUp,    trend: "up",      accent: true },
-  { label: "LTV / CAC",     value: "66.9x",     hint: "retorno por real investido", badge: "Saudável (meta: >3x)",icon: Sparkles,     trend: "up"       },
-  { label: "Inadimplência", value: "2%",        hint: "cobranças vencidas",         badge: "Saudável",            icon: Activity,     trend: "neutral"  },
-  { label: "Em atraso",     value: "R$ 1.000",  hint: "1 cobrança vencida",         badge: "ação necessária",     icon: ArrowDownRight,trend: "down"    },
-];
-
-function MetricCard({ m, hide }: { m: Metric; hide?: boolean }) {
-  const Icon = m.icon;
-  const trendColor = m.trend === "up" ? "text-success" : m.trend === "down" ? "text-destructive" : "text-muted-foreground";
+  trend?: "up" | "down" | "neutral"; icon: any; accent?: boolean; hide?: boolean;
+}) {
+  const trendColor = trend === "up" ? "text-success" : trend === "down" ? "text-destructive" : "text-muted-foreground";
   return (
-    <div className={`relative overflow-hidden surface-card p-5 transition-all hover:shadow-elegant hover:-translate-y-0.5 ${m.accent ? "ring-1 ring-primary/40" : ""}`}>
-      {m.accent && <div className="absolute inset-0 bg-gradient-glow opacity-50 pointer-events-none" />}
+    <div className={`relative overflow-hidden surface-card p-5 transition-all hover:shadow-elegant hover:-translate-y-0.5 ${accent ? "ring-1 ring-primary/40" : ""}`}>
+      {accent && <div className="absolute inset-0 bg-gradient-glow opacity-50 pointer-events-none" />}
       <div className="relative flex flex-col gap-3">
         <div className="flex items-start justify-between">
-          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{m.label}</p>
+          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{label}</p>
           <div className={`h-9 w-9 rounded-xl bg-muted/50 flex items-center justify-center ${trendColor}`}>
             <Icon className="h-4 w-4" />
           </div>
         </div>
         <div>
-          <p className="text-3xl font-bold tracking-tight text-foreground">{hide ? "•••" : m.value}</p>
-          <p className="text-xs text-muted-foreground mt-1">{m.hint}</p>
+          <p className="text-3xl font-bold tracking-tight text-foreground">{hide ? "•••" : value}</p>
+          <p className="text-xs text-muted-foreground mt-1">{hint}</p>
         </div>
         <span className="self-start text-xs px-2.5 py-1 rounded-full bg-muted/60 text-muted-foreground border border-border font-normal">
-          {hide ? "•••" : m.badge}
+          {hide ? "•••" : badge}
         </span>
       </div>
     </div>
@@ -56,16 +43,70 @@ function SectionTitle({ children }: { children: string }) {
   return <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-4">{children}</h2>;
 }
 
-const recentConvos = [
-  { name: "Tchu.bi + Dua 💜", msg: "Valor correto 85,00 camisa gio", time: "17:33", unread: 2 },
-  { name: "AYA - mkt dua",    msg: "Próxima reunião confirmada",      time: "17:25", unread: 1 },
-  { name: "Team Tráfego - Dua",msg: "Relatório semanal em anexo",    time: "17:16", unread: 0 },
-  { name: "Doce Caju - ADS",  msg: "Campanha pausada para revisão",   time: "17:00", unread: 0 },
-];
-
 export default function DashboardPage() {
+  const router = useRouter();
   const today = new Date().toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "long" });
   const [hideValues, setHideValues] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [fin, setFin] = useState<any>(null);
+  const [contacts, setContacts] = useState<any>(null);
+  const [convos, setConvos] = useState<any[]>([]);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [finRes, contactsRes, convosRes] = await Promise.all([
+        fetch(`${API_URL}/api/v1/financial/dashboard`, { headers: authHeaders() }),
+        fetch(`${API_URL}/api/v1/contacts/stats`, { headers: authHeaders() }),
+        fetch(`${API_URL}/api/v1/conversations?limit=4&status=OPEN`, { headers: authHeaders() }),
+      ]);
+      if (finRes.ok) setFin(await finRes.json());
+      if (contactsRes.ok) setContacts(await contactsRes.json());
+      if (convosRes.ok) {
+        const d = await convosRes.json();
+        setConvos(Array.isArray(d) ? d : d.data || []);
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  // ── Métricas calculadas ──
+  const totalLeads = contacts?.leadStats?.total ?? 0;
+  const received = fin?.received ?? 0;
+  const pending = fin?.pending ?? 0;
+  const overdue = fin?.overdue ?? 0;
+  const total = received + pending;
+  const receivedPct = total > 0 ? Math.round((received / total) * 100) : 0;
+  const ticketMedio = fin?.ticketMedio ?? 0;
+  const activeContracts = fin?.activeContracts ?? 0;
+  const ltv = fin?.ltv ?? 0;
+  const ltvCac = fin?.ltvCacRatio ?? 0;
+  const cac = fin?.cac ?? 0;
+  const inadimplencia = fin?.inadimplencyRate ?? 0;
+
+  const acquisition = [
+    { label: "Leads recebidos",          value: String(totalLeads),           hint: "total na base",         badge: "acumulado",             icon: Users,        trend: "up" as const    },
+    { label: "Leads ultra qualificados", value: "—",                          hint: "dentro do ICP",         badge: "em breve",              icon: Sparkles,     trend: "neutral" as const, accent: true },
+    { label: "Contratos ativos",         value: String(activeContracts),      hint: "clientes pagantes",     badge: `ticket R$ ${ticketMedio.toLocaleString("pt-BR")}`, icon: Activity, trend: "up" as const },
+    { label: "CAC",                      value: cac > 0 ? fmt(cac) : "—",    hint: "custo de aquisição",    badge: "ads ÷ novos clientes",  icon: TrendingUp,   trend: "neutral" as const },
+  ];
+
+  const sales = [
+    { label: "Faturamento do mês",  value: fmt(total),      hint: "contratado + pendente",   badge: `${fmt(received)} recebido`,      icon: DollarSign,    trend: "up" as const    },
+    { label: "Já recebido",         value: fmt(received),   hint: `${fin?.receivedCount ?? 0} pagamentos`, badge: `${receivedPct}% do total`, icon: ArrowUpRight, trend: "up" as const },
+    { label: "Ticket médio",        value: ticketMedio > 0 ? fmt(ticketMedio) : "—", hint: "por cliente/mês", badge: `${activeContracts} contratos ativos`, icon: TrendingUp, trend: "up" as const },
+    { label: "Pendente",            value: fmt(pending),    hint: `${fin?.pendingCount ?? 0} cobranças`,   badge: "a receber este mês",   icon: Activity,      trend: "neutral" as const },
+  ];
+
+  const retention = [
+    { label: "LTV estimado",   value: ltv > 0 ? fmt(ltv) : "—",              hint: "por cliente (~8 meses)",      badge: "ticket × retenção",     icon: TrendingUp,    trend: "up" as const,      accent: true },
+    { label: "LTV / CAC",      value: ltvCac > 0 ? `${ltvCac}x` : "—",       hint: "retorno por real investido",  badge: "Meta: >3x",             icon: Sparkles,      trend: ltvCac >= 3 ? "up" as const : "down" as const },
+    { label: "Inadimplência",  value: `${inadimplencia.toFixed(1)}%`,         hint: "cobranças vencidas",          badge: inadimplencia < 5 ? "Saudável" : "Atenção", icon: Activity, trend: inadimplencia < 5 ? "neutral" as const : "down" as const },
+    { label: "Em atraso",      value: overdue > 0 ? fmt(overdue) : "R$ 0",    hint: `${fin?.overdueCount ?? 0} cobranças vencidas`, badge: overdue > 0 ? "ação necessária" : "Tudo em dia", icon: ArrowDownRight, trend: overdue > 0 ? "down" as const : "up" as const },
+  ];
 
   return (
     <div className="relative">
@@ -77,100 +118,117 @@ export default function DashboardPage() {
               <h1 className="text-3xl md:text-4xl font-bold tracking-tight text-foreground">Dashboard</h1>
               <button
                 onClick={() => setHideValues(v => !v)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium border transition-all ${hideValues ? "bg-primary/10 border-primary/30 text-primary" : "border-border text-muted-foreground hover:bg-muted/50"}`}
-                title={hideValues ? "Mostrar valores" : "Esconder valores"}>
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium border transition-all ${hideValues ? "bg-primary/10 border-primary/30 text-primary" : "border-border text-muted-foreground hover:bg-muted/50"}`}>
                 {hideValues ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                 <span className="hidden sm:inline">{hideValues ? "Oculto" : "Ocultar"}</span>
+              </button>
+              <button onClick={load} disabled={loading}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium border border-border text-muted-foreground hover:bg-muted/50 transition-all disabled:opacity-50">
+                <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
+                <span className="hidden sm:inline">Atualizar</span>
               </button>
             </div>
             <p className="text-sm text-muted-foreground mt-1 capitalize">Hoje, {today}</p>
           </div>
           <span className="self-start text-xs px-3 py-1.5 rounded-full bg-success/10 text-success border border-success/20 font-medium">
-            ● Tudo operando
+            ● {loading ? "Carregando..." : "Tudo operando"}
           </span>
         </header>
 
-        <section className="mb-10">
-          <SectionTitle>Aquisição de leads</SectionTitle>
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-            {acquisition.map((m) => <MetricCard key={m.label} m={m} hide={hideValues} />)}
+        {loading ? (
+          <div className="flex items-center justify-center py-32 text-muted-foreground">
+            <RefreshCw className="w-6 h-6 animate-spin" />
           </div>
-        </section>
-
-        <section className="mb-10">
-          <SectionTitle>Vendas e conversão</SectionTitle>
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-            {sales.map((m) => <MetricCard key={m.label} m={m} hide={hideValues} />)}
-          </div>
-        </section>
-
-        <section className="mb-10">
-          <SectionTitle>Retenção e valor do cliente</SectionTitle>
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-            {retention.map((m) => <MetricCard key={m.label} m={m} hide={hideValues} />)}
-          </div>
-        </section>
-
-        <section className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          {/* Conversas recentes */}
-          <div className="surface-card p-6 lg:col-span-2">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2">
-                <MessageSquare className="h-4 w-4 text-primary" />
-                <h3 className="font-semibold text-foreground">Conversas recentes</h3>
+        ) : (
+          <>
+            <section className="mb-10">
+              <SectionTitle>Aquisição de leads</SectionTitle>
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+                {acquisition.map((m) => <MetricCard key={m.label} {...m} hide={hideValues} />)}
               </div>
-              <button className="text-xs text-primary hover:underline">Ver todas →</button>
-            </div>
-            <div className="space-y-1">
-              {recentConvos.map((c) => (
-                <div key={c.name} className="flex items-center gap-3 p-3 rounded-xl hover:bg-muted/40 transition-colors cursor-pointer">
-                  <div className="h-10 w-10 rounded-full bg-gradient-primary flex items-center justify-center text-sm font-semibold text-white shrink-0">
-                    {c.name[0]}
+            </section>
+
+            <section className="mb-10">
+              <SectionTitle>Vendas e conversão</SectionTitle>
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+                {sales.map((m) => <MetricCard key={m.label} {...m} hide={hideValues} />)}
+              </div>
+            </section>
+
+            <section className="mb-10">
+              <SectionTitle>Retenção e valor do cliente</SectionTitle>
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+                {retention.map((m) => <MetricCard key={m.label} {...m} hide={hideValues} />)}
+              </div>
+            </section>
+
+            <section className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+              {/* Conversas recentes */}
+              <div className="surface-card p-6 lg:col-span-2">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <MessageSquare className="h-4 w-4 text-primary" />
+                    <h3 className="font-semibold text-foreground">Conversas recentes</h3>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between">
-                      <p className="text-sm font-medium text-foreground truncate">{c.name}</p>
-                      <span className="text-xs text-muted-foreground shrink-0 ml-2">{c.time}</span>
+                  <button onClick={() => router.push("/dashboard/conversas")} className="text-xs text-primary hover:underline">Ver todas →</button>
+                </div>
+                <div className="space-y-1">
+                  {convos.length === 0 ? (
+                    <p className="text-sm text-muted-foreground py-4 text-center">Nenhuma conversa aberta</p>
+                  ) : convos.map((c: any) => (
+                    <div key={c.id} onClick={() => router.push(`/dashboard/conversas?id=${c.id}`)}
+                      className="flex items-center gap-3 p-3 rounded-xl hover:bg-muted/40 transition-colors cursor-pointer">
+                      <div className="h-10 w-10 rounded-full bg-gradient-primary flex items-center justify-center text-sm font-semibold text-white shrink-0">
+                        {(c.contact?.name || c.externalId || "?")[0].toUpperCase()}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between">
+                          <p className="text-sm font-medium text-foreground truncate">{c.contact?.name || c.externalId}</p>
+                          <span className="text-xs text-muted-foreground shrink-0 ml-2">
+                            {c.lastMessageAt ? new Date(c.lastMessageAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : ""}
+                          </span>
+                        </div>
+                        <p className="text-xs text-muted-foreground truncate">{c.lastMessage || "Sem mensagens"}</p>
+                      </div>
+                      {(c.unreadCount ?? 0) > 0 && (
+                        <span className="h-5 min-w-[20px] px-1.5 rounded-full bg-primary text-primary-foreground text-xs font-semibold flex items-center justify-center">
+                          {c.unreadCount}
+                        </span>
+                      )}
                     </div>
-                    <p className="text-xs text-muted-foreground truncate">{c.msg}</p>
-                  </div>
-                  {c.unread > 0 && (
-                    <span className="h-5 min-w-[20px] px-1.5 rounded-full bg-primary text-primary-foreground text-xs font-semibold flex items-center justify-center">
-                      {c.unread}
-                    </span>
-                  )}
+                  ))}
                 </div>
-              ))}
-            </div>
-          </div>
+              </div>
 
-          {/* Agentes IA */}
-          <div className="surface-card p-6 relative overflow-hidden">
-            <div className="absolute -top-12 -right-12 h-40 w-40 rounded-full bg-primary/20 blur-3xl" />
-            <div className="relative">
-              <div className="flex items-center gap-2 mb-4">
-                <Sparkles className="h-4 w-4 text-primary" />
-                <h3 className="font-semibold text-foreground">Agentes de IA</h3>
-              </div>
-              <p className="text-sm text-muted-foreground mb-4">Seus assistentes inteligentes prontos para ajudar.</p>
-              <div className="space-y-2">
-                {["Analista", "Copywriter", "Designer"].map((a) => (
-                  <div key={a} className="flex items-center justify-between p-3 rounded-xl bg-muted/40 hover:bg-muted/60 transition-colors cursor-pointer">
-                    <span className="text-sm font-medium text-foreground">{a}</span>
-                    <span className="text-xs px-2 py-0.5 rounded-full bg-primary/15 text-primary border border-primary/20">BETA</span>
+              {/* Agentes IA */}
+              <div className="surface-card p-6 relative overflow-hidden">
+                <div className="absolute -top-12 -right-12 h-40 w-40 rounded-full bg-primary/20 blur-3xl" />
+                <div className="relative">
+                  <div className="flex items-center gap-2 mb-4">
+                    <Sparkles className="h-4 w-4 text-primary" />
+                    <h3 className="font-semibold text-foreground">Agentes de IA</h3>
                   </div>
-                ))}
-              </div>
-              <div className="mt-4 pt-4 border-t border-border">
-                <p className="text-xs text-muted-foreground">Uso este mês</p>
-                <div className="h-2 rounded-full bg-muted mt-2 overflow-hidden">
-                  <div className="h-full w-[42%] rounded-full bg-gradient-primary" />
+                  <p className="text-sm text-muted-foreground mb-4">Seus assistentes inteligentes prontos para ajudar.</p>
+                  <div className="space-y-2">
+                    {["Analista", "Copywriter", "Designer"].map((a) => (
+                      <div key={a} className="flex items-center justify-between p-3 rounded-xl bg-muted/40 hover:bg-muted/60 transition-colors cursor-pointer">
+                        <span className="text-sm font-medium text-foreground">{a}</span>
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-primary/15 text-primary border border-primary/20">BETA</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-4 pt-4 border-t border-border">
+                    <p className="text-xs text-muted-foreground">Uso este mês</p>
+                    <div className="h-2 rounded-full bg-muted mt-2 overflow-hidden">
+                      <div className="h-full w-[42%] rounded-full bg-gradient-primary" />
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-2">42% do limite</p>
+                  </div>
                 </div>
-                <p className="text-xs text-muted-foreground mt-2">42% do limite</p>
               </div>
-            </div>
-          </div>
-        </section>
+            </section>
+          </>
+        )}
       </div>
     </div>
   );
