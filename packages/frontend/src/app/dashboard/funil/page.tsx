@@ -471,7 +471,9 @@ export default function FunilPage() {
                 {stageValue > 0 && <p className="text-xs text-muted-foreground mb-2">R$ {stageValue.toLocaleString("pt-BR")}</p>}
 
                 <div className="flex-1 flex flex-col gap-2 overflow-y-auto pr-1" style={{ minHeight: 0 }}>
-                  {stage.leads.map((lead) => (
+                  {stage.leads.map((lead) => {
+                    const cardParsed = parseContactFields(lead.contact, lead.notes);
+                    return (
                     <div
                       key={lead.id}
                       draggable
@@ -508,8 +510,14 @@ export default function FunilPage() {
                         </div>
                       </div>
                       {lead.contact.phone && <p className="text-xs text-muted-foreground ml-9">{lead.contact.phone}</p>}
+                      {cardParsed.instagram && (
+                        <div className="flex items-center gap-1.5 ml-9 mt-1">
+                          <Instagram className="w-3 h-3 text-pink-400" />
+                          <span className="text-xs text-muted-foreground">@{cardParsed.instagram.replace("@", "")}</span>
+                        </div>
+                      )}
+                      {cardParsed.faturamento && <p className="text-[10px] text-muted-foreground ml-9 mt-1 truncate">{cardParsed.faturamento}</p>}
                       {lead.value && <div className="ml-9 mt-1"><span className="text-xs font-semibold text-green-600">R$ {lead.value.toLocaleString("pt-BR")}</span></div>}
-                      {lead.notes && <p className="text-[10px] text-muted-foreground ml-9 mt-1 truncate">{lead.notes}</p>}
                       {/* Mover etapa — só mobile, barra inferior no card */}
                       <button
                         onClick={(e) => { e.stopPropagation(); setMoveLeadModal({ lead, fromStageId: stage.id }); }}
@@ -517,7 +525,8 @@ export default function FunilPage() {
                         <ArrowRight className="w-3 h-3" />Mover etapa
                       </button>
                     </div>
-                  ))}
+                    );
+                  })}
 
                   {showNewLead === stage.id ? (
                     <div className="bg-card border border-primary/30 rounded-2xl p-3 shadow-sm">
