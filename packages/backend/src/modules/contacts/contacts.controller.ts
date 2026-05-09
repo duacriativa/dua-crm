@@ -186,7 +186,7 @@ export class ContactsController {
 
   /**
    * POST /contacts/:id/analyze-instagram
-   * Chama a API da OpenAI (GPT-4o) para analisar o perfil do Instagram do contato.
+   * Usa Google Gemini 1.5 Flash (gratuito) para analisar o perfil do Instagram.
    */
   @Post(':id/analyze-instagram')
   async analyzeInstagram(@Request() req: any, @Param('id') id: string) {
@@ -200,8 +200,8 @@ export class ContactsController {
     if (!contact) throw new BadRequestException('Contato não encontrado.');
     if (!contact.instagramHandle) throw new BadRequestException('Contato sem Instagram cadastrado.');
 
-    const apiKey = process.env.OPENAI_API_KEY;
-    if (!apiKey) throw new InternalServerErrorException('OPENAI_API_KEY não configurada.');
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) throw new InternalServerErrorException('GEMINI_API_KEY não configurada.');
 
     const instagram = contact.instagramHandle.replace('@', '');
     const prompt =
@@ -211,40 +211,32 @@ export class ContactsController {
       `alertas (array), estrategia_recomendada (parágrafo), mensagem_whatsapp (mensagem casual e personalizada, ` +
       `máx 4 linhas, assine como Equipe Dua Criativa).`;
 
-    let openaiRes: any;
+    let geminiRes: any;
     try {
-      openaiRes = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
+      geminiRes = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            systemInstruction: { parts: [{ text: 'Você é especialista em marketing digital para moda brasileira. Retorne sempre JSON válido, sem markdown.' }] },
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: { maxOutputTokens: 2048, temperature: 0.7 },
+          }),
         },
-        body: JSON.stringify({
-          model: 'gpt-4o',
-          max_tokens: 2048,
-          response_format: { type: 'json_object' },
-          messages: [
-            {
-              role: 'system',
-              content: 'Você é um especialista em marketing digital para marcas de moda brasileira. Retorne sempre JSON válido.',
-            },
-            { role: 'user', content: prompt },
-          ],
-        }),
-      });
+      );
     } catch (err: any) {
-      throw new InternalServerErrorException(`Erro ao conectar na OpenAI API: ${err.message}`);
+      throw new InternalServerErrorException(`Erro ao conectar no Gemini: ${err.message}`);
     }
 
-    if (!openaiRes.ok) {
-      const errBody = await openaiRes.text();
-      throw new InternalServerErrorException(`OpenAI API retornou ${openaiRes.status}: ${errBody}`);
+    if (!geminiRes.ok) {
+      const errBody = await geminiRes.text();
+      throw new InternalServerErrorException(`Gemini retornou ${geminiRes.status}: ${errBody.slice(0, 300)}`);
     }
 
-    const data: any = await openaiRes.json();
-    const analysisText: string = data.choices?.[0]?.message?.content ?? '';
+    const data: any = await geminiRes.json();
+    const analysisText: string = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
 
-    // Tenta extrair o JSON embutido no texto
     let parsed: any = null;
     try {
       const jsonMatch = analysisText.match(/\{[\s\S]*\}/);
