@@ -716,21 +716,21 @@ export default function ContactProfilePage() {
                 <div className="space-y-5 mt-2">
                   {parsedAnalysis.resumo && (
                     <div className="bg-primary/10 rounded-2xl p-4 border border-primary/20">
-                      <p className="text-sm text-purple-900 leading-relaxed">{parsedAnalysis.resumo}</p>
+                      <p className="text-sm text-foreground leading-relaxed">{parsedAnalysis.resumo}</p>
                     </div>
                   )}
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {parsedAnalysis.pontos_fortes && parsedAnalysis.pontos_fortes.length > 0 && (
-                      <div className="bg-green-500/10 rounded-2xl p-4 border border-green-100">
+                      <div className="bg-green-500/10 rounded-2xl p-4 border border-green-500/20">
                         <div className="flex items-center gap-2 mb-3">
-                          <Star size={14} className="text-green-600" />
-                          <span className="text-xs font-bold text-green-700 uppercase tracking-wider">Pontos Fortes</span>
+                          <Star size={14} className="text-green-400" />
+                          <span className="text-xs font-bold text-green-400 uppercase tracking-wider">Pontos Fortes</span>
                         </div>
                         <ul className="space-y-1.5">
                           {parsedAnalysis.pontos_fortes.map((p, i) => (
-                            <li key={i} className="text-xs text-green-800 flex gap-2">
-                              <span className="text-green-400 mt-0.5">•</span>{p}
+                            <li key={i} className="text-xs text-foreground flex gap-2">
+                              <span className="text-green-400 mt-0.5 shrink-0">•</span>{p}
                             </li>
                           ))}
                         </ul>
@@ -738,15 +738,15 @@ export default function ContactProfilePage() {
                     )}
 
                     {parsedAnalysis.oportunidades && parsedAnalysis.oportunidades.length > 0 && (
-                      <div className="bg-blue-500/10 rounded-2xl p-4 border border-blue-100">
+                      <div className="bg-blue-500/10 rounded-2xl p-4 border border-blue-500/20">
                         <div className="flex items-center gap-2 mb-3">
-                          <TrendingUp size={14} className="text-blue-600" />
-                          <span className="text-xs font-bold text-blue-700 uppercase tracking-wider">Oportunidades</span>
+                          <TrendingUp size={14} className="text-blue-400" />
+                          <span className="text-xs font-bold text-blue-400 uppercase tracking-wider">Oportunidades</span>
                         </div>
                         <ul className="space-y-1.5">
                           {parsedAnalysis.oportunidades.map((o, i) => (
-                            <li key={i} className="text-xs text-blue-800 flex gap-2">
-                              <span className="text-blue-400 mt-0.5">•</span>{o}
+                            <li key={i} className="text-xs text-foreground flex gap-2">
+                              <span className="text-blue-400 mt-0.5 shrink-0">•</span>{o}
                             </li>
                           ))}
                         </ul>
@@ -754,15 +754,15 @@ export default function ContactProfilePage() {
                     )}
 
                     {parsedAnalysis.alertas && parsedAnalysis.alertas.length > 0 && (
-                      <div className="bg-amber-500/10 rounded-2xl p-4 border border-amber-100">
+                      <div className="bg-amber-500/10 rounded-2xl p-4 border border-amber-500/20">
                         <div className="flex items-center gap-2 mb-3">
-                          <AlertTriangle size={14} className="text-amber-600" />
-                          <span className="text-xs font-bold text-amber-700 uppercase tracking-wider">Alertas</span>
+                          <AlertTriangle size={14} className="text-amber-400" />
+                          <span className="text-xs font-bold text-amber-400 uppercase tracking-wider">Alertas</span>
                         </div>
                         <ul className="space-y-1.5">
                           {parsedAnalysis.alertas.map((a, i) => (
-                            <li key={i} className="text-xs text-amber-800 flex gap-2">
-                              <span className="text-amber-400 mt-0.5">•</span>{a}
+                            <li key={i} className="text-xs text-foreground flex gap-2">
+                              <span className="text-amber-400 mt-0.5 shrink-0">•</span>{a}
                             </li>
                           ))}
                         </ul>
@@ -770,23 +770,23 @@ export default function ContactProfilePage() {
                     )}
 
                     {parsedAnalysis.estrategia_recomendada && (
-                      <div className="bg-indigo-50 rounded-2xl p-4 border border-indigo-100">
+                      <div className="bg-violet-500/10 rounded-2xl p-4 border border-violet-500/20">
                         <div className="flex items-center gap-2 mb-3">
-                          <Zap size={14} className="text-indigo-600" />
-                          <span className="text-xs font-bold text-indigo-700 uppercase tracking-wider">Estratégia</span>
+                          <Zap size={14} className="text-violet-400" />
+                          <span className="text-xs font-bold text-violet-400 uppercase tracking-wider">Estratégia</span>
                         </div>
-                        <p className="text-xs text-indigo-800 leading-relaxed">{parsedAnalysis.estrategia_recomendada}</p>
+                        <p className="text-xs text-foreground leading-relaxed">{parsedAnalysis.estrategia_recomendada}</p>
                       </div>
                     )}
                   </div>
 
                   {parsedAnalysis.mensagem_whatsapp && (
-                    <div className="bg-green-500/10 rounded-2xl p-4 border border-green-200">
+                    <div className="bg-emerald-500/10 rounded-2xl p-4 border border-emerald-500/20">
                       <div className="flex items-center gap-2 mb-3">
-                        <MessageCircle size={14} className="text-green-600" />
-                        <span className="text-xs font-bold text-green-700 uppercase tracking-wider">Mensagem WhatsApp Pronta</span>
+                        <MessageCircle size={14} className="text-emerald-400" />
+                        <span className="text-xs font-bold text-emerald-400 uppercase tracking-wider">Mensagem WhatsApp Pronta</span>
                       </div>
-                      <p className="text-sm text-green-900 leading-relaxed whitespace-pre-wrap">{parsedAnalysis.mensagem_whatsapp}</p>
+                      <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">{parsedAnalysis.mensagem_whatsapp}</p>
                     </div>
                   )}
                 </div>
