@@ -164,13 +164,21 @@ function NotificationsDropdown() {
 function TrophyWidget() {
   const [open, setOpen] = useState(false);
   const [meta, setMeta] = useState(() => {
-    if (typeof window !== "undefined") return Number(localStorage.getItem("dua-crm-meta") || "10000");
-    return 10000;
+    if (typeof window !== "undefined") return Number(localStorage.getItem("dua-crm-meta") || "54000");
+    return 54000;
   });
   const [editMeta, setEditMeta] = useState(false);
   const [metaInput, setMetaInput] = useState("");
+  const [atual, setAtual] = useState(0);
   const ref = useRef<HTMLDivElement>(null);
-  const atual = 7800; // Virá do Asaas depois
+
+  // Busca valor recebido real do Asaas
+  useEffect(() => {
+    fetch(`${API_URL}/api/v1/financial/summary`, { headers: authHeaders() })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d?.received) setAtual(d.received); })
+      .catch(() => {});
+  }, []);
 
   const percent = Math.min(100, (atual / meta) * 100);
   const fmtBR = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
@@ -184,7 +192,7 @@ function TrophyWidget() {
   ];
 
   const MESES = ["jun/25","jul/25","ago/25","set/25","out/25","nov/25","dez/25","jan/26","fev/26","mar/26","abr/26","mai/26"];
-  const HISTORICO = [0,0,0,0,0,0,0,0,0,0,7800,0];
+  const HISTORICO = [0,0,0,0,0,0,0,0,0,0,atual,0];
   const maxVal = Math.max(...HISTORICO, 1);
 
   useEffect(() => {
