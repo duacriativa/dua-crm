@@ -196,6 +196,24 @@ export default function ContatosPage() {
     }
   };
 
+  const exportCSV = () => {
+    const rows = [
+      ["Nome", "Email", "Telefone", "Segmento"],
+      ...contacts.map(c => [
+        c.name ?? "",
+        c.email ?? "",
+        c.phone ?? "",
+        SEG_LABEL[c.segment ?? ""] ?? c.segment ?? "",
+      ]),
+    ];
+    const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
+    const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = `clientes-dua-${new Date().toISOString().slice(0,10)}.csv`;
+    a.click(); URL.revokeObjectURL(url);
+  };
+
   const deleteContact = async (id: string, name: string) => {
     if (!confirm(`Excluir "${name}" permanentemente? Esta ação não pode ser desfeita.`)) return;
     await fetch(`${API_URL}/api/v1/contacts/${id}`, { method: "DELETE", headers: authHeaders() });
@@ -252,6 +270,15 @@ export default function ContatosPage() {
           <div className="flex items-center gap-2 flex-wrap">
             <button className="hidden sm:flex items-center gap-1.5 px-3 py-2 text-sm text-muted-foreground border border-border rounded-xl hover:bg-muted/50 transition-colors">
               <Link2 className="w-4 h-4"/><span>Link de Cadastro</span>
+            </button>
+            <button onClick={exportCSV} disabled={contacts.length === 0}
+              title="Exportar lista de clientes em CSV"
+              className="hidden sm:flex items-center gap-1.5 px-3 py-2 text-sm text-muted-foreground border border-border rounded-xl hover:bg-muted/50 transition-colors disabled:opacity-40">
+              <ChevronDown className="w-4 h-4 rotate-180 hidden" />
+              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+              </svg>
+              <span>Exportar CSV</span>
             </button>
             <button onClick={importFromAsaas} disabled={importing || fixingLids}
               title="Busca todos os clientes cadastrados no Asaas e adiciona ao CRM"
