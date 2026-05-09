@@ -121,6 +121,8 @@ export default function ContatosPage() {
   const [stats, setStats] = useState({ totalClients: 0, newThisMonth: 0, renewalsSoon: 0, mrr: 0 });
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<{ created: number; updated: number } | null>(null);
+  const [fixingLids, setFixingLids] = useState(false);
+  const [lidResult, setLidResult] = useState<{ resolved: number; total: number } | null>(null);
 
   useEffect(() => {
     fetch(`${API_URL}/api/v1/contacts/stats`, { headers: authHeaders() })
@@ -184,6 +186,22 @@ export default function ContatosPage() {
     }
   };
 
+  const fixLids = async () => {
+    if (fixingLids) return;
+    setFixingLids(true);
+    setLidResult(null);
+    try {
+      const res = await fetch(`${API_URL}/api/v1/contacts/resolve-lids`, {
+        method: "POST", headers: authHeaders(),
+      });
+      const data = await res.json();
+      setLidResult({ resolved: data.resolved ?? 0, total: data.total ?? 0 });
+      if (data.resolved > 0) fetchContacts();
+    } finally {
+      setFixingLids(false);
+    }
+  };
+
   const segTabs = [
     {label:"Todos",value:"ALL",count:total},
     {label:"Novos",value:"NEW",count:contacts.filter(c=>c.segment==="NEW").length},
@@ -205,23 +223,39 @@ export default function ContatosPage() {
             <h1 className="text-2xl font-bold text-foreground">Clientes</h1>
             <p className="text-sm text-muted-foreground mt-0.5">Gerencie todos os seus clientes cadastrados</p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <button className="hidden sm:flex items-center gap-1.5 px-3 py-2 text-sm text-muted-foreground border border-border rounded-xl hover:bg-muted/50 transition-colors">
               <Link2 className="w-4 h-4"/><span>Link de Cadastro</span>
             </button>
-            <button onClick={importFromAsaas} disabled={importing}
+            <button onClick={importFromAsaas} disabled={importing || fixingLids}
+              title="Busca todos os clientes cadastrados no Asaas e adiciona ao CRM"
               className="hidden sm:flex items-center gap-1.5 px-3 py-2 text-sm text-muted-foreground border border-border rounded-xl hover:bg-muted/50 transition-colors disabled:opacity-50">
               {importing ? <RefreshCw className="w-4 h-4 animate-spin"/> : <RefreshCw className="w-4 h-4"/>}
               <span>{importing ? "Importando..." : "Importar Asaas"}</span>
+            </button>
+            <button onClick={fixLids} disabled={fixingLids || importing}
+              title="Corrige contatos com número no formato lid: (vindos do WhatsApp)"
+              className="hidden sm:flex items-center gap-1.5 px-3 py-2 text-sm text-muted-foreground border border-border rounded-xl hover:bg-muted/50 transition-colors disabled:opacity-50">
+              {fixingLids ? <RefreshCw className="w-4 h-4 animate-spin"/> : <Hash className="w-4 h-4"/>}
+              <span>{fixingLids ? "Corrigindo..." : "Corrigir lid:"}</span>
             </button>
             <button onClick={()=>setShowModal(true)}
               className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-gradient-primary rounded-xl hover:opacity-90 transition-opacity shadow-elegant">
               <Plus className="w-4 h-4"/><span>Cadastrar Cliente</span>
             </button>
           </div>
-          {importResult && (
-            <div className="text-xs text-success bg-success/10 border border-success/20 rounded-xl px-3 py-1.5 mt-2">
-              ✓ Importado: {importResult.created} novos, {importResult.updated} atualizados
+          {(importResult || lidResult) && (
+            <div className="flex flex-wrap gap-2 mt-2">
+              {importResult && (
+                <span className="text-xs text-success bg-success/10 border border-success/20 rounded-xl px-3 py-1.5">
+                  ✓ Asaas: {importResult.created} novos, {importResult.updated} atualizados
+                </span>
+              )}
+              {lidResult && (
+                <span className="text-xs text-primary bg-primary/10 border border-primary/20 rounded-xl px-3 py-1.5">
+                  ✓ lid: corrigidos {lidResult.resolved} de {lidResult.total} contatos
+                </span>
+              )}
             </div>
           )}
         </div>
