@@ -128,6 +128,7 @@ export class ContactsController {
       name?: string;
       phone?: string;
       email?: string;
+      instagramHandle?: string | null;
       tags?: string[];
       notes?: string;
       analysisInstagram?: string;
@@ -157,6 +158,7 @@ export class ContactsController {
         ...(body.name !== undefined && { name: body.name }),
         ...(body.phone !== undefined && { phone: body.phone }),
         ...(body.email !== undefined && { email: body.email }),
+        ...(body.instagramHandle !== undefined && { instagramHandle: body.instagramHandle }),
         ...(body.tags !== undefined && { tags: body.tags }),
         ...(body.notes !== undefined && { notes: body.notes }),
         ...(body.analysisInstagram !== undefined && { analysisInstagram: body.analysisInstagram }),

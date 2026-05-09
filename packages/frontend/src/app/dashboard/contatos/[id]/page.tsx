@@ -778,7 +778,7 @@ export default function ContactProfilePage() {
                       tryParseAnalysis(e.target.value);
                     }}
                     rows={6}
-                    className="w-full border border-border rounded-2xl p-4 text-sm text-foreground/80 leading-relaxed resize-y focus:outline-none focus:border-purple-400 focus:ring-2 focus:ring-purple-100 transition-all"
+                    className="w-full bg-muted/50 border border-border rounded-2xl p-4 text-sm text-foreground leading-relaxed resize-y focus:outline-none focus:border-purple-400 focus:ring-2 focus:ring-purple-500/20 transition-all"
                   />
                   <div className="flex items-center gap-3">
                     <button
