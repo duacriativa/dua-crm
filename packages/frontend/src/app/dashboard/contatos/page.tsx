@@ -239,29 +239,16 @@ export default function ContatosPage() {
               {importing ? <RefreshCw className="w-4 h-4 animate-spin"/> : <RefreshCw className="w-4 h-4"/>}
               <span>{importing ? "Importando..." : "Importar Asaas"}</span>
             </button>
-            <button onClick={fixLids} disabled={fixingLids || importing}
-              title="Corrige contatos com número no formato lid: (vindos do WhatsApp)"
-              className="hidden sm:flex items-center gap-1.5 px-3 py-2 text-sm text-muted-foreground border border-border rounded-xl hover:bg-muted/50 transition-colors disabled:opacity-50">
-              {fixingLids ? <RefreshCw className="w-4 h-4 animate-spin"/> : <Hash className="w-4 h-4"/>}
-              <span>{fixingLids ? "Corrigindo..." : "Corrigir lid:"}</span>
-            </button>
             <button onClick={()=>setShowModal(true)}
               className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-gradient-primary rounded-xl hover:opacity-90 transition-opacity shadow-elegant">
               <Plus className="w-4 h-4"/><span>Cadastrar Cliente</span>
             </button>
           </div>
-          {(importResult || lidResult) && (
-            <div className="flex flex-wrap gap-2 mt-2">
-              {importResult && (
-                <span className="text-xs text-success bg-success/10 border border-success/20 rounded-xl px-3 py-1.5">
-                  ✓ Asaas: {importResult.created} novos, {importResult.updated} atualizados
-                </span>
-              )}
-              {lidResult && (
-                <span className="text-xs text-primary bg-primary/10 border border-primary/20 rounded-xl px-3 py-1.5">
-                  ✓ lid: corrigidos {lidResult.resolved} de {lidResult.total} contatos
-                </span>
-              )}
+          {importResult && (
+            <div className="mt-2">
+              <span className="text-xs text-success bg-success/10 border border-success/20 rounded-xl px-3 py-1.5">
+                ✓ {importResult.created} novos clientes importados, {importResult.updated} atualizados
+              </span>
             </div>
           )}
         </div>

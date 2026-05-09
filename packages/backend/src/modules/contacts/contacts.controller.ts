@@ -341,25 +341,61 @@ export class ContactsController {
           data: {
             email: email || existing.email,
             phone: phone || existing.phone,
+            type: 'CLIENT', // promove LEAD → CLIENT
           },
         });
         updated++;
       } else {
-        await this.prisma.contact.create({
-          data: { tenantId, name, phone, email, type: 'CLIENT' },
+        // Verifica duplicata por nome antes de criar
+        const byName = await this.prisma.contact.findFirst({
+          where: { tenantId, name },
         });
-        created++;
+        if (byName) {
+          await this.prisma.contact.update({
+            where: { id: byName.id },
+            data: {
+              email: email || byName.email,
+              phone: phone || byName.phone,
+              type: 'CLIENT',
+            },
+          });
+          updated++;
+        } else {
+          await this.prisma.contact.create({
+            data: { tenantId, name, phone, email, type: 'CLIENT' },
+          });
+          created++;
+        }
       }
     }
 
     return { ok: true, created, updated, total: created + updated };
   }
 
-  /** DELETE /contacts/:id */
+  /** DELETE /contacts/:id — deleta cascata manual */
   @Delete(':id')
-  remove(@Request() req: any, @Param('id') id: string) {
-    return this.prisma.contact.deleteMany({
+  async remove(@Request() req: any, @Param('id') id: string) {
+    // Verifica que o contato pertence ao tenant
+    const contact = await this.prisma.contact.findFirst({
       where: { id, tenantId: req.user.tenantId },
     });
+    if (!contact) return { ok: false, error: 'Contato não encontrado' };
+
+    // Exclui registros dependentes manualmente (sem cascade no schema)
+    await this.prisma.$transaction([
+      // Nulifica vínculo em contratos (mantém histórico financeiro)
+      this.prisma.contract.updateMany({ where: { contactId: id }, data: { contactId: null } }),
+      // Remove leads no funil
+      this.prisma.pipelineLead.deleteMany({ where: { contactId: id } }),
+      // Remove mensagens e conversas
+      this.prisma.message.deleteMany({ where: { conversation: { contactId: id } } }),
+      this.prisma.conversation.deleteMany({ where: { contactId: id } }),
+      // Remove pedidos
+      this.prisma.order.deleteMany({ where: { contactId: id } }),
+      // Por fim, remove o contato
+      this.prisma.contact.delete({ where: { id } }),
+    ]);
+
+    return { ok: true };
   }
 }
