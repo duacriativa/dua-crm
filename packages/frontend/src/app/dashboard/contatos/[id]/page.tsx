@@ -121,24 +121,33 @@ function NotesEditor({ contactId, initialNotes }: { contactId: string; initialNo
   const [notes, setNotes] = useState(initialNotes);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
+
+  // Sincroniza quando initialNotes mudar (ex: BusinessProfileEditor salva e altera as notes)
+  useEffect(() => { if (!editing) setNotes(initialNotes); }, [initialNotes, editing]);
+
   const save = async () => {
     setSaving(true);
+    setSaveError("");
     try {
-      await fetch(`${API_URL}/api/v1/contacts/${contactId}`, {
+      const res = await fetch(`${API_URL}/api/v1/contacts/${contactId}`, {
         method: "PATCH", headers: authHeaders(), body: JSON.stringify({ notes }),
       });
+      if (!res.ok) { setSaveError("Erro ao salvar. Tente novamente."); return; }
       setEditing(false);
-    } finally { setSaving(false); }
+    } catch { setSaveError("Erro de conexão."); }
+    finally { setSaving(false); }
   };
   if (editing) return (
     <div className="space-y-2">
       <textarea rows={5} value={notes} onChange={e => setNotes(e.target.value)} autoFocus
         className="w-full px-4 py-3 text-sm bg-muted/50 border border-primary/50 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/50 text-foreground resize-none" />
+      {saveError && <p className="text-xs text-red-500 font-medium">{saveError}</p>}
       <div className="flex gap-2">
         <button onClick={save} disabled={saving} className="px-4 py-2 text-xs font-semibold text-white bg-gradient-primary rounded-xl hover:opacity-90 disabled:opacity-50">
           {saving ? "Salvando..." : "Salvar"}
         </button>
-        <button onClick={() => setEditing(false)} className="px-4 py-2 text-xs text-muted-foreground border border-border rounded-xl hover:bg-muted/50">Cancelar</button>
+        <button onClick={() => { setEditing(false); setSaveError(""); }} className="px-4 py-2 text-xs text-muted-foreground border border-border rounded-xl hover:bg-muted/50">Cancelar</button>
       </div>
     </div>
   );
@@ -155,21 +164,34 @@ function NotesEditor({ contactId, initialNotes }: { contactId: string; initialNo
 function ContactInfoEditor({ contact, onSave }: { contact: any; onSave: (f: any) => void }) {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
   const [form, setForm] = useState({ phone: contact.phone || "", email: contact.email || "", instagramHandle: contact.instagramHandle || "" });
+
+  // Sincroniza o formulário sempre que o contato mudar (ex: após salvar ou recarregar)
+  useEffect(() => {
+    setForm({
+      phone: contact.phone || "",
+      email: contact.email || "",
+      instagramHandle: contact.instagramHandle || "",
+    });
+  }, [contact.phone, contact.email, contact.instagramHandle]);
 
   const save = async () => {
     setSaving(true);
+    setSaveError("");
     try {
       const phone = form.phone.trim() || null;
       const email = form.email.trim() || null;
       const instagramHandle = form.instagramHandle.trim().replace("@", "") || null;
-      await fetch(`${API_URL}/api/v1/contacts/${contact.id}`, {
+      const res = await fetch(`${API_URL}/api/v1/contacts/${contact.id}`, {
         method: "PATCH", headers: authHeaders(),
         body: JSON.stringify({ phone, email, instagramHandle }),
       });
+      if (!res.ok) { setSaveError("Erro ao salvar. Tente novamente."); return; }
       onSave({ phone, email, instagramHandle });
       setEditing(false);
-    } finally { setSaving(false); }
+    } catch { setSaveError("Erro de conexão. Tente novamente."); }
+    finally { setSaving(false); }
   };
 
   const inp = "w-full px-3 py-2 text-sm bg-muted/50 border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/50 text-foreground placeholder:text-muted-foreground";
@@ -202,12 +224,13 @@ function ContactInfoEditor({ contact, onSave }: { contact: any; onSave: (f: any)
             <input value={form.instagramHandle} onChange={e => setForm(f => ({ ...f, instagramHandle: e.target.value }))}
               placeholder="@suamarca" className={inp} />
           </div>
+          {saveError && <p className="text-xs text-red-500 font-medium">{saveError}</p>}
           <div className="flex gap-2 pt-1">
             <button onClick={save} disabled={saving}
               className="flex-1 py-2 text-xs font-semibold text-white bg-gradient-primary rounded-xl hover:opacity-90 disabled:opacity-50">
               {saving ? "Salvando..." : "Salvar"}
             </button>
-            <button onClick={() => setEditing(false)} className="px-3 py-2 text-xs text-muted-foreground border border-border rounded-xl hover:bg-muted/50">
+            <button onClick={() => { setEditing(false); setSaveError(""); }} className="px-3 py-2 text-xs text-muted-foreground border border-border rounded-xl hover:bg-muted/50">
               Cancelar
             </button>
           </div>
@@ -241,20 +264,24 @@ function BusinessProfileEditor({ contact, onSave }: { contact: any; onSave: (f: 
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ faturamento: "", investimento: "", modelo: "", interesse: "", instagram: contact.instagramHandle || "" });
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
+
+  // Sincroniza quando o contato mudar (dados do banco ou de outro editor)
   useEffect(() => {
-    if (contact.notes) {
-      const n = contact.notes;
-      setForm(f => ({
-        ...f,
-        faturamento: n.includes("Faturamento:") ? n.split("Faturamento:")[1].split("\n")[0].trim() : f.faturamento,
-        investimento: n.includes("Investimento atual:") ? n.split("Investimento atual:")[1].split("\n")[0].trim() : f.investimento,
-        modelo: n.includes("Modelo de venda:") ? n.split("Modelo de venda:")[1].split("\n")[0].trim() : f.modelo,
-        interesse: n.includes("Interesse:") ? n.split("Interesse:")[1].split("\n")[0].trim() : f.interesse,
-      }));
-    }
-  }, [contact.notes]);
+    const n = contact.notes || "";
+    setForm(f => ({
+      ...f,
+      instagram: contact.instagramHandle || f.instagram,
+      faturamento: n.includes("Faturamento:") ? n.split("Faturamento:")[1].split("\n")[0].trim() : f.faturamento,
+      investimento: n.includes("Investimento atual:") ? n.split("Investimento atual:")[1].split("\n")[0].trim() : f.investimento,
+      modelo: n.includes("Modelo de venda:") ? n.split("Modelo de venda:")[1].split("\n")[0].trim() : f.modelo,
+      interesse: n.includes("Interesse:") ? n.split("Interesse:")[1].split("\n")[0].trim() : f.interesse,
+    }));
+  }, [contact.notes, contact.instagramHandle]);
+
   const save = async () => {
     setSaving(true);
+    setSaveError("");
     try {
       const profileBlock = [
         form.faturamento && `Faturamento: ${form.faturamento}`,
@@ -266,10 +293,12 @@ function BusinessProfileEditor({ contact, onSave }: { contact: any; onSave: (f: 
         .filter((l: string) => !l.startsWith("Faturamento:") && !l.startsWith("Investimento atual:") && !l.startsWith("Modelo de venda:") && !l.startsWith("Interesse:"))
         .join("\n").trim();
       const body: any = { instagramHandle: form.instagram || null, notes: [profileBlock, cleanNotes].filter(Boolean).join("\n") };
-      await fetch(`${API_URL}/api/v1/contacts/${contact.id}`, { method: "PATCH", headers: authHeaders(), body: JSON.stringify(body) });
+      const res = await fetch(`${API_URL}/api/v1/contacts/${contact.id}`, { method: "PATCH", headers: authHeaders(), body: JSON.stringify(body) });
+      if (!res.ok) { setSaveError("Erro ao salvar. Tente novamente."); return; }
       onSave({ faturamento: form.faturamento, investimento: form.investimento, interesse: form.interesse });
       setOpen(false);
-    } finally { setSaving(false); }
+    } catch { setSaveError("Erro de conexão."); }
+    finally { setSaving(false); }
   };
   const inp = "w-full px-3 py-2 text-sm bg-muted/50 border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/50 text-foreground placeholder:text-muted-foreground";
   return (
@@ -297,8 +326,9 @@ function BusinessProfileEditor({ contact, onSave }: { contact: any; onSave: (f: 
               <div><label className="text-xs font-medium text-muted-foreground block mb-1">Interesse / Serviço</label>
                 <input value={form.interesse} onChange={e => setForm(f => ({...f, interesse: e.target.value}))} placeholder="Ex: Social Media, Tráfego" className={inp} /></div>
             </div>
-            <div className="flex gap-3 mt-5">
-              <button onClick={() => setOpen(false)} className="flex-1 py-2.5 text-sm text-muted-foreground border border-border rounded-xl hover:bg-muted/50">Cancelar</button>
+            {saveError && <p className="text-xs text-red-500 font-medium mt-3">{saveError}</p>}
+            <div className="flex gap-3 mt-3">
+              <button onClick={() => { setOpen(false); setSaveError(""); }} className="flex-1 py-2.5 text-sm text-muted-foreground border border-border rounded-xl hover:bg-muted/50">Cancelar</button>
               <button onClick={save} disabled={saving} className="flex-1 py-2.5 text-sm font-semibold text-white bg-gradient-primary rounded-xl hover:opacity-90 disabled:opacity-50">
                 {saving ? "Salvando..." : "Salvar"}
               </button>
@@ -604,16 +634,11 @@ export default function ContactProfilePage() {
 
             {/* Card: Notas e Observações */}
             <div className="bg-card surface-card p-6 shadow-none border border-border">
-              <div className="flex items-center justify-between mb-6">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center text-amber-600">
-                    <Filter size={20} />
-                  </div>
-                  <h2 className="text-lg font-bold text-foreground">Notas e Observações</h2>
+              <div className="flex items-center gap-3 mb-6">
+                <div className="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center text-amber-600">
+                  <Filter size={20} />
                 </div>
-                <button className="text-sm text-primary font-bold hover:underline flex items-center gap-1">
-                  <Edit size={14} /> Editar
-                </button>
+                <h2 className="text-lg font-bold text-foreground">Notas e Observações</h2>
               </div>
               <NotesEditor contactId={contact.id} initialNotes={contact.notes || ""} />
             </div>
