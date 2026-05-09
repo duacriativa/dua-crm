@@ -71,6 +71,7 @@ export default function FunilPage() {
 
   // Card menu
   const [cardMenuId, setCardMenuId] = useState<string | null>(null);
+  const cardMenuRef = useRef<HTMLDivElement>(null);
 
   // Lead detail panel
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
@@ -103,7 +104,9 @@ export default function FunilPage() {
       if (stageMenuRef.current && !stageMenuRef.current.contains(e.target as Node)) {
         setStageMenuId(null);
       }
-      setCardMenuId(null);
+      if (cardMenuRef.current && !cardMenuRef.current.contains(e.target as Node)) {
+        setCardMenuId(null);
+      }
     };
     document.addEventListener("click", handler);
     return () => document.removeEventListener("click", handler);
@@ -123,6 +126,23 @@ export default function FunilPage() {
     setPipelines((prev) => prev.map((p) => p.id === updated.id ? updated : p));
     if (selectedLead?.id === leadId) setSelectedLead(null);
     setCardMenuId(null);
+  };
+
+  const deleteContact = async (contactId: string, leadId: string, stageId: string) => {
+    if (!activePipeline) return;
+    if (!confirm("Excluir este contato permanentemente? Esta ação não pode ser desfeita.")) return;
+    setCardMenuId(null);
+    await fetch(`${API_URL}/api/v1/contacts/${contactId}`, { method: "DELETE", headers: authHeaders() });
+    // Remove o lead do pipeline também (o contato foi deletado em cascata)
+    const updated = {
+      ...activePipeline,
+      stages: activePipeline.stages.map((s) =>
+        s.id === stageId ? { ...s, leads: s.leads.filter((l) => l.id !== leadId) } : s
+      ),
+    };
+    setActivePipeline(updated);
+    setPipelines((prev) => prev.map((p) => p.id === updated.id ? updated : p));
+    if (selectedLead?.id === leadId) setSelectedLead(null);
   };
 
   const openLeadPanel = async (lead: Lead, stage: Stage) => {
@@ -489,21 +509,28 @@ export default function FunilPage() {
                           <span className="text-sm font-semibold text-foreground leading-tight truncate">{lead.contact.name}</span>
                         </div>
 
-                        <div className="relative shrink-0" onClick={(e) => e.stopPropagation()}>
+                        <div
+                          className="relative shrink-0"
+                          ref={cardMenuId === lead.id ? cardMenuRef : null}
+                        >
                           <button
-                            onClick={() => setCardMenuId(cardMenuId === lead.id ? null : lead.id)}
+                            onClick={(e) => { e.stopPropagation(); setCardMenuId(cardMenuId === lead.id ? null : lead.id); }}
                             className="opacity-0 group-hover:opacity-100 p-1 rounded-lg hover:bg-muted/40 transition-opacity">
                             <MoreVertical className="w-3.5 h-3.5 text-muted-foreground" />
                           </button>
                           {cardMenuId === lead.id && (
-                            <div className="absolute right-0 top-6 bg-card rounded-xl shadow-lg border border-border z-20 w-40 py-1">
-                              <button onClick={() => { openLeadPanel(lead, stage); setCardMenuId(null); }}
+                            <div className="absolute right-0 top-6 bg-card rounded-xl shadow-lg border border-border z-20 w-44 py-1">
+                              <button onClick={(e) => { e.stopPropagation(); openLeadPanel(lead, stage); setCardMenuId(null); }}
                                 className="w-full text-left px-3 py-2 text-sm text-foreground/80 hover:bg-muted/20">
                                 Ver detalhes
                               </button>
-                              <button onClick={() => deleteLead(lead.id, stage.id)}
+                              <button onClick={(e) => { e.stopPropagation(); deleteLead(lead.id, stage.id); }}
                                 className="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2">
-                                <Trash2 className="w-3.5 h-3.5" />Excluir lead
+                                <Trash2 className="w-3.5 h-3.5" />Excluir do funil
+                              </button>
+                              <button onClick={(e) => { e.stopPropagation(); deleteContact(lead.contact.id, lead.id, stage.id); }}
+                                className="w-full text-left px-3 py-2 text-sm text-red-700 hover:bg-red-50 flex items-center gap-2 border-t border-border/50">
+                                <Trash2 className="w-3.5 h-3.5" />Excluir contato
                               </button>
                             </div>
                           )}
