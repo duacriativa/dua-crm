@@ -373,6 +373,55 @@ export class ContactsController {
     return { ok: true, created, updated, total: created + updated };
   }
 
+  /** POST /contacts/sync-brevo — envia leads/clientes com email para o Brevo */
+  @Post('sync-brevo')
+  async syncBrevo(
+    @Request() req: any,
+    @Body() body: { contactType?: 'LEAD' | 'CLIENT' | 'ALL' },
+  ) {
+    const tenantId = req.user.tenantId;
+    const apiKey = process.env.BREVO_API_KEY;
+    if (!apiKey) throw new InternalServerErrorException('BREVO_API_KEY não configurada.');
+
+    const where: any = { tenantId, email: { not: null } };
+    if (body.contactType === 'LEAD') where.type = 'LEAD';
+    else if (body.contactType === 'CLIENT') where.type = 'CLIENT';
+
+    const contacts = await this.prisma.contact.findMany({
+      where,
+      select: { name: true, email: true, phone: true, type: true },
+    });
+
+    const withEmail = contacts.filter(c => c.email);
+    if (!withEmail.length) return { ok: true, synced: 0 };
+
+    // Brevo bulk import (CSV inline)
+    const header = 'EMAIL;FIRSTNAME;SMS';
+    const rows = withEmail.map(c => {
+      const firstName = (c.name || '').replace(/;/g, ' ');
+      const phone = (c.phone || '').replace(/;/g, '');
+      return `${c.email};${firstName};${phone}`;
+    }).join('\n');
+
+    const res = await fetch('https://api.brevo.com/v3/contacts/import', {
+      method: 'POST',
+      headers: { 'api-key': apiKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        fileBody: `${header}\n${rows}`,
+        updateEnabled: true,
+        emailBlacklist: false,
+        smsBlacklist: false,
+      }),
+    });
+
+    if (!res.ok) {
+      const err = await res.text();
+      throw new InternalServerErrorException(`Brevo retornou ${res.status}: ${err.slice(0, 200)}`);
+    }
+
+    return { ok: true, synced: withEmail.length };
+  }
+
   /** DELETE /contacts/:id — deleta cascata manual */
   @Delete(':id')
   async remove(@Request() req: any, @Param('id') id: string) {

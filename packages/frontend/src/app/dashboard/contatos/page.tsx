@@ -103,6 +103,8 @@ export default function ContatosPage() {
   const [saving, setSaving] = useState(false);
   const [segFilter, setSegFilter] = useState("ALL");
   const [segMenuId, setSegMenuId] = useState<string | null>(null);
+  const [brevoSyncing, setBrevoSyncing] = useState(false);
+  const [brevoResult, setBrevoResult] = useState<{ synced: number; type: string } | null>(null);
   const segMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -220,6 +222,20 @@ export default function ContatosPage() {
     fetchContacts();
   };
 
+  const syncBrevo = async (contactType: 'LEAD' | 'CLIENT' | 'ALL') => {
+    if (brevoSyncing) return;
+    setBrevoSyncing(true);
+    setBrevoResult(null);
+    try {
+      const res = await fetch(`${API_URL}/api/v1/contacts/sync-brevo`, {
+        method: "POST", headers: authHeaders(),
+        body: JSON.stringify({ contactType }),
+      });
+      const data = await res.json();
+      if (data.ok) setBrevoResult({ synced: data.synced, type: contactType });
+    } finally { setBrevoSyncing(false); }
+  };
+
   const updateSegment = async (id: string, segment: string) => {
     setSegMenuId(null);
     // Optimistic update
@@ -274,12 +290,33 @@ export default function ContatosPage() {
             <button onClick={exportCSV} disabled={contacts.length === 0}
               title="Exportar lista de clientes em CSV"
               className="hidden sm:flex items-center gap-1.5 px-3 py-2 text-sm text-muted-foreground border border-border rounded-xl hover:bg-muted/50 transition-colors disabled:opacity-40">
-              <ChevronDown className="w-4 h-4 rotate-180 hidden" />
               <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
               </svg>
               <span>Exportar CSV</span>
             </button>
+            {/* Brevo sync dropdown */}
+            <div className="hidden sm:block relative group">
+              <button disabled={brevoSyncing}
+                className="flex items-center gap-1.5 px-3 py-2 text-sm text-blue-400 border border-blue-500/30 rounded-xl hover:bg-blue-500/10 transition-colors disabled:opacity-50 bg-blue-500/5">
+                {brevoSyncing ? <RefreshCw className="w-4 h-4 animate-spin"/> : <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.14 13a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.05 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 21 16.92z"/></svg>}
+                <span>{brevoSyncing ? "Enviando..." : "Sync Brevo"}</span>
+                <ChevronDown className="w-3 h-3 opacity-60"/>
+              </button>
+              {/* dropdown on hover */}
+              <div className="absolute right-0 top-10 bg-card border border-border rounded-xl shadow-elegant z-50 w-44 py-1 hidden group-hover:block">
+                {[
+                  { label: "📋 Leads", type: "LEAD" as const },
+                  { label: "👥 Clientes", type: "CLIENT" as const },
+                  { label: "🔄 Todos", type: "ALL" as const },
+                ].map(({ label, type }) => (
+                  <button key={type} onClick={() => syncBrevo(type)}
+                    className="w-full text-left px-4 py-2.5 text-sm text-foreground hover:bg-muted/60 transition-colors">
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
             <button onClick={importFromAsaas} disabled={importing || fixingLids}
               title="Busca todos os clientes cadastrados no Asaas e adiciona ao CRM"
               className="hidden sm:flex items-center gap-1.5 px-3 py-2 text-sm text-muted-foreground border border-border rounded-xl hover:bg-muted/50 transition-colors disabled:opacity-50">
@@ -295,6 +332,13 @@ export default function ContatosPage() {
             <div className="mt-2">
               <span className="text-xs text-success bg-success/10 border border-success/20 rounded-xl px-3 py-1.5">
                 ✓ {importResult.created} novos clientes importados, {importResult.updated} atualizados
+              </span>
+            </div>
+          )}
+          {brevoResult && (
+            <div className="mt-2">
+              <span className="text-xs text-blue-400 bg-blue-500/10 border border-blue-500/20 rounded-xl px-3 py-1.5">
+                ✓ {brevoResult.synced} contatos enviados para o Brevo
               </span>
             </div>
           )}
