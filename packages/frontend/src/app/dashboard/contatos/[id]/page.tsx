@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
   ArrowLeft, Phone, Mail, Instagram, Tag, Calendar,
-  DollarSign, MessageCircle, Edit, MoreVertical,
+  DollarSign, MessageCircle, Edit, MoreVertical, Trash2,
   User, Clock, Globe, Filter, Briefcase, Search,
   Save, ChevronRight, Sparkles, AlertTriangle, TrendingUp,
   Star, Zap
@@ -182,6 +182,16 @@ export default function ContactProfilePage() {
 
   // Additional fields parsed from notes — must be declared at top level (Rules of Hooks)
   const [aditionalFields, setAditionalFields] = useState<any>({});
+  const [showMenu, setShowMenu] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setShowMenu(false);
+    };
+    document.addEventListener("click", handler);
+    return () => document.removeEventListener("click", handler);
+  }, []);
 
   const fetchContact = useCallback(async () => {
     setLoading(true);
@@ -216,6 +226,14 @@ export default function ContactProfilePage() {
       setAditionalFields(fields);
     }
   }, [contact]);
+
+  async function handleDeleteContact() {
+    if (!contact) return;
+    if (!confirm(`Excluir "${contact.name}" permanentemente? Esta ação não pode ser desfeita.`)) return;
+    setShowMenu(false);
+    await fetch(`${API_URL}/api/v1/contacts/${contact.id}`, { method: "DELETE", headers: authHeaders() });
+    router.push("/dashboard/contatos");
+  }
 
   function tryParseAnalysis(text: string) {
     try {
@@ -309,14 +327,14 @@ export default function ContactProfilePage() {
 
 
   return (
-    <div className="h-full flex flex-col bg-[#F9FAFB]">
+    <div className="h-full flex flex-col bg-background">
       {/* ── Header ── */}
-      <header className="bg-card/80 backdrop-blur-md border-b border-border px-6 py-4 sticky top-0 z-10">
+      <header className="bg-card border-b border-border px-6 py-4 sticky top-0 z-10">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
             <button
               onClick={() => router.back()}
-              className="p-2.5 rounded-xl hover:bg-muted/50 text-muted-foreground hover:text-muted-foreground transition-colors bg-muted/30 border border-border"
+              className="p-2.5 rounded-xl hover:bg-muted/50 text-muted-foreground transition-colors bg-muted/30 border border-border"
             >
               <ArrowLeft className="w-5 h-5" />
             </button>
@@ -326,7 +344,7 @@ export default function ContactProfilePage() {
                 <span className="text-xs text-muted-foreground flex items-center gap-1">
                   <User size={12} /> Perfil do Contato
                 </span>
-                <span className="w-1 h-1 rounded-full bg-gray-300" />
+                <span className="w-1 h-1 rounded-full bg-border" />
                 <span className="text-xs font-semibold text-primary uppercase tracking-widest bg-primary/10 px-2 py-0.5 rounded-full">
                   {contact.segment || "NEW"}
                 </span>
@@ -337,20 +355,35 @@ export default function ContactProfilePage() {
           <div className="flex items-center gap-2">
             <button
               onClick={() => router.push(`/dashboard/conversas?phone=${encodeURIComponent(contact.phone || "")}&name=${encodeURIComponent(contact.name || "")}`)}
-              className="flex items-center gap-2 px-5 py-2.5 bg-brand-600 text-white rounded-xl font-bold text-sm hover:bg-brand-700 transition-all shadow-md shadow-brand-100"
+              className="flex items-center gap-2 px-5 py-2.5 bg-gradient-primary text-white rounded-xl font-bold text-sm hover:opacity-90 transition-all"
             >
               <MessageCircle className="w-4 h-4" />
               Abrir Chat
             </button>
-            <button className="p-2.5 rounded-xl border border-border hover:bg-muted/30 text-muted-foreground">
-              <MoreVertical className="w-5 h-5" />
-            </button>
+            <div className="relative" ref={menuRef}>
+              <button
+                onClick={(e) => { e.stopPropagation(); setShowMenu(v => !v); }}
+                className="p-2.5 rounded-xl border border-border hover:bg-muted/40 text-muted-foreground transition-colors"
+              >
+                <MoreVertical className="w-5 h-5" />
+              </button>
+              {showMenu && (
+                <div className="absolute right-0 top-12 bg-card border border-border rounded-2xl shadow-elegant z-50 w-48 py-1 overflow-hidden">
+                  <button
+                    onClick={handleDeleteContact}
+                    className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-red-500 hover:bg-red-500/10 transition-colors"
+                  >
+                    <Trash2 size={14} /> Excluir contato
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </header>
 
       {/* ── Main Content ── */}
-      <main className="flex-1 overflow-y-auto p-6">
+      <main className="flex-1 overflow-y-auto p-6 bg-muted/20">
         <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-6">
 
           {/* Coluna Esquerda */}

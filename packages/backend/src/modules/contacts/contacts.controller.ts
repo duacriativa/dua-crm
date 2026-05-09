@@ -346,7 +346,7 @@ export class ContactsController {
         updated++;
       } else {
         await this.prisma.contact.create({
-          data: { tenantId, name, phone, email, type: 'LEAD' },
+          data: { tenantId, name, phone, email, type: 'CLIENT' },
         });
         created++;
       }

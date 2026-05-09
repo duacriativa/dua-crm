@@ -6,7 +6,7 @@ import {
   Search, Plus, Mail, Phone, X, RefreshCw,
   LayoutGrid, List as ListIcon, Link2, ChevronDown,
   Tag, FileText, MapPin, Hash, Users, TrendingUp,
-  AlertCircle, Star, Check, MessageCircle, Edit,
+  AlertCircle, Star, Check, MessageCircle, Edit, Trash2,
 } from "lucide-react";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
@@ -184,6 +184,12 @@ export default function ContatosPage() {
     } finally {
       setImporting(false);
     }
+  };
+
+  const deleteContact = async (id: string, name: string) => {
+    if (!confirm(`Excluir "${name}" permanentemente? Esta ação não pode ser desfeita.`)) return;
+    await fetch(`${API_URL}/api/v1/contacts/${id}`, { method: "DELETE", headers: authHeaders() });
+    fetchContacts();
   };
 
   const fixLids = async () => {
@@ -403,6 +409,8 @@ export default function ContatosPage() {
                             className="p-1.5 rounded-lg hover:bg-muted/60 text-muted-foreground hover:text-foreground transition-colors"><MessageCircle className="w-4 h-4"/></button>
                           <button onClick={e=>{e.stopPropagation();router.push(`/dashboard/contatos/${c.id}`);}}
                             className="p-1.5 rounded-lg hover:bg-muted/60 text-muted-foreground hover:text-foreground transition-colors"><Edit className="w-4 h-4"/></button>
+                          <button onClick={e=>{e.stopPropagation();deleteContact(c.id, c.name);}}
+                            className="p-1.5 rounded-lg hover:bg-red-500/10 text-muted-foreground hover:text-red-500 transition-colors"><Trash2 className="w-4 h-4"/></button>
                         </div>
                       </td>
                     </tr>
