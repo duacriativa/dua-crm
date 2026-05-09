@@ -200,8 +200,8 @@ export class ContactsController {
     if (!contact) throw new BadRequestException('Contato não encontrado.');
     if (!contact.instagramHandle) throw new BadRequestException('Contato sem Instagram cadastrado.');
 
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) throw new InternalServerErrorException('GEMINI_API_KEY não configurada.');
+    const apiKey = process.env.GROQ_API_KEY;
+    if (!apiKey) throw new InternalServerErrorException('GROQ_API_KEY não configurada.');
 
     const instagram = contact.instagramHandle.replace('@', '');
     const prompt =
@@ -211,31 +211,36 @@ export class ContactsController {
       `alertas (array), estrategia_recomendada (parágrafo), mensagem_whatsapp (mensagem casual e personalizada, ` +
       `máx 4 linhas, assine como Equipe Dua Criativa).`;
 
-    let geminiRes: any;
+    let groqRes: any;
     try {
-      geminiRes = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${apiKey}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            systemInstruction: { parts: [{ text: 'Você é especialista em marketing digital para moda brasileira. Retorne sempre JSON válido, sem markdown.' }] },
-            contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: { maxOutputTokens: 2048, temperature: 0.7 },
-          }),
+      groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
         },
-      );
+        body: JSON.stringify({
+          model: 'llama-3.3-70b-versatile',
+          max_tokens: 2048,
+          temperature: 0.7,
+          response_format: { type: 'json_object' },
+          messages: [
+            { role: 'system', content: 'Você é especialista em marketing digital para moda brasileira. Retorne sempre JSON válido, sem markdown.' },
+            { role: 'user', content: prompt },
+          ],
+        }),
+      });
     } catch (err: any) {
-      throw new InternalServerErrorException(`Erro ao conectar no Gemini: ${err.message}`);
+      throw new InternalServerErrorException(`Erro ao conectar no Groq: ${err.message}`);
     }
 
-    if (!geminiRes.ok) {
-      const errBody = await geminiRes.text();
-      throw new InternalServerErrorException(`Gemini retornou ${geminiRes.status}: ${errBody.slice(0, 300)}`);
+    if (!groqRes.ok) {
+      const errBody = await groqRes.text();
+      throw new InternalServerErrorException(`Groq retornou ${groqRes.status}: ${errBody.slice(0, 300)}`);
     }
 
-    const data: any = await geminiRes.json();
-    const analysisText: string = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+    const data: any = await groqRes.json();
+    const analysisText: string = data.choices?.[0]?.message?.content ?? '';
 
     let parsed: any = null;
     try {
