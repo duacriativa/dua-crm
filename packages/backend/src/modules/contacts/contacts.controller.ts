@@ -133,6 +133,7 @@ export class ContactsController {
       analysisInstagram?: string;
       qualification?: 'ULTRA' | 'QUALIFIED' | 'COLD' | 'UNQUALIFIED';
       type?: 'LEAD' | 'CLIENT';
+      segment?: 'NEW' | 'ACTIVE' | 'VIP' | 'AT_RISK' | 'DORMANT';
     },
   ) {
     const tenantId = req.user.tenantId;
@@ -161,6 +162,7 @@ export class ContactsController {
         ...(body.analysisInstagram !== undefined && { analysisInstagram: body.analysisInstagram }),
         ...(body.qualification !== undefined && { qualification: body.qualification }),
         ...(body.type !== undefined && { type: body.type }),
+        ...(body.segment !== undefined && { segment: body.segment }),
         ...(promotingToClient && { clientSince: new Date() }),
       },
     });

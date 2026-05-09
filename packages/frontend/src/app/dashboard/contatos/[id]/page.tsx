@@ -7,7 +7,7 @@ import {
   DollarSign, MessageCircle, Edit, MoreVertical, Trash2,
   User, Clock, Globe, Filter, Briefcase, Search,
   Save, ChevronRight, Sparkles, AlertTriangle, TrendingUp,
-  Star, Zap
+  Star, Zap, ChevronDown, Check,
 } from "lucide-react";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
@@ -51,6 +51,69 @@ const LOADING_STEPS = [
   "Gerando estratégia...",
   "Escrevendo mensagem...",
 ];
+
+const SEG_COLOR: Record<string, string> = {
+  NEW: "bg-blue-500/15 text-blue-400 border-blue-500/30",
+  ACTIVE: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
+  VIP: "bg-amber-500/15 text-amber-400 border-amber-500/30",
+  AT_RISK: "bg-red-500/15 text-red-400 border-red-500/30",
+  DORMANT: "bg-slate-500/15 text-slate-400 border-slate-500/30",
+};
+const SEG_LABEL: Record<string, string> = {
+  NEW: "Novo", ACTIVE: "Ativo", VIP: "VIP", AT_RISK: "Em Risco", DORMANT: "Inativo",
+};
+
+/* ── SegmentBadge ── clickable segment selector */
+function SegmentBadge({ contactId, segment, onChange }: { contactId: string; segment?: string; onChange: (s: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("click", handler);
+    return () => document.removeEventListener("click", handler);
+  }, []);
+
+  const select = async (val: string) => {
+    setOpen(false);
+    setSaving(true);
+    onChange(val);
+    try {
+      await fetch(`${API_URL}/api/v1/contacts/${contactId}`, {
+        method: "PATCH", headers: authHeaders(),
+        body: JSON.stringify({ segment: val }),
+      });
+    } finally { setSaving(false); }
+  };
+
+  const seg = segment || "NEW";
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        onClick={e => { e.stopPropagation(); setOpen(v => !v); }}
+        className={`flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full border cursor-pointer hover:opacity-80 transition-opacity ${SEG_COLOR[seg] ?? SEG_COLOR.NEW}`}
+      >
+        {saving ? "..." : (SEG_LABEL[seg] ?? seg)}
+        <ChevronDown size={11} className="opacity-70" />
+      </button>
+      {open && (
+        <div className="absolute left-0 top-7 bg-card border border-border rounded-xl shadow-elegant z-50 w-36 py-1 overflow-hidden">
+          {Object.entries(SEG_LABEL).map(([val, label]) => (
+            <button key={val} onClick={() => select(val)}
+              className={`w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold hover:bg-muted/60 transition-colors text-left ${seg === val ? "text-primary" : "text-foreground"}`}>
+              <span className={`w-2 h-2 rounded-full shrink-0 ${val === "NEW" ? "bg-blue-400" : val === "ACTIVE" ? "bg-emerald-400" : val === "VIP" ? "bg-amber-400" : val === "AT_RISK" ? "bg-red-400" : "bg-slate-400"}`} />
+              {label}
+              {seg === val && <Check size={12} className="ml-auto text-primary" />}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 
 /* ── NotesEditor ── */
@@ -266,6 +329,7 @@ export default function ContactProfilePage() {
   const [aditionalFields, setAditionalFields] = useState<any>({});
   const [showMenu, setShowMenu] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const [contactSegment, setContactSegment] = useState<string>("NEW");
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -306,6 +370,7 @@ export default function ContactProfilePage() {
       if (notes.includes("Atendimento de leads:")) fields.atendimento = notes.split("Atendimento de leads:")[1].split("\n")[0].trim();
       if (notes.includes("Interesse:")) fields.interesse = notes.split("Interesse:")[1].split("\n")[0].trim();
       setAditionalFields(fields);
+      setContactSegment(contact.segment || "NEW");
     }
   }, [contact]);
 
@@ -427,9 +492,11 @@ export default function ContactProfilePage() {
                   <User size={12} /> Perfil do Contato
                 </span>
                 <span className="w-1 h-1 rounded-full bg-border" />
-                <span className="text-xs font-semibold text-primary uppercase tracking-widest bg-primary/10 px-2 py-0.5 rounded-full">
-                  {contact.segment || "NEW"}
-                </span>
+                <SegmentBadge
+                  contactId={contact.id}
+                  segment={contactSegment}
+                  onChange={setContactSegment}
+                />
               </div>
             </div>
           </div>

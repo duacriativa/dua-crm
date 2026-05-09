@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import {
   Search, Plus, Mail, Phone, X, RefreshCw,
@@ -102,6 +102,16 @@ export default function ContatosPage() {
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [segFilter, setSegFilter] = useState("ALL");
+  const [segMenuId, setSegMenuId] = useState<string | null>(null);
+  const segMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (segMenuRef.current && !segMenuRef.current.contains(e.target as Node)) setSegMenuId(null);
+    };
+    document.addEventListener("click", handler);
+    return () => document.removeEventListener("click", handler);
+  }, []);
 
   const fetchContacts = useCallback(async () => {
     setLoading(true);
@@ -190,6 +200,16 @@ export default function ContatosPage() {
     if (!confirm(`Excluir "${name}" permanentemente? Esta ação não pode ser desfeita.`)) return;
     await fetch(`${API_URL}/api/v1/contacts/${id}`, { method: "DELETE", headers: authHeaders() });
     fetchContacts();
+  };
+
+  const updateSegment = async (id: string, segment: string) => {
+    setSegMenuId(null);
+    // Optimistic update
+    setContacts(prev => prev.map(c => c.id === id ? { ...c, segment } : c));
+    await fetch(`${API_URL}/api/v1/contacts/${id}`, {
+      method: "PATCH", headers: authHeaders(),
+      body: JSON.stringify({ segment }),
+    });
   };
 
   const fixLids = async () => {
@@ -339,7 +359,7 @@ export default function ContatosPage() {
                     {c.phone&&<p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5"><Phone className="w-3 h-3"/>{c.phone}</p>}
                     {c.email&&!c.phone&&<p className="text-xs text-muted-foreground truncate mt-0.5">{c.email}</p>}
                     <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-                      {c.segment&&<span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold border ${SEG_COLOR[c.segment]??SEG_COLOR.NEW}`}>{SEG_LABEL[c.segment]??c.segment}</span>}
+                      {c.segment&&<span className={`inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[10px] font-semibold border ${SEG_COLOR[c.segment]??SEG_COLOR.NEW}`}>{SEG_LABEL[c.segment]??c.segment}</span>}
                     </div>
                   </div>
                   <div className="text-right shrink-0">
@@ -377,7 +397,27 @@ export default function ContatosPage() {
                         {c.phone?<p className="text-sm text-muted-foreground flex items-center gap-1"><Phone className="w-3 h-3"/>{c.phone}</p>:<span className="text-xs text-muted-foreground/40">—</span>}
                       </td>
                       <td className="px-5 py-3.5">
-                        {c.segment?<span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-semibold border ${SEG_COLOR[c.segment]??SEG_COLOR.NEW}`}>{SEG_LABEL[c.segment]??c.segment}</span>:<span className="text-xs text-muted-foreground/40">—</span>}
+                        <div className="relative" ref={segMenuId === c.id ? segMenuRef : null}>
+                          <button
+                            onClick={e => { e.stopPropagation(); setSegMenuId(segMenuId === c.id ? null : c.id); }}
+                            className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold border cursor-pointer hover:opacity-80 transition-opacity ${c.segment ? (SEG_COLOR[c.segment] ?? SEG_COLOR.NEW) : "bg-muted/40 text-muted-foreground border-border"}`}
+                          >
+                            {c.segment ? (SEG_LABEL[c.segment] ?? c.segment) : "—"}
+                            <ChevronDown className="w-3 h-3 opacity-60" />
+                          </button>
+                          {segMenuId === c.id && (
+                            <div className="absolute left-0 top-8 bg-card border border-border rounded-xl shadow-elegant z-50 w-36 py-1 overflow-hidden">
+                              {Object.entries(SEG_LABEL).map(([val, label]) => (
+                                <button key={val} onClick={e => { e.stopPropagation(); updateSegment(c.id, val); }}
+                                  className={`w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold hover:bg-muted/60 transition-colors text-left ${c.segment === val ? "text-primary" : "text-foreground"}`}>
+                                  <span className={`w-2 h-2 rounded-full ${val==="NEW"?"bg-blue-400":val==="ACTIVE"?"bg-emerald-400":val==="VIP"?"bg-amber-400":val==="AT_RISK"?"bg-red-400":"bg-slate-400"}`} />
+                                  {label}
+                                  {c.segment === val && <Check className="w-3 h-3 ml-auto text-primary" />}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
                       </td>
                       <td className="px-5 py-3.5">
                         {service?<span className="text-xs text-muted-foreground bg-muted/40 border border-border px-2 py-1 rounded-lg">{service}</span>:<span className="text-xs text-muted-foreground/40">—</span>}
