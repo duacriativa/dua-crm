@@ -37,10 +37,23 @@ export class AsaasService {
     }
   }
 
-  async getCustomers(limit = 100) {
-    return this.fetch<{ data: AsaasCustomer[]; totalCount: number }>(
-      `/customers?limit=${limit}`,
+  async getCustomers(limit = 100, offset = 0) {
+    return this.fetch<{ data: AsaasCustomer[]; totalCount: number; hasMore: boolean }>(
+      `/customers?limit=${limit}&offset=${offset}`,
     );
+  }
+
+  async getAllCustomers(): Promise<AsaasCustomer[]> {
+    const all: AsaasCustomer[] = [];
+    let offset = 0;
+    const limit = 100;
+    while (true) {
+      const result = await this.getCustomers(limit, offset).catch(() => ({ data: [], totalCount: 0, hasMore: false }));
+      all.push(...(result.data || []));
+      if (!result.hasMore || (result.data || []).length < limit) break;
+      offset += limit;
+    }
+    return all;
   }
 
   async getPayments(status?: string, limit = 100) {

@@ -180,6 +180,9 @@ export default function ContactProfilePage() {
   const [analysisSaved, setAnalysisSaved] = useState(false);
   const [parsedAnalysis, setParsedAnalysis] = useState<InstagramAnalysis | null>(null);
 
+  // Additional fields parsed from notes — must be declared at top level (Rules of Hooks)
+  const [aditionalFields, setAditionalFields] = useState<any>({});
+
   const fetchContact = useCallback(async () => {
     setLoading(true);
     try {
@@ -201,6 +204,18 @@ export default function ContactProfilePage() {
   useEffect(() => {
     if (id) fetchContact();
   }, [id, fetchContact]);
+
+  useEffect(() => {
+    if (contact) {
+      const notes = contact.notes || "";
+      const fields: any = {};
+      if (notes.includes("Investimento atual:")) fields.investimento = notes.split("Investimento atual:")[1].split("\n")[0].trim();
+      if (notes.includes("Faturamento:")) fields.faturamento = notes.split("Faturamento:")[1].split("\n")[0].trim();
+      if (notes.includes("Atendimento de leads:")) fields.atendimento = notes.split("Atendimento de leads:")[1].split("\n")[0].trim();
+      if (notes.includes("Interesse:")) fields.interesse = notes.split("Interesse:")[1].split("\n")[0].trim();
+      setAditionalFields(fields);
+    }
+  }, [contact]);
 
   function tryParseAnalysis(text: string) {
     try {
@@ -292,21 +307,6 @@ export default function ContactProfilePage() {
     );
   }
 
-  // Parse fields from notes if they follow our [Formulário] pattern
-  const parseFields = () => {
-    const fields: any = {};
-    if (contact.notes) {
-      const notes = contact.notes;
-      if (notes.includes("Investimento atual:")) fields.investimento = notes.split("Investimento atual:")[1].split("\n")[0].trim();
-      if (notes.includes("Faturamento:")) fields.faturamento = notes.split("Faturamento:")[1].split("\n")[0].trim();
-      if (notes.includes("Atendimento de leads:")) fields.atendimento = notes.split("Atendimento de leads:")[1].split("\n")[0].trim();
-      if (notes.includes("Interesse:")) fields.interesse = notes.split("Interesse:")[1].split("\n")[0].trim();
-    }
-    return fields;
-  };
-
-  const [aditionalFields, setAditionalFields] = useState<any>({});
-  useEffect(() => { if(contact) setAditionalFields(parseFields()); }, [contact]);
 
   return (
     <div className="h-full flex flex-col bg-[#F9FAFB]">

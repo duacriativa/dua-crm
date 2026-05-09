@@ -119,6 +119,8 @@ export default function ContatosPage() {
   useEffect(() => { fetchContacts(); }, [fetchContacts]);
 
   const [stats, setStats] = useState({ totalClients: 0, newThisMonth: 0, renewalsSoon: 0, mrr: 0 });
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState<{ created: number; updated: number } | null>(null);
 
   useEffect(() => {
     fetch(`${API_URL}/api/v1/contacts/stats`, { headers: authHeaders() })
@@ -164,6 +166,24 @@ export default function ContatosPage() {
     } catch {}
   };
 
+  const importFromAsaas = async () => {
+    if (importing) return;
+    setImporting(true);
+    setImportResult(null);
+    try {
+      const res = await fetch(`${API_URL}/api/v1/contacts/import-asaas`, {
+        method: "POST", headers: authHeaders(),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setImportResult({ created: data.created, updated: data.updated });
+        fetchContacts();
+      }
+    } finally {
+      setImporting(false);
+    }
+  };
+
   const segTabs = [
     {label:"Todos",value:"ALL",count:total},
     {label:"Novos",value:"NEW",count:contacts.filter(c=>c.segment==="NEW").length},
@@ -189,11 +209,21 @@ export default function ContatosPage() {
             <button className="hidden sm:flex items-center gap-1.5 px-3 py-2 text-sm text-muted-foreground border border-border rounded-xl hover:bg-muted/50 transition-colors">
               <Link2 className="w-4 h-4"/><span>Link de Cadastro</span>
             </button>
+            <button onClick={importFromAsaas} disabled={importing}
+              className="hidden sm:flex items-center gap-1.5 px-3 py-2 text-sm text-muted-foreground border border-border rounded-xl hover:bg-muted/50 transition-colors disabled:opacity-50">
+              {importing ? <RefreshCw className="w-4 h-4 animate-spin"/> : <RefreshCw className="w-4 h-4"/>}
+              <span>{importing ? "Importando..." : "Importar Asaas"}</span>
+            </button>
             <button onClick={()=>setShowModal(true)}
               className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-gradient-primary rounded-xl hover:opacity-90 transition-opacity shadow-elegant">
               <Plus className="w-4 h-4"/><span>Cadastrar Cliente</span>
             </button>
           </div>
+          {importResult && (
+            <div className="text-xs text-success bg-success/10 border border-success/20 rounded-xl px-3 py-1.5 mt-2">
+              ✓ Importado: {importResult.created} novos, {importResult.updated} atualizados
+            </div>
+          )}
         </div>
 
         {/* Stats */}

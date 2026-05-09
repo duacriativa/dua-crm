@@ -5,6 +5,7 @@ import {
 import { ContactsService } from './contacts.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PrismaService } from '../../prisma/prisma.service';
+import { AsaasService } from '../asaas/asaas.service';
 import axios from 'axios';
 
 @Controller('contacts')
@@ -13,6 +14,7 @@ export class ContactsController {
   constructor(
     private readonly contactsService: ContactsService,
     private readonly prisma: PrismaService,
+    private readonly asaas: AsaasService,
   ) {}
 
   /** GET /contacts/stats — stats para o dashboard de Clientes */
@@ -303,6 +305,54 @@ export class ContactsController {
     }
 
     return { resolved, total: lidContacts.length };
+  }
+
+  /** POST /contacts/import-asaas — importa clientes do Asaas para a base de contatos */
+  @Post('import-asaas')
+  async importFromAsaas(@Request() req: any) {
+    const tenantId = req.user.tenantId;
+    let created = 0;
+    let updated = 0;
+
+    const customers = await this.asaas.getAllCustomers();
+
+    for (const c of customers) {
+      const phone = c.mobilePhone
+        ? `+${c.mobilePhone.replace(/\D/g, '')}`
+        : c.phone
+        ? `+${c.phone.replace(/\D/g, '')}`
+        : null;
+
+      const email = c.email || null;
+      const name = c.name || 'Sem nome';
+
+      // Tenta encontrar por phone ou email
+      const orConditions: any[] = [];
+      if (phone) orConditions.push({ phone });
+      if (email) orConditions.push({ email });
+
+      const existing = orConditions.length > 0
+        ? await this.prisma.contact.findFirst({ where: { tenantId, OR: orConditions } })
+        : null;
+
+      if (existing) {
+        await this.prisma.contact.update({
+          where: { id: existing.id },
+          data: {
+            email: email || existing.email,
+            phone: phone || existing.phone,
+          },
+        });
+        updated++;
+      } else {
+        await this.prisma.contact.create({
+          data: { tenantId, name, phone, email, type: 'LEAD' },
+        });
+        created++;
+      }
+    }
+
+    return { ok: true, created, updated, total: created + updated };
   }
 
   /** DELETE /contacts/:id */
