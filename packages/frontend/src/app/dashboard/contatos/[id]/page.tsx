@@ -88,6 +88,88 @@ function NotesEditor({ contactId, initialNotes }: { contactId: string; initialNo
   );
 }
 
+/* ── ContactInfoEditor ── */
+function ContactInfoEditor({ contact, onSave }: { contact: any; onSave: (f: any) => void }) {
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState({ phone: contact.phone || "", email: contact.email || "", instagramHandle: contact.instagramHandle || "" });
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      const phone = form.phone.trim() || null;
+      const email = form.email.trim() || null;
+      const instagramHandle = form.instagramHandle.trim().replace("@", "") || null;
+      await fetch(`${API_URL}/api/v1/contacts/${contact.id}`, {
+        method: "PATCH", headers: authHeaders(),
+        body: JSON.stringify({ phone, email, instagramHandle }),
+      });
+      onSave({ phone, email, instagramHandle });
+      setEditing(false);
+    } finally { setSaving(false); }
+  };
+
+  const inp = "w-full px-3 py-2 text-sm bg-muted/50 border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/50 text-foreground placeholder:text-muted-foreground";
+
+  return (
+    <div className="bg-card surface-card p-5 shadow-none border border-border">
+      <div className="flex items-center justify-between mb-5 px-1">
+        <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Informações de Contato</h3>
+        {!editing && (
+          <button onClick={() => setEditing(true)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-primary border border-primary/30 rounded-xl hover:bg-primary/5 transition-colors">
+            <Edit size={12} /> Editar
+          </button>
+        )}
+      </div>
+
+      {editing ? (
+        <div className="space-y-3">
+          <div>
+            <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-tighter block mb-1">WhatsApp</label>
+            <input value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
+              placeholder="+5511999999999" className={inp} />
+          </div>
+          <div>
+            <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-tighter block mb-1">E-mail</label>
+            <input value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
+              placeholder="email@exemplo.com" type="email" className={inp} />
+          </div>
+          <div>
+            <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-tighter block mb-1">Instagram</label>
+            <input value={form.instagramHandle} onChange={e => setForm(f => ({ ...f, instagramHandle: e.target.value }))}
+              placeholder="@suamarca" className={inp} />
+          </div>
+          <div className="flex gap-2 pt-1">
+            <button onClick={save} disabled={saving}
+              className="flex-1 py-2 text-xs font-semibold text-white bg-gradient-primary rounded-xl hover:opacity-90 disabled:opacity-50">
+              {saving ? "Salvando..." : "Salvar"}
+            </button>
+            <button onClick={() => setEditing(false)} className="px-3 py-2 text-xs text-muted-foreground border border-border rounded-xl hover:bg-muted/50">
+              Cancelar
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {[
+            { label: "WhatsApp", value: contact.phone, icon: <Phone size={18} />, color: "bg-green-500/10 text-green-600" },
+            { label: "E-mail", value: contact.email, icon: <Mail size={18} />, color: "bg-blue-500/10 text-blue-600" },
+            { label: "Instagram", value: contact.instagramHandle ? `@${contact.instagramHandle.replace("@", "")}` : null, icon: <Instagram size={18} />, color: "bg-pink-500/10 text-pink-500" },
+          ].map(({ label, value, icon, color }) => (
+            <div key={label} className="flex items-center gap-3 p-3 rounded-2xl hover:bg-muted/30 transition-colors">
+              <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${color}`}>{icon}</div>
+              <div className="min-w-0">
+                <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-tighter leading-none mb-1">{label}</p>
+                <p className="text-sm font-semibold text-foreground truncate">{value || "—"}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ── BusinessProfileEditor ── */
 const FATURAMENTO_OPTIONS = ["Menos de R$ 50k/mês","R$ 50k – R$ 100k/mês","R$ 100k – R$ 150k/mês","Acima de R$ 150k/mês"];
 const MODELO_VENDA_OPTIONS = ["E-commerce próprio","Instagram/WhatsApp","Marketplace (Shopee, Mercado Livre)","Loja física + online","Atacado"];
@@ -670,48 +752,8 @@ export default function ContactProfilePage() {
           {/* Coluna Direita */}
           <div className="space-y-6">
 
-            {/* Contato Rápido */}
-            <div className="bg-card surface-card p-5 shadow-none border border-border">
-              <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-widest mb-6 px-1">Informações de Contato</h3>
-
-              <div className="space-y-4">
-                <div className="group flex items-center justify-between p-3 rounded-2xl hover:bg-muted/30 transition-colors">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-green-500/10 flex items-center justify-center text-green-600">
-                      <Phone size={18} />
-                    </div>
-                    <div>
-                      <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-tighter leading-none mb-1">WhatsApp</p>
-                      <p className="text-sm font-semibold text-foreground">{contact.phone || "—"}</p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="group flex items-center justify-between p-3 rounded-2xl hover:bg-muted/30 transition-colors">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center text-blue-600">
-                      <Mail size={18} />
-                    </div>
-                    <div>
-                      <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-tighter leading-none mb-1">E-mail</p>
-                      <p className="text-sm font-semibold text-foreground truncate max-w-[140px]">{contact.email || "—"}</p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="group flex items-center justify-between p-3 rounded-2xl hover:bg-muted/30 transition-colors">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-pink-50 flex items-center justify-center text-pink-600">
-                      <Instagram size={18} />
-                    </div>
-                    <div>
-                      <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-tighter leading-none mb-1">Instagram</p>
-                      <p className="text-sm font-semibold text-foreground">{contact.instagramHandle ? `@${contact.instagramHandle.replace('@', '')}` : "—"}</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
+            {/* Informações de Contato */}
+            <ContactInfoEditor contact={contact} onSave={(updated) => setContact(c => c ? { ...c, ...updated } : c)} />
 
             {/* Timeline do Lead */}
             <div className="bg-card surface-card p-5 shadow-none border border-border">
