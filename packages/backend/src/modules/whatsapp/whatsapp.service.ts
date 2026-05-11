@@ -696,6 +696,7 @@ export class WhatsAppService {
           if (!contact.profilePicUrl && synced <= 50 && !phone.startsWith('lid:')) {
             const rawPhone = ec.id.replace('@s.whatsapp.net', '').replace('@lid', '');
             this.fetchAndSaveProfilePic(tenantId, instanceName, rawPhone, contact.id, 'none').catch(() => {});
+          }
         } catch { /* ignora */ }
       }
 
