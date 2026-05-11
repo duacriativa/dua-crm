@@ -144,7 +144,7 @@ export class WhatsAppService {
           url: webhookUrl,
           webhook_by_events: false,
           webhook_base64: false,
-          events: ['MESSAGES_UPSERT', 'CONNECTION_UPDATE'],
+          events: ['MESSAGES_UPSERT', 'CONNECTION_UPDATE', 'CONTACTS_UPDATE', 'CONTACTS_SET'],
         },
         { headers: this.headers, timeout },
       ).then(() => this.logger.log('[connect] Webhook configurado'))
@@ -269,6 +269,21 @@ export class WhatsAppService {
               this.logger.warn(`[Sync] Falha parcial: ${err.message}`)
             );
           }
+        }
+        return;
+      }
+
+      // ── CONTACTS_UPDATE / CONTACTS_SET: mapeamento lid → número real ──
+      if (
+        event === 'contacts.update' || event === 'CONTACTS_UPDATE' ||
+        event === 'contacts.set'    || event === 'CONTACTS_SET'
+      ) {
+        const contactsData = Array.isArray(payload?.data) ? payload.data : [];
+        const tenant = await this.prisma.tenant.findFirst({
+          where: { OR: [{ slug: instance }, { id: instance }] }
+        });
+        if (tenant && contactsData.length > 0) {
+          await this.handleContactsUpdate(contactsData, tenant.id);
         }
         return;
       }
@@ -478,26 +493,82 @@ export class WhatsAppService {
   }
 
   private async fetchAndSaveProfilePic(tenantId: string, instanceName: string, phone: string, contactId: string, conversationId: string) {
+    // Não tenta buscar avatar para LIDs (número ainda não resolvido)
+    if (!phone || phone.startsWith('lid:') || contactId === 'new' || !contactId) return;
     try {
       const evolutionUrl = `${this.evolutionUrl}/chat/fetchProfilePictureUrl/${instanceName}`;
-      // A maioria das versões do Evolution v1+ espera { "number": "..." } em POST
-      const res = await axios.post(evolutionUrl, { number: phone }, { headers: this.headers, timeout: 5000 });
-      const profilePicUrl = res.data?.profilePictureUrl || res.data?.picture;
-      
+      // Remove + e @suffix para passar apenas dígitos para a Evolution API
+      const cleanPhone = phone.replace(/^\+/, '').replace(/@.*$/, '');
+      const res = await axios.post(evolutionUrl, { number: cleanPhone }, { headers: this.headers, timeout: 5000 });
+      const profilePicUrl = res.data?.profilePictureUrl || res.data?.picture || res.data?.url;
+
       if (profilePicUrl) {
         await this.prisma.contact.update({
           where: { id: contactId },
           data: { profilePicUrl }
         });
-        await this.prisma.conversation.update({
-          where: { id: conversationId },
-          data: { profilePicUrl }
-        });
-        this.logger.log(`[Webhook] Avatar puxado com sucesso para ${phone}`);
+        // Só atualiza conversa se um ID real foi passado
+        if (conversationId && conversationId !== 'none') {
+          await this.prisma.conversation.update({
+            where: { id: conversationId },
+            data: { profilePicUrl }
+          });
+        }
+        this.logger.log(`[Avatar] OK para ${cleanPhone}`);
       }
     } catch (err: any) {
-      this.logger.debug(`[Webhook] Sem avatar para ${phone} (ou erro na API)`);
+      this.logger.debug(`[Avatar] Sem foto para ${phone}`);
     }
+  }
+
+  /** Recebe eventos CONTACTS_UPDATE/SET e resolve lid → número real no banco */
+  private async handleContactsUpdate(contacts: any[], tenantId: string) {
+    let resolved = 0;
+    for (const ec of contacts) {
+      try {
+        // ec.id  = "5585999999999@s.whatsapp.net"  (número real)
+        // ec.lid = "12345678@lid"                   (lid)
+        if (!ec.id?.endsWith('@s.whatsapp.net')) continue;
+        const realPhone = `+${ec.id.replace('@s.whatsapp.net', '')}`;
+
+        if (ec.lid) {
+          const lidRaw   = ec.lid.replace('@lid', '');
+          const lidStr   = `lid:${lidRaw}`;
+
+          // Atualiza contatos salvos com o lid
+          const updated = await this.prisma.contact.updateMany({
+            where: { tenantId, phone: lidStr },
+            data:  { phone: realPhone, name: ec.notify || ec.name || undefined },
+          });
+
+          // Atualiza o externalId das conversas (lid@lid → numero@s.whatsapp.net)
+          await this.prisma.conversation.updateMany({
+            where: { tenantId, externalId: `${lidRaw}@lid` },
+            data:  { externalId: ec.id },
+          });
+
+          if (updated.count > 0) {
+            this.logger.log(`[CONTACTS] ${lidStr} → ${realPhone} (${updated.count} contato(s))`);
+            resolved++;
+          }
+        }
+
+        // Atualiza nome se o contato existe mas o nome está vazio ou igual ao lid
+        if (ec.notify || ec.name) {
+          await this.prisma.contact.updateMany({
+            where: {
+              tenantId,
+              phone: realPhone,
+              OR: [{ name: { startsWith: 'lid:' } }, { name: '' }],
+            },
+            data: { name: ec.notify || ec.name },
+          });
+        }
+      } catch (err: any) {
+        this.logger.debug(`[CONTACTS] Erro ao processar contato: ${err.message}`);
+      }
+    }
+    if (resolved > 0) this.logger.log(`[CONTACTS] ${resolved} LIDs resolvidos neste batch.`);
   }
 
   /** Resolve LID → número real: primeiro checa DB, depois tenta cruzar a agenda */
@@ -546,92 +617,11 @@ export class WhatsAppService {
           url: webhookUrl,
           webhook_by_events: false,
           webhook_base64: false,
-          events: ['MESSAGES_UPSERT', 'MESSAGES_UPDATE', 'CONNECTION_UPDATE', 'QRCODE_UPDATED'],
+          events: ['MESSAGES_UPSERT', 'MESSAGES_UPDATE', 'CONNECTION_UPDATE', 'QRCODE_UPDATED', 'CONTACTS_UPDATE', 'CONTACTS_SET'],
         },
         { headers: this.headers, timeout: 10000 },
       );
       this.logger.log(`[Webhook] Webhook registrado para ${instanceName}`);
     } catch (err: any) {
       this.logger.warn(`[Webhook] Falha ao registrar webhook: ${err.message}`);
-    }
-  }
-
-  /** Sincroniza a agenda do WhatsApp → popula DB com contatos reais e avatares */
-  /** Sincroniza a agenda do WhatsApp → popula DB com contatos reais e mapeia LIDs */
-  async syncContacts(instanceName: string, tenantId: string) {
-    this.logger.log(`[Sync] Iniciando sincronização de ${instanceName}...`);
-    try {
-      const res = await axios.post(
-        `${this.evolutionUrl}/chat/findContacts/${instanceName}`,
-        {}, { headers: this.headers, timeout: 30000 }
-      );
-      const contacts: any[] = Array.isArray(res.data) ? res.data : [];
-      this.logger.log(`[Sync] ${contacts.length} contatos encontrados na agenda`);
-
-      // 1) Mapeia Nomes para Telefones Reais (@s.whatsapp.net)
-      const nameToRealPhone = new Map<string, string>();
-      for (const ec of contacts) {
-        if (ec.id?.endsWith('@s.whatsapp.net')) {
-          const phone = ec.id.replace('@s.whatsapp.net', '');
-          const name = (ec.pushName || ec.name || '').toLowerCase().trim();
-          if (name && !nameToRealPhone.has(name)) {
-            nameToRealPhone.set(name, phone);
-          }
-        }
-      }
-
-      let synced = 0;
-      for (const ec of contacts) {
-        if (!ec.id || ec.id.endsWith('@g.us') || ec.id.endsWith('@broadcast')) continue;
-
-        let phone: string;
-        const pushName = ec.pushName || ec.name || '';
-        const nameKey = pushName.toLowerCase().trim();
-
-        if (ec.id.endsWith('@lid')) {
-          // É um LID. Tenta ver se temos o telefone real para esse nome
-          const real = nameToRealPhone.get(nameKey);
-          if (real) {
-            phone = `+${real}`;
-            this.logger.debug(`[Sync] Mapeando LID ${ec.id} para número real ${phone} via nome "${pushName}"`);
-          } else {
-            phone = `lid:${ec.id.replace('@lid', '')}`;
-          }
-        } else {
-          phone = `+${ec.id.replace('@s.whatsapp.net', '')}`;
-        }
-
-        try {
-          // Upsert pelo telefone
-          const existing = await this.prisma.contact.findFirst({
-            where: { tenantId, phone }
-          });
-
-          if (!existing) {
-            await this.prisma.contact.create({
-              data: {
-                tenantId,
-                name: pushName || phone,
-                phone,
-                leadScore: 0,
-                qualification: 'UNQUALIFIED',
-                type: 'LEAD',
-              }
-            });
-            synced++;
-          }
-          
-          // Se não tem foto, tenta buscar (limita para evitar rate limit)
-          if ((!existing || !existing.profilePicUrl) && synced < 50) {
-            this.fetchAndSaveProfilePic(tenantId, instanceName, ec.id, existing?.id || 'new', 'none').catch(() => {});
-          }
-        } catch { /* ignora */ }
-      }
-
-      this.logger.log(`[Sync] Concluído! ${synced} contatos processados.`);
-    } catch (err: any) {
-      this.logger.warn(`[Sync] Erro: ${err.message}`);
-    }
-  }
-}
-
+    
