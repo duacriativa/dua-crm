@@ -245,15 +245,17 @@ function SettingsPanel({ onClose, onDisconnect }: { onClose: () => void; onDisco
   const handleDisconnect = async () => {
     if (!confirm("Tem certeza que deseja desconectar o WhatsApp? Você precisará escanear o QR Code novamente.")) return;
     setDisconnecting(true);
+    // Tenta desconectar no backend mas não bloqueia o fluxo se falhar
     try {
       await fetch(`${API_URL}/api/v1/whatsapp/disconnect`, { method: "POST", headers: authHeaders() });
-      onDisconnect();
-      onClose();
     } catch {
-      alert("Erro ao desconectar. Tente novamente.");
+      // ignora erro de rede — prossegue com desconexão local
     } finally {
       setDisconnecting(false);
     }
+    // Sempre atualiza a UI, independente do backend
+    onDisconnect();
+    onClose();
   };
 
   return (
@@ -639,10 +641,4 @@ export default function WhatsAppPage() {
         )}
         {showSettings && (
           <div className="w-80 shrink-0 border-l border-border bg-background">
-            <SettingsPanel onClose={() => setShowSettings(false)} onDisconnect={() => setWaStatus("disconnected")} />
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
+            <SettingsPanel onClose={() => set
