@@ -25,7 +25,16 @@ export class ContactsController {
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
     const in30Days = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
 
-    const [totalClients, newThisMonth, renewalsSoon, mrrResult, leadStats] = await Promise.all([
+    const [
+      totalClients,
+      newThisMonth,
+      renewalsSoon,
+      mrrResult,
+      leadStats,
+      clientSegmentStats,
+      cancelledThisMonth,
+      activeAtStartOfMonth,
+    ] = await Promise.all([
       // Total de clientes (type = CLIENT)
       this.prisma.contact.count({ where: { tenantId, type: 'CLIENT' } }),
 
@@ -55,15 +64,73 @@ export class ContactsController {
         where: { tenantId, type: 'LEAD' },
         _count: true,
       }),
+
+      // Contagens por segmento (para as tabs de Clientes)
+      this.prisma.contact.groupBy({
+        by: ['segment'],
+        where: { tenantId, type: 'CLIENT' },
+        _count: true,
+      }),
+
+      // Contratos cancelados no mês atual
+      this.prisma.contract.count({
+        where: {
+          tenantId,
+          status: 'CANCELLED',
+          cancelledAt: { gte: startOfMonth },
+        },
+      }),
+
+      // Base de contratos ativos no início do mês (para cálculo de churn)
+      // = contratos assinados antes do mês que ainda estavam ativos no dia 1
+      this.prisma.contract.count({
+        where: {
+          tenantId,
+          signedAt: { lt: startOfMonth },
+          OR: [
+            { status: 'ACTIVE' },
+            { status: 'CANCELLED', cancelledAt: { gte: startOfMonth } },
+            { status: 'FINISHED', updatedAt: { gte: startOfMonth } },
+          ],
+        },
+      }),
     ]);
 
     const mrr = mrrResult._sum.monthlyValue ?? 0;
 
+    const segCount = (seg: string) =>
+      clientSegmentStats.find(r => r.segment === seg)?._count ?? 0;
+
+    const activeClients = segCount('ACTIVE');
+    const atRiskClients = segCount('AT_RISK');
+
+    const churnRate = activeAtStartOfMonth > 0
+      ? (cancelledThisMonth / activeAtStartOfMonth) * 100
+      : 0;
+
     return {
+      // Métricas legadas (mantidas p/ compatibilidade com outros consumidores)
       totalClients,
       newThisMonth,
       renewalsSoon,
       mrr,
+
+      // Novas métricas dos cards
+      activeClients,
+      atRiskClients,
+      cancelledThisMonth,
+      churnRate: Number(churnRate.toFixed(2)),
+
+      // Contagens por segmento (para tabs)
+      segmentCounts: {
+        ALL: totalClients,
+        NEW: segCount('NEW'),
+        ACTIVE: activeClients,
+        VIP: segCount('VIP'),
+        AT_RISK: atRiskClients,
+        DORMANT: segCount('DORMANT'),
+      },
+
       leads: {
         total: leadStats.reduce((s, r) => s + r._count, 0),
         ultra: leadStats.find(r => r.qualification === 'ULTRA')?._count ?? 0,

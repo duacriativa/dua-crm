@@ -7,6 +7,7 @@ import {
   LayoutGrid, List as ListIcon, Link2, ChevronDown,
   Tag, FileText, MapPin, Hash, Users, TrendingUp,
   AlertCircle, Star, Check, MessageCircle, Edit, Trash2,
+  UserCheck, UserX, TrendingDown,
 } from "lucide-react";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
@@ -130,16 +131,45 @@ export default function ContatosPage() {
 
   useEffect(() => { fetchContacts(); }, [fetchContacts]);
 
-  const [stats, setStats] = useState({ totalClients: 0, newThisMonth: 0, renewalsSoon: 0, mrr: 0 });
+  // Reload de métricas globais (independente do filtro de tab)
+  // Re-roda sempre que o segFilter muda — assim cards e tabs ficam sincronizados
+
+  type StatsState = {
+    totalClients: number;
+    newThisMonth: number;
+    renewalsSoon: number;
+    mrr: number;
+    activeClients: number;
+    atRiskClients: number;
+    cancelledThisMonth: number;
+    churnRate: number;
+    segmentCounts: { ALL: number; NEW: number; ACTIVE: number; VIP: number; AT_RISK: number; DORMANT: number };
+  };
+  const EMPTY_STATS: StatsState = {
+    totalClients: 0, newThisMonth: 0, renewalsSoon: 0, mrr: 0,
+    activeClients: 0, atRiskClients: 0, cancelledThisMonth: 0, churnRate: 0,
+    segmentCounts: { ALL: 0, NEW: 0, ACTIVE: 0, VIP: 0, AT_RISK: 0, DORMANT: 0 },
+  };
+  const [stats, setStats] = useState<StatsState>(EMPTY_STATS);
+  const [statsLoading, setStatsLoading] = useState(true);
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<{ created: number; updated: number } | null>(null);
   const [fixingLids, setFixingLids] = useState(false);
   const [lidResult, setLidResult] = useState<{ resolved: number; total: number } | null>(null);
 
-  useEffect(() => {
-    fetch(`${API_URL}/api/v1/contacts/stats`, { headers: authHeaders() })
-      .then(r => r.json()).then(data => setStats(data)).catch(() => {});
+  const fetchStats = useCallback(async () => {
+    setStatsLoading(true);
+    try {
+      const res = await fetch(`${API_URL}/api/v1/contacts/stats`, { headers: authHeaders() });
+      if (!res.ok) return;
+      const data = await res.json();
+      setStats({ ...EMPTY_STATS, ...data, segmentCounts: { ...EMPTY_STATS.segmentCounts, ...(data.segmentCounts ?? {}) } });
+    } catch {} finally { setStatsLoading(false); }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Recarrega métricas no mount, ao mudar o filtro de aba e ao mudar a busca
+  useEffect(() => { fetchStats(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [fetchStats, segFilter, search]);
 
   const handleSave = async () => {
     if (!form.name.trim()) return;
@@ -162,7 +192,7 @@ export default function ContatosPage() {
           type: "CLIENT",
         }),
       });
-      setForm(EMPTY_FORM); setShowModal(false); fetchContacts();
+      setForm(EMPTY_FORM); setShowModal(false); fetchContacts(); fetchStats();
     } finally { setSaving(false); }
   };
 
@@ -191,7 +221,7 @@ export default function ContatosPage() {
       const data = await res.json();
       if (data.ok) {
         setImportResult({ created: data.created, updated: data.updated });
-        fetchContacts();
+        fetchContacts(); fetchStats();
       }
     } finally {
       setImporting(false);
@@ -219,7 +249,7 @@ export default function ContatosPage() {
   const deleteContact = async (id: string, name: string) => {
     if (!confirm(`Excluir "${name}" permanentemente? Esta ação não pode ser desfeita.`)) return;
     await fetch(`${API_URL}/api/v1/contacts/${id}`, { method: "DELETE", headers: authHeaders() });
-    fetchContacts();
+    fetchContacts(); fetchStats();
   };
 
   const syncBrevo = async (contactType: 'LEAD' | 'CLIENT' | 'ALL') => {
@@ -244,6 +274,7 @@ export default function ContatosPage() {
       method: "PATCH", headers: authHeaders(),
       body: JSON.stringify({ segment }),
     });
+    fetchStats(); // atualiza cards e contagens das tabs
   };
 
   const fixLids = async () => {
@@ -262,13 +293,15 @@ export default function ContatosPage() {
     }
   };
 
+  // Tabs usam SEMPRE os totais globais (segmentCounts vindo do backend),
+  // assim a contagem de cada aba não some quando outra é selecionada.
   const segTabs = [
-    {label:"Todos",value:"ALL",count:total},
-    {label:"Novos",value:"NEW",count:contacts.filter(c=>c.segment==="NEW").length},
-    {label:"Ativos",value:"ACTIVE",count:contacts.filter(c=>c.segment==="ACTIVE").length},
-    {label:"VIP",value:"VIP",count:contacts.filter(c=>c.segment==="VIP").length},
-    {label:"Em Risco",value:"AT_RISK",count:contacts.filter(c=>c.segment==="AT_RISK").length},
-    {label:"Inativos",value:"DORMANT",count:contacts.filter(c=>c.segment==="DORMANT").length},
+    {label:"Todos",   value:"ALL",     count: stats.segmentCounts.ALL},
+    {label:"Novos",   value:"NEW",     count: stats.segmentCounts.NEW},
+    {label:"Ativos",  value:"ACTIVE",  count: stats.segmentCounts.ACTIVE},
+    {label:"VIP",     value:"VIP",     count: stats.segmentCounts.VIP},
+    {label:"Em Risco",value:"AT_RISK", count: stats.segmentCounts.AT_RISK},
+    {label:"Inativos",value:"DORMANT", count: stats.segmentCounts.DORMANT},
   ];
 
   const inp = "w-full px-4 py-2.5 text-sm bg-muted/50 border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/50 text-foreground placeholder:text-muted-foreground";
@@ -347,10 +380,38 @@ export default function ContatosPage() {
         {/* Stats */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
           {[
-            {label:"Total de Clientes",value:loading?"—":String(stats.totalClients),sub:null,Icon:Users,c:"text-violet-400",bg:"bg-violet-500/10 border-violet-500/20"},
-            {label:"Novos este Mês",value:loading?"—":String(stats.newThisMonth),sub:null,Icon:TrendingUp,c:"text-emerald-400",bg:"bg-emerald-500/10 border-emerald-500/20"},
-            {label:"Renovações próximas",value:loading?"—":String(stats.renewalsSoon),sub:"nos próximos 30 dias",Icon:AlertCircle,c:"text-amber-400",bg:"bg-amber-500/10 border-amber-500/20"},
-            {label:"MRR (Receita Mensal)",value:loading?"—":`R$ ${stats.mrr.toLocaleString("pt-BR",{minimumFractionDigits:2})}`,sub:"contratos ativos",Icon:Star,c:"text-blue-400",bg:"bg-blue-500/10 border-blue-500/20"},
+            {
+              label:"Clientes Ativos",
+              value: statsLoading ? "—" : String(stats.activeClients),
+              sub: null,
+              Icon: UserCheck,
+              c:"text-emerald-400",
+              bg:"bg-emerald-500/10 border-emerald-500/20",
+            },
+            {
+              label:"Clientes em Risco",
+              value: statsLoading ? "—" : String(stats.atRiskClients),
+              sub:"baixa atividade / contratos vencendo",
+              Icon: AlertCircle,
+              c:"text-amber-400",
+              bg:"bg-amber-500/10 border-amber-500/20",
+            },
+            {
+              label:"Cancelados no Mês",
+              value: statsLoading ? "—" : String(stats.cancelledThisMonth),
+              sub:"contratos encerrados",
+              Icon: UserX,
+              c:"text-red-400",
+              bg:"bg-red-500/10 border-red-500/20",
+            },
+            {
+              label:"% Churn",
+              value: statsLoading ? "—" : `${stats.churnRate.toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2})}%`,
+              sub:"cancelados ÷ base do início do mês",
+              Icon: TrendingDown,
+              c:"text-rose-400",
+              bg:"bg-rose-500/10 border-rose-500/20",
+            },
           ].map(({label,value,sub,Icon,c,bg})=>(
             <div key={label} className={`rounded-2xl border p-4 ${bg}`}>
               <div className="flex items-center justify-between mb-2">
