@@ -641,4 +641,10 @@ export default function WhatsAppPage() {
         )}
         {showSettings && (
           <div className="w-80 shrink-0 border-l border-border bg-background">
-            <SettingsPanel onClose={() => set
+            <SettingsPanel onClose={() => setShowSettings(false)} onDisconnect={() => setWaStatus("disconnected")} />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
