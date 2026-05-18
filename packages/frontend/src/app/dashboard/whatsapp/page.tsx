@@ -457,17 +457,25 @@ export default function WhatsAppPage() {
     }
   }, [waQr, waStatus, checkWaStatus]);
 
-  const generateWaQr = async () => {
+  const generateWaQr = async (forceNew = false) => {
     setWaLoading(true);
     try {
-      await fetch(`${API_URL}/api/v1/whatsapp/disconnect`, { method: "POST", headers: authHeaders() }).catch(() => {});
+      // Só desconecta se o usuário forçou (botão "Gerar novo código"), nunca na primeira tentativa
+      if (forceNew) {
+        await fetch(`${API_URL}/api/v1/whatsapp/disconnect`, { method: "POST", headers: authHeaders() }).catch(() => {});
+        await new Promise(r => setTimeout(r, 1500)); // aguarda instância ser removida
+      }
       const res = await fetch(`${API_URL}/api/v1/whatsapp/connect`, { method: "POST", headers: authHeaders() });
+      if (!res.ok) { alert("Erro ao conectar — tente novamente"); return; }
       const data = await res.json();
       if (data.connected) {
         setWaStatus("connected");
+        setWaQr(null);
       } else if (data.qrCode) {
         setWaQr(data.qrCode);
         setWaStatus("disconnected");
+      } else {
+        alert("Não foi possível gerar o QR Code. Tente novamente em alguns segundos.");
       }
     } catch {
       alert("Erro ao gerar QR Code");
@@ -582,7 +590,7 @@ export default function WhatsAppPage() {
                     <p className="text-xs text-muted-foreground mb-4">
                       Abra o WhatsApp &gt; Aparelhos Conectados
                     </p>
-                    <button onClick={generateWaQr} disabled={waLoading} className="text-sm font-semibold text-primary hover:underline flex items-center gap-2">
+                    <button onClick={() => generateWaQr(true)} disabled={waLoading} className="text-sm font-semibold text-primary hover:underline flex items-center gap-2">
                       {waLoading && <RefreshCw className="w-4 h-4 animate-spin" />}
                       Gerar novo código
                     </button>
