@@ -388,4 +388,84 @@ export class ConversationsService {
       data: { status: status as any },
     });
   }
+
+  async redownloadMedia(tenantId: string, conversationId: string, messageId: string) {
+    // Verifica que a conversa pertence ao tenant
+    const conv = await this.prisma.conversation.findFirst({
+      where: { id: conversationId, tenantId },
+    });
+    if (!conv) throw new NotFoundException('Conversa não encontrada.');
+
+    const msg = await this.prisma.message.findFirst({
+      where: { id: messageId, conversationId },
+    });
+    if (!msg) throw new NotFoundException('Mensagem não encontrada.');
+    if (!msg.externalId) throw new NotFoundException('Mensagem sem ID externo para recarregar.');
+
+    const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { slug: true } });
+    const instanceName = tenant?.slug ?? tenantId;
+
+    const typeMap: Record<string, string> = {
+      IMAGE: 'imageMessage',
+      VIDEO: 'videoMessage',
+      AUDIO: 'audioMessage',
+      DOCUMENT: 'documentMessage',
+    };
+    const messageType = typeMap[msg.type || ''];
+    if (!messageType) throw new NotFoundException('Tipo de mídia não suportado.');
+
+    try {
+      const res = await axios.post(
+        `${process.env.EVOLUTION_API_URL}/chat/getBase64FromMediaMessage/${instanceName}`,
+        { message: { key: { id: msg.externalId, remoteJid: conv.externalId }, messageType } },
+        { headers: this.evolutionHeaders, timeout: 20000 },
+      );
+      const base64 = res.data?.base64 || res.data?.data;
+      const mime = res.data?.mimetype || res.data?.mediaType || 'application/octet-stream';
+      if (!base64) throw new Error('Sem dados de mídia retornados pela API');
+
+      const dataUri = base64.startsWith('data:') ? base64 : `data:${mime};base64,${base64}`;
+
+      await this.prisma.message.update({
+        where: { id: messageId },
+        data: { mediaUrl: dataUri },
+      });
+
+      return { mediaUrl: dataUri };
+    } catch (err: any) {
+      throw new NotFoundException(`Não foi possível recarregar a mídia: ${err.message}`);
+    }
+  }
+
+  async syncGroupNames(tenantId: string) {
+    const groups = await this.prisma.conversation.findMany({
+      where: { tenantId, externalId: { endsWith: '@g.us' } },
+      include: { contact: true },
+    });
+
+    const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { slug: true } });
+    const instanceName = tenant?.slug ?? tenantId;
+
+    let updated = 0;
+    for (const group of groups) {
+      try {
+        const res = await axios.get(
+          `${process.env.EVOLUTION_API_URL}/group/findGroupInfos/${instanceName}?groupJid=${group.externalId}`,
+          { headers: this.evolutionHeaders, timeout: 10000 },
+        );
+        const groupName = res.data?.subject || res.data?.name;
+        if (groupName && groupName !== group.contact.name) {
+          await this.prisma.contact.update({
+            where: { id: group.contactId },
+            data: { name: groupName },
+          });
+          updated++;
+        }
+      } catch (err: any) {
+        console.warn(`[syncGroupNames] Falha no grupo ${group.externalId}: ${err.message}`);
+      }
+    }
+
+    return { ok: true, total: groups.length, updated };
+  }
 }

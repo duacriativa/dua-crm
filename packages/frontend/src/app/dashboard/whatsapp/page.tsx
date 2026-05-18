@@ -5,7 +5,7 @@ import {
   Search, Settings, Users, MessageSquarePlus, Zap,
   Phone, MoreVertical, Send, Paperclip, Smile, Mic,
   X, ChevronRight, Star, RefreshCw, Volume2, ArrowLeft,
-  EyeOff, Plus, AlertCircle, Smartphone
+  EyeOff, Plus, AlertCircle, Smartphone, Download, ZoomIn
 } from "lucide-react";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
@@ -25,6 +25,12 @@ interface Conversation {
 interface Message {
   id: string; content: string; direction: "inbound" | "outbound";
   createdAt: string; sentAt?: string; type?: string; mediaUrl?: string;
+  externalId?: string;
+}
+
+/** Detecta se um telefone é LID (número longo sem prefixo + ) */
+function isLidPhone(phone?: string) {
+  return !!phone && /^\d{10,}$/.test(phone);
 }
 
 function timeAgo(dateStr?: string) {
@@ -159,17 +165,81 @@ function ConvList({ conversations, loading, search, setSearch, tab, setTab, sele
   );
 }
 
-function ChatView({ conv, messages, loadingMsgs, text, setText, onSend, sending, onBack, isMobile }: {
+function ChatView({ conv, messages, loadingMsgs, text, setText, onSend, sending, onBack, isMobile, onUpdateMessage }: {
   conv: Conversation; messages: Message[]; loadingMsgs: boolean;
   text: string; setText: (v: string) => void;
   onSend: () => void; sending: boolean;
   onBack: () => void; isMobile: boolean;
+  onUpdateMessage: (msgId: string, updates: Partial<Message>) => void;
 }) {
   const endRef = useRef<HTMLDivElement>(null);
+  const [lightboxImg, setLightboxImg] = useState<string | null>(null);
+  const [failedAudios, setFailedAudios] = useState<Set<string>>(new Set());
+  const [reloadingAudio, setReloadingAudio] = useState<Set<string>>(new Set());
+
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
+
+  const handleAudioError = (msgId: string) => {
+    setFailedAudios(prev => new Set(prev).add(msgId));
+  };
+
+  const reloadAudio = async (msg: Message) => {
+    if (!msg.externalId) return;
+    setReloadingAudio(prev => new Set(prev).add(msg.id));
+    try {
+      const res = await fetch(`${API_URL}/api/v1/conversations/${conv.id}/messages/${msg.id}/remedia`, {
+        method: "POST", headers: authHeaders(),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        onUpdateMessage(msg.id, { mediaUrl: data.mediaUrl });
+        setFailedAudios(prev => { const next = new Set(prev); next.delete(msg.id); return next; });
+      } else {
+        alert("Não foi possível recarregar o áudio. A mensagem pode ser muito antiga.");
+      }
+    } catch {
+      alert("Erro de rede ao recarregar áudio.");
+    } finally {
+      setReloadingAudio(prev => { const next = new Set(prev); next.delete(msg.id); return next; });
+    }
+  };
+
+  const phoneLabel = conv.isGroup
+    ? "Grupo"
+    : isLidPhone(conv.contactPhone) ? "Número não resolvido"
+    : conv.contactPhone ?? "";
 
   return (
     <div className="flex flex-col h-full">
+      {/* Lightbox */}
+      {lightboxImg && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-sm p-4"
+          onClick={() => setLightboxImg(null)}
+        >
+          <button
+            className="absolute top-4 right-4 p-2 rounded-full bg-white/10 text-white hover:bg-white/20 transition-colors"
+            onClick={() => setLightboxImg(null)}
+          >
+            <X className="w-6 h-6" />
+          </button>
+          <img
+            src={lightboxImg}
+            alt="Imagem ampliada"
+            className="max-w-full max-h-full object-contain rounded-xl shadow-2xl"
+            onClick={e => e.stopPropagation()}
+          />
+          <a
+            href={lightboxImg}
+            download="imagem.jpg"
+            className="absolute bottom-4 right-4 p-2 rounded-full bg-white/10 text-white hover:bg-white/20 transition-colors"
+            onClick={e => e.stopPropagation()}
+          >
+            <Download className="w-5 h-5" />
+          </a>
+        </div>
+      )}
+
       <div className="flex items-center gap-3 px-4 py-3.5 border-b border-border bg-background/80 backdrop-blur-xl shrink-0">
         {isMobile && (
           <button onClick={onBack} className="p-1.5 rounded-xl text-muted-foreground hover:bg-muted/50 shrink-0">
@@ -183,7 +253,7 @@ function ChatView({ conv, messages, loadingMsgs, text, setText, onSend, sending,
         </div>
         <div className="flex-1 min-w-0">
           <p className="font-semibold text-foreground truncate">{conv.contactName}</p>
-          <p className="text-xs text-muted-foreground">{conv.isGroup ? "Grupo" : conv.contactPhone ?? conv.externalId ?? ""}</p>
+          <p className="text-xs text-muted-foreground">{phoneLabel}</p>
         </div>
         <div className="flex items-center gap-1 shrink-0">
           <button className="p-2 rounded-xl text-muted-foreground hover:bg-muted/50"><Phone className="w-4 h-4" /></button>
@@ -195,16 +265,52 @@ function ChatView({ conv, messages, loadingMsgs, text, setText, onSend, sending,
         {!loadingMsgs && messages.length === 0 && <p className="text-center text-sm text-muted-foreground py-8">Nenhuma mensagem ainda</p>}
         {messages.map(msg => {
           const isOut = (msg.direction as string).toUpperCase() === "OUTBOUND";
+          const audioFailed = failedAudios.has(msg.id);
+          const audioReloading = reloadingAudio.has(msg.id);
           return (
             <div key={msg.id} className={`flex ${isOut ? "justify-end" : "justify-start"}`}>
               <div className={`max-w-[75%] rounded-2xl px-4 py-2.5 ${isOut ? "bg-primary text-white rounded-br-sm" : "bg-muted/60 text-foreground rounded-bl-sm border border-border"}`}>
                 {msg.type?.toUpperCase() === "AUDIO" && (
                   <div className="mb-2">
-                    <audio controls className="h-10 max-w-[200px]" src={msg.mediaUrl || ""} />
+                    {audioFailed ? (
+                      <div className="flex items-center gap-2">
+                        <p className="text-xs opacity-70">Áudio expirado</p>
+                        {msg.externalId && (
+                          <button
+                            onClick={() => reloadAudio(msg)}
+                            disabled={audioReloading}
+                            className="flex items-center gap-1 text-xs font-semibold underline opacity-80 hover:opacity-100 disabled:opacity-40"
+                          >
+                            {audioReloading
+                              ? <RefreshCw className="w-3 h-3 animate-spin" />
+                              : <RefreshCw className="w-3 h-3" />}
+                            Recarregar
+                          </button>
+                        )}
+                      </div>
+                    ) : (
+                      <audio
+                        controls
+                        className="h-10 max-w-[220px]"
+                        src={msg.mediaUrl || ""}
+                        onError={() => handleAudioError(msg.id)}
+                      />
+                    )}
                   </div>
                 )}
                 {msg.type?.toUpperCase() === "IMAGE" && msg.mediaUrl && (
-                  <img src={msg.mediaUrl} alt="Imagem" className="max-w-[240px] max-h-[240px] object-cover rounded-lg mb-2 cursor-pointer hover:opacity-90 transition-opacity bg-black/10" />
+                  <div className="relative mb-2 group cursor-pointer" onClick={() => setLightboxImg(msg.mediaUrl!)}>
+                    <img
+                      src={msg.mediaUrl}
+                      alt="Imagem"
+                      className="max-w-[240px] max-h-[240px] object-cover rounded-lg transition-opacity group-hover:opacity-85 bg-black/10"
+                    />
+                    <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                      <div className="bg-black/50 rounded-full p-2">
+                        <ZoomIn className="w-5 h-5 text-white" />
+                      </div>
+                    </div>
+                  </div>
                 )}
                 {msg.type?.toUpperCase() === "VIDEO" && msg.mediaUrl && (
                   <video controls className="max-w-[240px] max-h-[240px] rounded-lg mb-2 bg-black/10" src={msg.mediaUrl} />
@@ -297,6 +403,19 @@ function SettingsPanel({ onClose, onDisconnect }: { onClose: () => void; onDisco
             >
               <Users className="w-4 h-4" /> Sincronizar contatos (Agenda)
             </button>
+            <button
+              className="w-full flex items-center gap-2 px-3 py-2 text-sm font-medium text-muted-foreground rounded-xl hover:bg-muted/50 hover:text-foreground transition-colors text-left"
+              onClick={async () => {
+                const res = await fetch(`${API_URL}/api/v1/conversations/sync-groups`, { method: "POST", headers: authHeaders() });
+                if (res.ok) {
+                  const data = await res.json();
+                  alert(`Nomes de grupos atualizados! ${data.updated} de ${data.total} grupos renomeados.`);
+                  window.location.reload();
+                }
+              }}
+            >
+              <Users className="w-4 h-4" /> Sincronizar nomes de grupos
+            </button>
             <button className="w-full flex items-center gap-2 px-3 py-2 text-sm font-medium text-muted-foreground rounded-xl hover:bg-muted/50 hover:text-foreground transition-colors text-left" onClick={async () => {
               if (!confirm("Apagar TODAS as conversas e mensagens? Esta ação não pode ser desfeita!")) return;
               await fetch(`${API_URL}/api/v1/conversations/history`, { method: "DELETE", headers: authHeaders() });
@@ -329,7 +448,12 @@ function ContactPanel({ conv }: { conv: Conversation }) {
             ? <img src={conv.profilePicUrl} alt={conv.contactName} className="w-14 h-14 rounded-full object-cover" />
             : <Avatar name={conv.contactName} size={14} />}
           <p className="font-bold text-foreground text-base text-center">{conv.contactName}</p>
-          {conv.contactPhone && <p className="text-xs text-muted-foreground flex items-center gap-1"><Phone className="w-3 h-3" />{conv.contactPhone}</p>}
+          {conv.isGroup
+            ? <p className="text-xs text-muted-foreground">Grupo WhatsApp</p>
+            : conv.contactPhone && !isLidPhone(conv.contactPhone)
+              ? <p className="text-xs text-muted-foreground flex items-center gap-1"><Phone className="w-3 h-3" />{conv.contactPhone}</p>
+              : <p className="text-xs text-muted-foreground italic">Número não resolvido</p>
+          }
         </div>
       </div>
       <div className="p-4">
@@ -556,6 +680,10 @@ export default function WhatsAppPage() {
     setMobileView("chat");
   };
 
+  const updateMessage = useCallback((msgId: string, updates: Partial<Message>) => {
+    setMessages(prev => prev.map(m => m.id === msgId ? { ...m, ...updates } : m));
+  }, []);
+
   const sendMessage = async () => {
     if (!text.trim() || !selected || sending) return;
     setSending(true);
@@ -636,7 +764,7 @@ export default function WhatsAppPage() {
         {mobileView === "chat" && selected && (
           <ChatView conv={selected} messages={messages} loadingMsgs={loadingMsgs}
             text={text} setText={setText} onSend={sendMessage} sending={sending}
-            onBack={() => setMobileView("list")} isMobile />
+            onBack={() => setMobileView("list")} isMobile onUpdateMessage={updateMessage} />
         )}
         {mobileView === "settings" && <SettingsPanel onClose={() => setMobileView("list")} onDisconnect={() => setWaStatus("disconnected")} />}
       </div>
@@ -662,7 +790,7 @@ export default function WhatsAppPage() {
           ) : (
             <ChatView conv={selected} messages={messages} loadingMsgs={loadingMsgs}
               text={text} setText={setText} onSend={sendMessage} sending={sending}
-              onBack={() => {}} isMobile={false} />
+              onBack={() => {}} isMobile={false} onUpdateMessage={updateMessage} />
           )}
         </div>
         {selected && !showSettings && (
