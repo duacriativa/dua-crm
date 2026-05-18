@@ -123,6 +123,7 @@ export class ConversationsService {
         direction: true,
         type: true,
         mediaUrl: true,
+        senderName: true,
         quotedContent: true,
         quotedExternalId: true,
         quotedType: true,
@@ -387,6 +388,35 @@ export class ConversationsService {
       where: { id: conversationId },
       data: { status: status as any },
     });
+  }
+
+  async getGroupMembers(tenantId: string, conversationId: string) {
+    const conv = await this.prisma.conversation.findFirst({
+      where: { id: conversationId, tenantId },
+    });
+    if (!conv) throw new NotFoundException('Conversa não encontrada.');
+    if (!conv.externalId?.endsWith('@g.us')) return { members: [] };
+
+    const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { slug: true } });
+    const instanceName = tenant?.slug ?? tenantId;
+
+    try {
+      const res = await axios.get(
+        `${process.env.EVOLUTION_API_URL}/group/participants/${instanceName}?groupJid=${conv.externalId}`,
+        { headers: this.evolutionHeaders, timeout: 10000 },
+      );
+      // Evolution API returns array directly or wrapped
+      const raw: any[] = Array.isArray(res.data) ? res.data : res.data?.participants ?? [];
+      const members = raw.map((p: any) => ({
+        id: p.id || p.jid,
+        name: p.pushName || p.name || p.id?.split('@')[0] || 'Participante',
+        isAdmin: p.admin === 'admin' || p.admin === 'superadmin' || !!p.isAdmin,
+      }));
+      return { members };
+    } catch (err: any) {
+      console.warn(`[getGroupMembers] ${err.message}`);
+      return { members: [] };
+    }
   }
 
   async redownloadMedia(tenantId: string, conversationId: string, messageId: string) {

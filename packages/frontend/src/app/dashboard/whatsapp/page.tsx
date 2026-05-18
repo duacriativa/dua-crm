@@ -4,15 +4,15 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import {
   Search, Settings, Users, MessageSquarePlus, Zap,
   Phone, MoreVertical, Send, Paperclip, Smile, Mic,
-  X, ChevronRight, Star, RefreshCw, Volume2, ArrowLeft,
-  EyeOff, Plus, AlertCircle, Smartphone, Download, ZoomIn
+  X, ChevronRight, Star, RefreshCw, ArrowLeft,
+  Plus, AlertCircle, Smartphone, Download, ZoomIn, Play, Pause, Crown
 } from "lucide-react";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 function getToken() { return typeof window !== "undefined" ? localStorage.getItem("access_token") : ""; }
 function authHeaders() { return { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` }; }
 
-type ConvTab = "all" | "unread" | "favorites" | "groups" | "pinned";
+type ConvTab = "mine" | "unattended" | "all" | "unread";
 type MobileView = "list" | "chat" | "settings";
 
 interface Conversation {
@@ -25,12 +25,86 @@ interface Conversation {
 interface Message {
   id: string; content: string; direction: "inbound" | "outbound";
   createdAt: string; sentAt?: string; type?: string; mediaUrl?: string;
-  externalId?: string;
+  externalId?: string; senderName?: string;
+}
+interface GroupMember {
+  id: string; name: string; isAdmin: boolean;
 }
 
 /** Detecta se um telefone é LID (número longo sem prefixo + ) */
 function isLidPhone(phone?: string) {
   return !!phone && /^\d{10,}$/.test(phone);
+}
+
+/** Cores para nomes de remetentes em grupos (por inicial) */
+const SENDER_COLORS = [
+  "text-rose-400", "text-emerald-400", "text-blue-400", "text-amber-400",
+  "text-violet-400", "text-cyan-400", "text-pink-400", "text-teal-400",
+];
+function senderColor(name: string) {
+  return SENDER_COLORS[(name?.charCodeAt(0) ?? 0) % SENDER_COLORS.length];
+}
+
+/** Player de áudio customizado */
+function AudioPlayer({ src, onError }: { src: string; onError: () => void }) {
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const [playing, setPlaying] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [duration, setDuration] = useState(0);
+
+  const toggle = () => {
+    const a = audioRef.current;
+    if (!a) return;
+    if (playing) { a.pause(); setPlaying(false); }
+    else { a.play().then(() => setPlaying(true)).catch(() => { onError(); }); }
+  };
+
+  const fmt = (s: number) => {
+    if (!isFinite(s) || isNaN(s)) return "0:00";
+    const m = Math.floor(s / 60);
+    const sec = Math.floor(s % 60);
+    return `${m}:${sec.toString().padStart(2, "0")}`;
+  };
+
+  return (
+    <div className="flex items-center gap-2 min-w-[180px]">
+      <audio
+        ref={audioRef}
+        src={src}
+        onTimeUpdate={() => {
+          const a = audioRef.current;
+          if (a && a.duration) setProgress(a.currentTime / a.duration);
+        }}
+        onLoadedMetadata={() => { if (audioRef.current) setDuration(audioRef.current.duration); }}
+        onEnded={() => setPlaying(false)}
+        onError={onError}
+        className="hidden"
+      />
+      <button
+        onClick={toggle}
+        className="w-9 h-9 rounded-full bg-primary/20 flex items-center justify-center shrink-0 hover:bg-primary/30 transition-colors"
+      >
+        {playing ? <Pause className="w-4 h-4 text-primary" /> : <Play className="w-4 h-4 text-primary ml-0.5" />}
+      </button>
+      <div className="flex-1 flex flex-col gap-1">
+        <div
+          className="h-1.5 bg-primary/20 rounded-full cursor-pointer overflow-hidden"
+          onClick={e => {
+            const rect = e.currentTarget.getBoundingClientRect();
+            const ratio = (e.clientX - rect.left) / rect.width;
+            const a = audioRef.current;
+            if (a && a.duration) { a.currentTime = ratio * a.duration; setProgress(ratio); }
+          }}
+        >
+          <div className="h-full bg-primary rounded-full transition-all" style={{ width: `${progress * 100}%` }} />
+        </div>
+        <div className="flex items-center gap-1">
+          <span className="text-[10px] opacity-60">🎤</span>
+          <span className="text-[10px] opacity-60">{duration > 0 ? fmt(playing ? (progress * duration) : duration) : "—"}</span>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function timeAgo(dateStr?: string) {
@@ -69,22 +143,23 @@ function ConvList({ conversations, loading, search, setSearch, tab, setTab, sele
   onOpenSettings: () => void;
 }) {
   const unreadCount = (conversations || []).filter(c => c?.unreadCount > 0).length;
-  const groupCount = (conversations || []).filter(c => c?.isGroup).length;
+  const unattendedCount = (conversations || []).filter(c => c?.status === "OPEN" || c?.status === "open").length;
 
   const filtered = (conversations || []).filter(c => {
     const name = c?.contactName || "Desconhecido";
-    const matchSearch = name.toLowerCase().includes(search.toLowerCase());
+    const matchSearch = name.toLowerCase().includes(search.toLowerCase()) ||
+      (c?.contactPhone && c.contactPhone.includes(search));
     if (tab === "unread") return matchSearch && c?.unreadCount > 0;
-    if (tab === "groups") return matchSearch && !!c.isGroup;
+    if (tab === "mine") return matchSearch; // futuramente filtrar por atendente
+    if (tab === "unattended") return matchSearch && (c?.status === "OPEN" || c?.status === "open");
     return matchSearch;
   });
 
   const tabs: { key: ConvTab; label: string }[] = [
+    { key: "mine", label: "Minhas" },
+    { key: "unattended", label: `Sem atendente${unattendedCount ? ` ${unattendedCount}` : ""}` },
     { key: "all", label: "Todas" },
-    { key: "unread", label: `Não lidas${unreadCount ? ` ${unreadCount}` : ""}` },
-    { key: "favorites", label: "Favoritas" },
-    { key: "groups", label: `Grupos${groupCount ? ` ${groupCount}` : ""}` },
-    { key: "pinned", label: "Fixadas" },
+    { key: "unread", label: `Não li...` },
   ];
 
   return (
@@ -94,7 +169,7 @@ function ConvList({ conversations, loading, search, setSearch, tab, setTab, sele
           <h1 className="text-lg font-bold text-foreground">WhatsApp</h1>
           <div className="flex items-center gap-0.5">
             <button title="Automações" className="p-1.5 rounded-lg text-emerald-400 hover:bg-muted/50 transition-colors"><Zap className="w-4 h-4" /></button>
-            <button title="Monitoramento de grupos" onClick={() => setTab("groups")} className="p-1.5 rounded-lg text-muted-foreground hover:bg-muted/50 transition-colors"><Users className="w-4 h-4" /></button>
+            <button title="Grupos" onClick={() => setTab("all")} className="p-1.5 rounded-lg text-muted-foreground hover:bg-muted/50 transition-colors"><Users className="w-4 h-4" /></button>
             <button title="Adicionar uma conversa" className="p-1.5 rounded-lg text-muted-foreground hover:bg-muted/50 transition-colors"><MessageSquarePlus className="w-4 h-4" /></button>
             <button title="Configurações" onClick={onOpenSettings} className="p-1.5 rounded-lg text-muted-foreground hover:bg-muted/50 transition-colors"><Settings className="w-4 h-4" /></button>
           </div>
@@ -183,7 +258,7 @@ function ChatView({ conv, messages, loadingMsgs, text, setText, onSend, sending,
     setFailedAudios(prev => new Set(prev).add(msgId));
   };
 
-  const reloadAudio = async (msg: Message) => {
+  const reloadMedia = async (msg: Message) => {
     if (!msg.externalId) return;
     setReloadingAudio(prev => new Set(prev).add(msg.id));
     try {
@@ -195,10 +270,10 @@ function ChatView({ conv, messages, loadingMsgs, text, setText, onSend, sending,
         onUpdateMessage(msg.id, { mediaUrl: data.mediaUrl });
         setFailedAudios(prev => { const next = new Set(prev); next.delete(msg.id); return next; });
       } else {
-        alert("Não foi possível recarregar o áudio. A mensagem pode ser muito antiga.");
+        alert("Não foi possível recarregar. A mensagem pode ser muito antiga.");
       }
     } catch {
-      alert("Erro de rede ao recarregar áudio.");
+      alert("Erro de rede ao recarregar.");
     } finally {
       setReloadingAudio(prev => { const next = new Set(prev); next.delete(msg.id); return next; });
     }
@@ -211,36 +286,28 @@ function ChatView({ conv, messages, loadingMsgs, text, setText, onSend, sending,
 
   return (
     <div className="flex flex-col h-full">
-      {/* Lightbox */}
+      {/* Lightbox fullscreen */}
       {lightboxImg && (
         <div
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-sm p-4"
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/92 backdrop-blur-sm p-4"
           onClick={() => setLightboxImg(null)}
         >
-          <button
-            className="absolute top-4 right-4 p-2 rounded-full bg-white/10 text-white hover:bg-white/20 transition-colors"
-            onClick={() => setLightboxImg(null)}
-          >
+          <button className="absolute top-4 right-4 p-2 rounded-full bg-white/10 text-white hover:bg-white/20" onClick={() => setLightboxImg(null)}>
             <X className="w-6 h-6" />
           </button>
-          <img
-            src={lightboxImg}
-            alt="Imagem ampliada"
+          <img src={lightboxImg} alt="Imagem ampliada"
             className="max-w-full max-h-full object-contain rounded-xl shadow-2xl"
-            onClick={e => e.stopPropagation()}
-          />
-          <a
-            href={lightboxImg}
-            download="imagem.jpg"
-            className="absolute bottom-4 right-4 p-2 rounded-full bg-white/10 text-white hover:bg-white/20 transition-colors"
-            onClick={e => e.stopPropagation()}
-          >
+            onClick={e => e.stopPropagation()} />
+          <a href={lightboxImg} download="imagem.jpg"
+            className="absolute bottom-4 right-4 p-2 rounded-full bg-white/10 text-white hover:bg-white/20"
+            onClick={e => e.stopPropagation()}>
             <Download className="w-5 h-5" />
           </a>
         </div>
       )}
 
-      <div className="flex items-center gap-3 px-4 py-3.5 border-b border-border bg-background/80 backdrop-blur-xl shrink-0">
+      {/* Header */}
+      <div className="flex items-center gap-3 px-4 py-3 border-b border-border bg-background shrink-0">
         {isMobile && (
           <button onClick={onBack} className="p-1.5 rounded-xl text-muted-foreground hover:bg-muted/50 shrink-0">
             <ArrowLeft className="w-5 h-5" />
@@ -252,7 +319,7 @@ function ChatView({ conv, messages, loadingMsgs, text, setText, onSend, sending,
             : <Avatar name={conv.contactName} size={10} />}
         </div>
         <div className="flex-1 min-w-0">
-          <p className="font-semibold text-foreground truncate">{conv.contactName}</p>
+          <p className="font-bold text-foreground truncate text-sm">{conv.contactName}</p>
           <p className="text-xs text-muted-foreground">{phoneLabel}</p>
         </div>
         <div className="flex items-center gap-1 shrink-0">
@@ -260,83 +327,113 @@ function ChatView({ conv, messages, loadingMsgs, text, setText, onSend, sending,
           <button className="p-2 rounded-xl text-muted-foreground hover:bg-muted/50"><MoreVertical className="w-4 h-4" /></button>
         </div>
       </div>
-      <div className="flex-1 overflow-y-auto scrollbar-none px-4 py-4 space-y-3">
+
+      {/* Messages */}
+      <div className="flex-1 overflow-y-auto scrollbar-none px-4 py-4 space-y-1">
         {loadingMsgs && <div className="flex justify-center py-8"><RefreshCw className="w-5 h-5 animate-spin text-muted-foreground" /></div>}
         {!loadingMsgs && messages.length === 0 && <p className="text-center text-sm text-muted-foreground py-8">Nenhuma mensagem ainda</p>}
-        {messages.map(msg => {
+        {messages.map((msg, idx) => {
           const isOut = (msg.direction as string).toUpperCase() === "OUTBOUND";
           const audioFailed = failedAudios.has(msg.id);
           const audioReloading = reloadingAudio.has(msg.id);
+          // Mostra nome do remetente em grupos INBOUND quando muda de remetente
+          const prevMsg = messages[idx - 1];
+          const showSender = !isOut && conv.isGroup && msg.senderName &&
+            (idx === 0 || prevMsg?.senderName !== msg.senderName || prevMsg?.direction?.toUpperCase() === "OUTBOUND");
+
           return (
-            <div key={msg.id} className={`flex ${isOut ? "justify-end" : "justify-start"}`}>
-              <div className={`max-w-[75%] rounded-2xl px-4 py-2.5 ${isOut ? "bg-primary text-white rounded-br-sm" : "bg-muted/60 text-foreground rounded-bl-sm border border-border"}`}>
-                {msg.type?.toUpperCase() === "AUDIO" && (
-                  <div className="mb-2">
-                    {audioFailed ? (
-                      <div className="flex items-center gap-2">
-                        <p className="text-xs opacity-70">Áudio expirado</p>
-                        {msg.externalId && (
-                          <button
-                            onClick={() => reloadAudio(msg)}
-                            disabled={audioReloading}
-                            className="flex items-center gap-1 text-xs font-semibold underline opacity-80 hover:opacity-100 disabled:opacity-40"
-                          >
-                            {audioReloading
-                              ? <RefreshCw className="w-3 h-3 animate-spin" />
-                              : <RefreshCw className="w-3 h-3" />}
-                            Recarregar
-                          </button>
-                        )}
-                      </div>
-                    ) : (
-                      <audio
-                        controls
-                        className="h-10 max-w-[220px]"
-                        src={msg.mediaUrl || ""}
-                        onError={() => handleAudioError(msg.id)}
-                      />
-                    )}
-                  </div>
+            <div key={msg.id} className={`flex ${isOut ? "justify-end" : "justify-start"} ${showSender ? "mt-3" : "mt-1"}`}>
+              <div className={`max-w-[72%] ${isOut ? "" : ""}`}>
+                {/* Nome do remetente no grupo */}
+                {showSender && (
+                  <p className={`text-xs font-semibold mb-1 ml-1 ${senderColor(msg.senderName!)}`}>
+                    {msg.senderName}
+                  </p>
                 )}
-                {msg.type?.toUpperCase() === "IMAGE" && msg.mediaUrl && (
-                  <div className="relative mb-2 group cursor-pointer" onClick={() => setLightboxImg(msg.mediaUrl!)}>
-                    <img
-                      src={msg.mediaUrl}
-                      alt="Imagem"
-                      className="max-w-[240px] max-h-[240px] object-cover rounded-lg transition-opacity group-hover:opacity-85 bg-black/10"
-                    />
-                    <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                      <div className="bg-black/50 rounded-full p-2">
-                        <ZoomIn className="w-5 h-5 text-white" />
-                      </div>
+                <div className={`rounded-2xl px-3 py-2 ${
+                  isOut
+                    ? "bg-primary text-white rounded-br-sm"
+                    : "bg-card text-foreground rounded-bl-sm border border-border/60 shadow-sm"
+                }`}>
+                  {/* AUDIO */}
+                  {msg.type?.toUpperCase() === "AUDIO" && (
+                    <div className="mb-1.5">
+                      {audioFailed ? (
+                        <div className="flex items-center gap-2 py-1">
+                          <span className="text-xs opacity-60">🎤 Áudio expirado</span>
+                          {msg.externalId && (
+                            <button onClick={() => reloadMedia(msg)} disabled={audioReloading}
+                              className="flex items-center gap-1 text-xs font-semibold underline opacity-70 hover:opacity-100 disabled:opacity-30">
+                              {audioReloading ? <RefreshCw className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+                              Recarregar
+                            </button>
+                          )}
+                        </div>
+                      ) : msg.mediaUrl ? (
+                        <AudioPlayer src={msg.mediaUrl} onError={() => handleAudioError(msg.id)} />
+                      ) : (
+                        <div className="flex items-center gap-2 py-1">
+                          <span className="text-xs opacity-60">🎤 Áudio indisponível</span>
+                          {msg.externalId && (
+                            <button onClick={() => reloadMedia(msg)} disabled={audioReloading}
+                              className="flex items-center gap-1 text-xs font-semibold underline opacity-70 hover:opacity-100 disabled:opacity-30">
+                              <RefreshCw className="w-3 h-3" /> Carregar
+                            </button>
+                          )}
+                        </div>
+                      )}
                     </div>
-                  </div>
-                )}
-                {msg.type?.toUpperCase() === "VIDEO" && msg.mediaUrl && (
-                  <video controls className="max-w-[240px] max-h-[240px] rounded-lg mb-2 bg-black/10" src={msg.mediaUrl} />
-                )}
-                {msg.type?.toUpperCase() === "DOCUMENT" && msg.mediaUrl && (
-                  <a href={msg.mediaUrl} target="_blank" rel="noreferrer" className="flex items-center gap-2 text-xs font-semibold mb-2 bg-black/10 px-3 py-2 rounded-lg hover:bg-black/20 transition-colors">
-                    <Paperclip className="w-4 h-4" /> Ver Documento
-                  </a>
-                )}
-                {msg.content && <p className="text-sm leading-relaxed whitespace-pre-wrap">{msg.content}</p>}
-                <p className={`text-[10px] mt-1 text-right ${isOut ? "text-white/60" : "text-muted-foreground"}`}>
-                  {msg.sentAt ? new Date(msg.sentAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : ""}
-                </p>
+                  )}
+                  {/* IMAGE */}
+                  {msg.type?.toUpperCase() === "IMAGE" && msg.mediaUrl && (
+                    <div className="relative mb-1.5 group cursor-pointer rounded-xl overflow-hidden"
+                      onClick={() => setLightboxImg(msg.mediaUrl!)}>
+                      <img src={msg.mediaUrl} alt="Imagem"
+                        className="max-w-[240px] max-h-[280px] w-full object-cover transition-opacity group-hover:opacity-85" />
+                      <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/20">
+                        <div className="bg-black/50 rounded-full p-2"><ZoomIn className="w-5 h-5 text-white" /></div>
+                      </div>
+                      {msg.content && msg.content !== "[imagem]" && (
+                        <p className="text-xs px-2 pb-1 opacity-80">{msg.content}</p>
+                      )}
+                    </div>
+                  )}
+                  {/* VIDEO */}
+                  {msg.type?.toUpperCase() === "VIDEO" && msg.mediaUrl && (
+                    <video controls className="max-w-[240px] max-h-[240px] rounded-xl mb-1.5 bg-black/10 w-full" src={msg.mediaUrl} />
+                  )}
+                  {/* DOCUMENT */}
+                  {msg.type?.toUpperCase() === "DOCUMENT" && msg.mediaUrl && (
+                    <a href={msg.mediaUrl} target="_blank" rel="noreferrer"
+                      className="flex items-center gap-2 text-xs font-semibold mb-1.5 bg-black/10 px-3 py-2 rounded-lg hover:bg-black/20 transition-colors">
+                      <Paperclip className="w-4 h-4" /> Ver Documento
+                    </a>
+                  )}
+                  {/* TEXT content (skip placeholder labels) */}
+                  {msg.content && !["[imagem]", "[áudio]", "[audio]", "[vídeo]", "[video]", "[sticker]", "[figurinha]", "[documento]"].includes(msg.content) && (
+                    <p className="text-sm leading-relaxed whitespace-pre-wrap">{msg.content}</p>
+                  )}
+                  {/* Timestamp */}
+                  <p className={`text-[10px] mt-0.5 text-right ${isOut ? "text-white/50" : "text-muted-foreground"}`}>
+                    {msg.sentAt ? new Date(msg.sentAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : ""}
+                  </p>
+                </div>
               </div>
             </div>
           );
         })}
         <div ref={endRef} />
       </div>
-      <div className="flex items-center gap-2 px-3 py-3 border-t border-border bg-background/80 shrink-0">
+
+      {/* Input */}
+      <div className="flex items-center gap-2 px-3 py-3 border-t border-border bg-background shrink-0">
         <button className="p-2 rounded-xl text-muted-foreground hover:bg-muted/50 shrink-0"><Paperclip className="w-4 h-4" /></button>
         <button className="p-2 rounded-xl text-muted-foreground hover:bg-muted/50 shrink-0"><Smile className="w-4 h-4" /></button>
+        <button className="p-2 rounded-xl text-muted-foreground hover:bg-muted/50 shrink-0"><Zap className="w-4 h-4" /></button>
         <input value={text} onChange={e => setText(e.target.value)}
           onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); onSend(); } }}
           placeholder="Digite uma mensagem..."
-          className="flex-1 min-w-0 px-4 py-2.5 text-sm bg-muted/50 border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/50 text-foreground placeholder:text-muted-foreground" />
+          className="flex-1 min-w-0 px-4 py-2.5 text-sm bg-muted/40 border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/50 text-foreground placeholder:text-muted-foreground" />
         {text.trim()
           ? <button onClick={onSend} disabled={sending} className="p-2.5 rounded-xl bg-primary text-white hover:opacity-90 disabled:opacity-50 shrink-0"><Send className="w-4 h-4" /></button>
           : <button className="p-2 rounded-xl text-muted-foreground hover:bg-muted/50 shrink-0"><Mic className="w-4 h-4" /></button>}
@@ -440,99 +537,76 @@ function SettingsPanel({ onClose, onDisconnect }: { onClose: () => void; onDisco
 }
 
 function ContactPanel({ conv }: { conv: Conversation }) {
+  const [members, setMembers] = useState<GroupMember[]>([]);
+  const [loadingMembers, setLoadingMembers] = useState(false);
+
+  useEffect(() => {
+    if (!conv.isGroup) { setMembers([]); return; }
+    setLoadingMembers(true);
+    fetch(`${API_URL}/api/v1/conversations/${conv.id}/group-members`, { headers: authHeaders() })
+      .then(r => r.ok ? r.json() : { members: [] })
+      .then(d => setMembers(d.members || []))
+      .catch(() => setMembers([]))
+      .finally(() => setLoadingMembers(false));
+  }, [conv.id, conv.isGroup]);
+
   return (
-    <div className="flex flex-col h-full">
-      <div className="p-5 border-b border-border">
-        <div className="flex flex-col items-center gap-2 mb-3">
+    <div className="flex flex-col h-full overflow-y-auto scrollbar-none">
+      {/* Avatar + nome */}
+      <div className="p-5 border-b border-border flex flex-col items-center gap-2 text-center">
+        <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center">
           {conv.profilePicUrl
-            ? <img src={conv.profilePicUrl} alt={conv.contactName} className="w-14 h-14 rounded-full object-cover" />
-            : <Avatar name={conv.contactName} size={14} />}
-          <p className="font-bold text-foreground text-base text-center">{conv.contactName}</p>
-          {conv.isGroup
-            ? <p className="text-xs text-muted-foreground">Grupo WhatsApp</p>
-            : conv.contactPhone && !isLidPhone(conv.contactPhone)
-              ? <p className="text-xs text-muted-foreground flex items-center gap-1"><Phone className="w-3 h-3" />{conv.contactPhone}</p>
-              : <p className="text-xs text-muted-foreground italic">Número não resolvido</p>
-          }
+            ? <img src={conv.profilePicUrl} alt={conv.contactName} className="w-16 h-16 rounded-2xl object-cover" />
+            : conv.isGroup
+              ? <Users className="w-8 h-8 text-primary" />
+              : <Avatar name={conv.contactName} size={14} />}
         </div>
+        <p className="font-bold text-foreground text-sm text-center leading-tight">{conv.contactName}</p>
+        {conv.isGroup
+          ? <p className="text-xs text-muted-foreground">{members.length > 0 ? `${members.length} participantes` : "Grupo"}</p>
+          : conv.contactPhone && !isLidPhone(conv.contactPhone)
+            ? <p className="text-xs text-muted-foreground flex items-center gap-1"><Phone className="w-3 h-3" />{conv.contactPhone}</p>
+            : <p className="text-xs text-muted-foreground italic">Número não resolvido</p>
+        }
       </div>
-      <div className="p-4">
-        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Ações</p>
-        {[{ label: "Ver contato", Icon: Users }, { label: "Adicionar ao funil", Icon: ChevronRight }, { label: "Favoritar", Icon: Star }].map(({ label, Icon }) => (
-          <button key={label} className="w-full flex items-center gap-2 px-3 py-2 text-xs font-medium text-muted-foreground rounded-xl hover:bg-muted/50 hover:text-foreground transition-colors text-left">
-            <Icon className="w-3.5 h-3.5" />{label}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
 
-function GroupMonitoring({ groups, onSelectGroup }: { groups: Conversation[], onSelectGroup: (c: Conversation) => void }) {
-  return (
-    <div className="flex-1 flex flex-col h-full overflow-y-auto p-6 bg-background scrollbar-none">
-      <div className="flex items-center gap-3 mb-6 shrink-0">
-        <Users className="w-8 h-8 text-primary p-1.5 bg-primary/10 rounded-xl" />
-        <div>
-          <h2 className="text-xl font-bold text-foreground">Monitoramento de Grupos</h2>
-          <p className="text-sm text-muted-foreground">{groups.length} grupos monitorados em tempo real</p>
-        </div>
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-        {groups.map(g => (
-          <div key={g.id} className="bg-card border border-border rounded-2xl p-5 flex flex-col shadow-sm">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-3">
-                <div className="relative">
-                  <Avatar name={g.contactName} size={10} />
-                  {g.unreadCount > 0 && <span className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-500 border-2 border-card rounded-full" />}
+      {/* Membros do grupo */}
+      {conv.isGroup && (
+        <div className="p-4">
+          <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-2">
+            <Users className="w-3.5 h-3.5" /> Membros do Grupo
+          </p>
+          {loadingMembers && <div className="flex justify-center py-4"><RefreshCw className="w-4 h-4 animate-spin text-muted-foreground" /></div>}
+          {!loadingMembers && members.length === 0 && (
+            <p className="text-xs text-muted-foreground italic">Nenhum membro encontrado</p>
+          )}
+          <div className="space-y-2">
+            {members.map(m => (
+              <div key={m.id} className="flex items-center gap-2.5 px-2 py-1.5 rounded-xl hover:bg-muted/30 transition-colors">
+                <Avatar name={m.name} size={8} />
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-semibold text-foreground truncate">{m.name}</p>
                 </div>
-                <div>
-                  <p className="font-bold text-foreground text-sm truncate max-w-[160px]">{g.contactName}</p>
-                  <p className="text-[10px] text-muted-foreground">há {g.unreadCount > 0 ? "alguns minutos" : "2 dias"}</p>
-                </div>
+                {m.isAdmin && (
+                  <Crown className="w-3.5 h-3.5 text-amber-400 shrink-0" title="Admin" />
+                )}
               </div>
-              <div className="flex items-center gap-2">
-                <button className="p-1.5 text-muted-foreground hover:bg-muted/50 rounded-lg"><Volume2 className="w-4 h-4" /></button>
-                <span className={`text-[10px] px-2.5 py-1 rounded-full font-bold uppercase tracking-wider ${g.unreadCount > 0 ? "bg-emerald-500/10 text-emerald-600" : "bg-amber-500/10 text-amber-600"}`}>
-                  {g.unreadCount > 0 ? "Ativo" : "Parado"}
-                </span>
-              </div>
-            </div>
-            
-            {g.unreadCount === 0 && (
-              <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl px-3 py-2.5 mb-5 flex items-center gap-2 text-amber-700 text-xs font-semibold">
-                <AlertCircle className="w-4 h-4" /> Nenhuma mensagem nas últimas 24h
-              </div>
-            )}
-            
-            <p className="text-xs font-semibold text-foreground/80 mb-3">Quantidade de mensagens</p>
-            <div className="grid grid-cols-3 gap-2 mb-5">
-              <div className="bg-muted/30 border border-border/50 rounded-xl p-2.5 text-center flex flex-col justify-center">
-                <p className="text-xl font-bold text-foreground">{g.unreadCount}</p>
-                <p className="text-[9px] font-semibold text-muted-foreground uppercase tracking-wider">Mensagens (24h)</p>
-              </div>
-              <div className="bg-muted/30 border border-border/50 rounded-xl p-2.5 text-center flex flex-col justify-center">
-                <p className="text-xl font-bold text-foreground">{g.unreadCount * 3 + 5}</p>
-                <p className="text-[9px] font-semibold text-muted-foreground uppercase tracking-wider">Mensagens (7d)</p>
-              </div>
-              <div className="bg-muted/30 border border-border/50 rounded-xl p-2.5 text-center flex flex-col justify-center">
-                <p className="text-xl font-bold text-foreground">{g.unreadCount * 12 + 15}</p>
-                <p className="text-[9px] font-semibold text-muted-foreground uppercase tracking-wider">Mensagens (30d)</p>
-              </div>
-            </div>
-
-            <div className="mt-auto pt-4 border-t border-border flex items-center justify-between gap-3">
-              <button className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-bold text-foreground bg-muted/50 hover:bg-muted transition-colors">
-                <Users className="w-4 h-4 opacity-70" /> Monitorar
-              </button>
-              <button onClick={() => onSelectGroup(g)} className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-bold bg-primary text-white hover:opacity-90 transition-opacity shadow-sm">
-                <MessageSquarePlus className="w-4 h-4" /> Abrir Chat
-              </button>
-            </div>
+            ))}
           </div>
-        ))}
-      </div>
+        </div>
+      )}
+
+      {/* Ações (para conversas 1:1) */}
+      {!conv.isGroup && (
+        <div className="p-4">
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Ações</p>
+          {[{ label: "Ver contato", Icon: Users }, { label: "Adicionar ao funil", Icon: ChevronRight }, { label: "Favoritar", Icon: Star }].map(({ label, Icon }) => (
+            <button key={label} className="w-full flex items-center gap-2 px-3 py-2 text-xs font-medium text-muted-foreground rounded-xl hover:bg-muted/50 hover:text-foreground transition-colors text-left">
+              <Icon className="w-3.5 h-3.5" />{label}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -776,17 +850,13 @@ export default function WhatsAppPage() {
         </div>
         <div className="flex-1 flex flex-col min-w-0">
           {!selected ? (
-            tab === "groups" ? (
-              <GroupMonitoring groups={conversations.filter(c => c?.isGroup)} onSelectGroup={selectConv} />
-            ) : (
-              <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground gap-4">
-                <div className="w-20 h-20 rounded-3xl bg-muted/30 flex items-center justify-center">
-                  <MessageSquarePlus className="w-10 h-10 opacity-30" />
-                </div>
-                <p className="font-semibold text-foreground">Selecione uma conversa</p>
-                <p className="text-sm opacity-60">Escolha uma conversa para começar</p>
+            <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground gap-4">
+              <div className="w-20 h-20 rounded-3xl bg-muted/30 flex items-center justify-center">
+                <MessageSquarePlus className="w-10 h-10 opacity-30" />
               </div>
-            )
+              <p className="font-semibold text-foreground">Selecione uma conversa</p>
+              <p className="text-sm opacity-60">Escolha uma conversa para começar</p>
+            </div>
           ) : (
             <ChatView conv={selected} messages={messages} loadingMsgs={loadingMsgs}
               text={text} setText={setText} onSend={sendMessage} sending={sending}

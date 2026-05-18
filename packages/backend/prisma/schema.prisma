@@ -255,6 +255,7 @@ model Message {
   mediaUrl       String?
   templateName   String?
   externalId     String?          // Meta message ID
+  senderName       String?        // nome de quem enviou (em grupos: pushName do remetente)
   quotedContent    String?        // texto da mensagem citada (reply)
   quotedExternalId String?        // externalId da mensagem citada
   quotedType       String?        // tipo da mensagem citada (TEXT/IMAGE/etc)

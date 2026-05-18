@@ -110,6 +110,12 @@ export class ConversationsController {
     return this.conversationsService.remove(req.user.tenantId, id);
   }
 
+  /** GET /conversations/:id/group-members — membros do grupo */
+  @Get(':id/group-members')
+  getGroupMembers(@Request() req: any, @Param('id') id: string) {
+    return this.conversationsService.getGroupMembers(req.user.tenantId, id);
+  }
+
   /** POST /conversations/:id/messages/:msgId/remedia — recarrega mídia expirada */
   @Post(':id/messages/:msgId/remedia')
   redownloadMedia(

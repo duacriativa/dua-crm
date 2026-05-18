@@ -506,6 +506,8 @@ export class WhatsAppService {
             content,
             mediaUrl,
             externalId: msgExternalId,
+            // Em grupos INBOUND, salva o nome de quem enviou (pushName do participante)
+            senderName: (!isFromMe && isGroup) ? (msg.pushName || null) : null,
             quotedContent,
             quotedExternalId,
             quotedType,
