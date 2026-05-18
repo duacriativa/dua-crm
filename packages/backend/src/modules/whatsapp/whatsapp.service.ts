@@ -387,30 +387,27 @@ export class WhatsAppService {
         } else if (m?.imageMessage) {
           msgType = 'IMAGE';
           content = m.imageMessage.caption || '[imagem]';
-          // Tenta baixar imagem completa via Evolution API
-          mediaUrl = await this.downloadMediaAsBase64(instanceName, msg.key, 'imageMessage');
-          // Fallback: thumbnail
-          if (!mediaUrl && m.imageMessage.jpegThumbnail) {
+          // Armazena apenas o thumbnail pequeno (~5-15 KB) — imagem completa é baixada sob demanda
+          if (m.imageMessage.jpegThumbnail) {
             mediaUrl = `data:image/jpeg;base64,${m.imageMessage.jpegThumbnail}`;
           }
         } else if (m?.videoMessage) {
           msgType = 'VIDEO';
           content = m.videoMessage.caption || '[vídeo]';
-          // Tenta baixar vídeo completo via Evolution API
-          mediaUrl = await this.downloadMediaAsBase64(instanceName, msg.key, 'videoMessage');
-          // Fallback: thumbnail
-          if (!mediaUrl && m.videoMessage.jpegThumbnail) {
+          // Thumbnail do vídeo (~5-15 KB)
+          if (m.videoMessage.jpegThumbnail) {
             mediaUrl = `data:image/jpeg;base64,${m.videoMessage.jpegThumbnail}`;
           }
         } else if (m?.audioMessage || m?.ptvMessage) {
           msgType = 'AUDIO';
           content = '[áudio]';
-          const audioKey = m?.audioMessage ? 'audioMessage' : 'ptvMessage';
-          mediaUrl = await this.downloadMediaAsBase64(instanceName, msg.key, audioKey);
+          // Áudios NÃO são pré-baixados — o frontend usa o botão "Carregar" quando necessário
+          mediaUrl = null;
         } else if (m?.documentMessage) {
           msgType = 'DOCUMENT';
           content = m.documentMessage.fileName || m.documentMessage.caption || '[documento]';
-          mediaUrl = await this.downloadMediaAsBase64(instanceName, msg.key, 'documentMessage');
+          // Documentos NÃO são pré-baixados
+          mediaUrl = null;
         } else if (m?.stickerMessage) {
           msgType = 'IMAGE';
           content = '[figurinha]';

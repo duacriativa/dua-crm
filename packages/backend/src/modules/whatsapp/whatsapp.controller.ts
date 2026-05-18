@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Body, UseGuards, Req, HttpCode } from '@nestjs/common';
+import { Controller, Post, Get, Body, UseGuards, Req, HttpCode, Logger } from '@nestjs/common';
 import { WhatsAppService } from './whatsapp.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -45,7 +45,22 @@ export class WhatsAppController {
     return { success: true, message: 'Sincronização iniciada' };
   }
 
-@Post('webhook')
+  /** POST /whatsapp/cleanup-media — limpa blobs base64 grandes do banco para liberar espaço */
+  @Post('cleanup-media')
+  @UseGuards(JwtAuthGuard)
+  async cleanupMedia() {
+    const logger = new Logger('CleanupMedia');
+    // Remove mediaUrl onde é base64 completo (>50 KB) — mantém thumbnails pequenos
+    const result = await this.prisma.$executeRaw`
+      UPDATE "Message" SET "mediaUrl" = NULL
+      WHERE length("mediaUrl") > 51200
+    `;
+    logger.log(`Cleanup: ${result} registros limpos`);
+    const remaining = await this.prisma.message.count({ where: { mediaUrl: { not: null } } });
+    return { ok: true, cleaned: result, remainingWithMedia: remaining };
+  }
+
+  @Post('webhook')
   @HttpCode(200)
   async webhook(@Body() payload: any) {
     console.log(`[WEBHOOK RAW] event=${payload?.event} instance=${payload?.instance} keys=${Object.keys(payload || {}).join(',')}`);
