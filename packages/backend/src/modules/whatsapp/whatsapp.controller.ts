@@ -45,6 +45,17 @@ export class WhatsAppController {
     return { success: true, message: 'Sincronização iniciada' };
   }
 
+  @Get('debug-env')
+  async debugEnv() {
+    const url = process.env.EVOLUTION_API_URL || '';
+    const key = process.env.EVOLUTION_API_KEY || '';
+    return {
+      evolutionUrl: url || 'NAO_DEFINIDO',
+      evolutionKeyPrefix: key ? key.substring(0, 8) + '...' : 'NAO_DEFINIDO',
+      keyLength: key.length,
+    };
+  }
+
   @Post('webhook')
   @HttpCode(200)
   async webhook(@Body() payload: any) {
