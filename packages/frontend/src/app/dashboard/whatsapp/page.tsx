@@ -619,7 +619,7 @@ export default function WhatsAppPage() {
                     </button>
                   </div>
                 ) : (
-                  <button onClick={generateWaQr} disabled={waLoading} className="w-full py-3 px-4 flex items-center justify-center gap-2 text-sm font-bold text-white bg-primary rounded-xl hover:opacity-90 transition-opacity disabled:opacity-50">
+                  <button onClick={() => generateWaQr()} disabled={waLoading} className="w-full py-3 px-4 flex items-center justify-center gap-2 text-sm font-bold text-white bg-primary rounded-xl hover:opacity-90 transition-opacity disabled:opacity-50">
                     {waLoading ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Zap className="w-5 h-5" />}
                     Gerar QR Code
                   </button>
