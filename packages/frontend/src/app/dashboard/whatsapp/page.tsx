@@ -433,12 +433,35 @@ export default function WhatsAppPage() {
 
   const checkWaStatus = useCallback(async () => {
     try {
+      // 1. Tenta o endpoint de status (rápido)
       const res = await fetch(`${API_URL}/api/v1/whatsapp/status`, { headers: authHeaders() });
-      if (!res.ok) return;
-      const data = await res.json();
-      setWaStatus(data.connected ? "connected" : "disconnected");
-      if (data.connected) setWaQr(null);
-      return data.connected;
+      if (res.ok) {
+        const data = await res.json();
+        if (data.connected) {
+          setWaStatus("connected");
+          setWaQr(null);
+          return true;
+        }
+      }
+      // 2. Se status retornou false ou falhou, tenta connect (já trata instância ativa)
+      const connRes = await fetch(`${API_URL}/api/v1/whatsapp/connect`, {
+        method: "POST", headers: authHeaders()
+      });
+      if (connRes.ok) {
+        const connData = await connRes.json();
+        if (connData.connected) {
+          setWaStatus("connected");
+          setWaQr(null);
+          return true;
+        }
+        if (connData.qrCode) {
+          setWaQr(connData.qrCode);
+          setWaStatus("disconnected");
+          return false;
+        }
+      }
+      setWaStatus("disconnected");
+      return false;
     } catch {
       setWaStatus("disconnected");
       return false;
