@@ -75,6 +75,11 @@ export default function AgendaPage() {
     setShowModal(false);
   };
 
+  const openModalForDate = (date: string) => {
+    setNewEvent({ title: "", date, time: "", color: "#8B5CF6" });
+    setShowModal(true);
+  };
+
   const inp = "w-full px-3 py-2 text-sm bg-muted/50 border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/50 text-foreground placeholder:text-muted-foreground";
 
   return (
@@ -147,7 +152,8 @@ export default function AgendaPage() {
 
                 return (
                   <div key={idx}
-                    className={`bg-background min-h-[60px] sm:min-h-[90px] p-1 sm:p-2 ${!isCurrentMonth ? "opacity-30" : ""}`}>
+                    onClick={() => isCurrentMonth && key && openModalForDate(key)}
+                    className={`bg-background min-h-[60px] sm:min-h-[90px] p-1 sm:p-2 transition-colors ${!isCurrentMonth ? "opacity-30" : "cursor-pointer hover:bg-primary/5"}`}>
                     <div className={`w-6 h-6 sm:w-7 sm:h-7 rounded-full flex items-center justify-center text-xs sm:text-sm font-semibold mb-0.5 sm:mb-1 ${
                       isToday ? "bg-primary text-white" : "text-foreground"
                     }`}>
