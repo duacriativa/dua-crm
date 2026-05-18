@@ -24,7 +24,7 @@ interface Conversation {
 }
 interface Message {
   id: string; content: string; direction: "inbound" | "outbound";
-  createdAt: string; sentAt?: string; messageType?: string; mediaUrl?: string;
+  createdAt: string; sentAt?: string; type?: string; mediaUrl?: string;
 }
 
 function timeAgo(dateStr?: string) {
@@ -198,18 +198,18 @@ function ChatView({ conv, messages, loadingMsgs, text, setText, onSend, sending,
           return (
             <div key={msg.id} className={`flex ${isOut ? "justify-end" : "justify-start"}`}>
               <div className={`max-w-[75%] rounded-2xl px-4 py-2.5 ${isOut ? "bg-primary text-white rounded-br-sm" : "bg-muted/60 text-foreground rounded-bl-sm border border-border"}`}>
-                {msg.messageType === "audio" && (
+                {msg.type?.toUpperCase() === "AUDIO" && (
                   <div className="mb-2">
                     <audio controls className="h-10 max-w-[200px]" src={msg.mediaUrl || ""} />
                   </div>
                 )}
-                {msg.messageType === "image" && msg.mediaUrl && (
+                {msg.type?.toUpperCase() === "IMAGE" && msg.mediaUrl && (
                   <img src={msg.mediaUrl} alt="Imagem" className="max-w-[240px] max-h-[240px] object-cover rounded-lg mb-2 cursor-pointer hover:opacity-90 transition-opacity bg-black/10" />
                 )}
-                {msg.messageType === "video" && msg.mediaUrl && (
+                {msg.type?.toUpperCase() === "VIDEO" && msg.mediaUrl && (
                   <video controls className="max-w-[240px] max-h-[240px] rounded-lg mb-2 bg-black/10" src={msg.mediaUrl} />
                 )}
-                {msg.messageType === "document" && msg.mediaUrl && (
+                {msg.type?.toUpperCase() === "DOCUMENT" && msg.mediaUrl && (
                   <a href={msg.mediaUrl} target="_blank" rel="noreferrer" className="flex items-center gap-2 text-xs font-semibold mb-2 bg-black/10 px-3 py-2 rounded-lg hover:bg-black/20 transition-colors">
                     <Paperclip className="w-4 h-4" /> Ver Documento
                   </a>

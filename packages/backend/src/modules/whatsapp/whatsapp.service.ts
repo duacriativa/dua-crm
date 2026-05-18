@@ -304,7 +304,7 @@ export class WhatsAppService {
         const remoteJid = msg.key?.remoteJid || '';
         const participant = msg.key?.participant || msg.participant || payload?.data?.participant || '';
         const isGroup = remoteJid.endsWith('@g.us');
-        
+
         const tenant = await this.prisma.tenant.findFirst({
           where: { OR: [{ slug: instance }, { id: instance }] }
         });
@@ -312,12 +312,12 @@ export class WhatsAppService {
           this.logger.warn(`[Webhook] Tenant com identificador ${instance} não encontrado! Abortando.`);
           return;
         }
-        
+
         const instanceName = tenant.slug || instance;
 
         let rawId = remoteJid.replace('@s.whatsapp.net', '').replace('@lid', '').replace('@g.us', '');
         let isLid = remoteJid.endsWith('@lid');
-        
+
         // Se for LID e tivermos o participant
         if (isLid && participant && participant.includes('@s.whatsapp.net')) {
            rawId = participant.replace('@s.whatsapp.net', '');
@@ -334,7 +334,24 @@ export class WhatsAppService {
         }
 
         const phone = isGroup ? rawId : (isLid ? `lid:${rawId}` : `+${rawId}`);
-        const pushName = isGroup ? (msg.pushName || 'Grupo') : (msg.pushName || phone);
+
+        // Para grupos: busca o nome real (subject) via Evolution API
+        let pushName: string;
+        if (isGroup) {
+          try {
+            const groupRes = await axios.get(
+              `${this.evolutionUrl}/group/findGroupInfos/${instanceName}?groupJid=${remoteJid}`,
+              { headers: this.headers, timeout: 5000 },
+            );
+            pushName = groupRes.data?.subject || groupRes.data?.name || msg.pushName || 'Grupo';
+            this.logger.log(`[Webhook] Nome do grupo obtido: "${pushName}" para ${remoteJid}`);
+          } catch {
+            pushName = msg.pushName || 'Grupo';
+            this.logger.warn(`[Webhook] Não foi possível buscar nome do grupo ${remoteJid} — usando "${pushName}"`);
+          }
+        } else {
+          pushName = msg.pushName || phone;
+        }
 
         let msgType: 'TEXT' | 'IMAGE' | 'VIDEO' | 'AUDIO' | 'DOCUMENT' = 'TEXT';
         let mediaUrl: string | null = null;
@@ -370,20 +387,30 @@ export class WhatsAppService {
         } else if (m?.imageMessage) {
           msgType = 'IMAGE';
           content = m.imageMessage.caption || '[imagem]';
-          const thumb = m.imageMessage.jpegThumbnail;
-          if (thumb) mediaUrl = `data:image/jpeg;base64,${thumb}`;
+          // Tenta baixar imagem completa via Evolution API
+          mediaUrl = await this.downloadMediaAsBase64(instanceName, msg.key, 'imageMessage');
+          // Fallback: thumbnail
+          if (!mediaUrl && m.imageMessage.jpegThumbnail) {
+            mediaUrl = `data:image/jpeg;base64,${m.imageMessage.jpegThumbnail}`;
+          }
         } else if (m?.videoMessage) {
           msgType = 'VIDEO';
           content = m.videoMessage.caption || '[vídeo]';
-          const thumb = m.videoMessage.jpegThumbnail;
-          if (thumb) mediaUrl = `data:image/jpeg;base64,${thumb}`;
+          // Tenta baixar vídeo completo via Evolution API
+          mediaUrl = await this.downloadMediaAsBase64(instanceName, msg.key, 'videoMessage');
+          // Fallback: thumbnail
+          if (!mediaUrl && m.videoMessage.jpegThumbnail) {
+            mediaUrl = `data:image/jpeg;base64,${m.videoMessage.jpegThumbnail}`;
+          }
         } else if (m?.audioMessage || m?.ptvMessage) {
           msgType = 'AUDIO';
           content = '[áudio]';
-          mediaUrl = m?.audioMessage?.url || m?.ptvMessage?.url || null;
+          const audioKey = m?.audioMessage ? 'audioMessage' : 'ptvMessage';
+          mediaUrl = await this.downloadMediaAsBase64(instanceName, msg.key, audioKey);
         } else if (m?.documentMessage) {
           msgType = 'DOCUMENT';
           content = m.documentMessage.fileName || m.documentMessage.caption || '[documento]';
+          mediaUrl = await this.downloadMediaAsBase64(instanceName, msg.key, 'documentMessage');
         } else if (m?.stickerMessage) {
           msgType = 'IMAGE';
           content = '[figurinha]';
@@ -569,6 +596,27 @@ export class WhatsAppService {
       }
     }
     if (resolved > 0) this.logger.log(`[CONTACTS] ${resolved} LIDs resolvidos neste batch.`);
+  }
+
+  /** Baixa mídia (imagem, vídeo, áudio, documento) da Evolution API e retorna como base64 data URI */
+  private async downloadMediaAsBase64(instanceName: string, key: any, messageType: string): Promise<string | null> {
+    try {
+      const res = await axios.post(
+        `${this.evolutionUrl}/chat/getBase64FromMediaMessage/${instanceName}`,
+        { message: { key, messageType } },
+        { headers: this.headers, timeout: 15000 },
+      );
+      const base64 = res.data?.base64 || res.data?.data;
+      const mime = res.data?.mimetype || res.data?.mediaType || 'application/octet-stream';
+      if (base64) {
+        const prefix = base64.startsWith('data:') ? base64 : `data:${mime};base64,${base64}`;
+        this.logger.log(`[Media] Download ok para messageType=${messageType}`);
+        return prefix;
+      }
+    } catch (err: any) {
+      this.logger.debug(`[Media] Falha ao baixar ${messageType}: ${err.message}`);
+    }
+    return null;
   }
 
   /** Resolve LID → número real: primeiro checa DB, depois tenta cruzar a agenda */
