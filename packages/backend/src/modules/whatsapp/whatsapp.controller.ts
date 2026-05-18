@@ -50,7 +50,6 @@ export class WhatsAppController {
   @UseGuards(JwtAuthGuard)
   async cleanupMedia() {
     const logger = new Logger('CleanupMedia');
-    // Remove mediaUrl onde é base64 completo (>50 KB) — mantém thumbnails pequenos
     const result = await this.prisma.$executeRaw`
       UPDATE "Message" SET "mediaUrl" = NULL
       WHERE length("mediaUrl") > 51200
@@ -58,6 +57,22 @@ export class WhatsAppController {
     logger.log(`Cleanup: ${result} registros limpos`);
     const remaining = await this.prisma.message.count({ where: { mediaUrl: { not: null } } });
     return { ok: true, cleaned: result, remainingWithMedia: remaining };
+  }
+
+  /** POST /whatsapp/emergency-cleanup — limpeza de emergência sem auth (token fixo) */
+  @Post('emergency-cleanup')
+  @HttpCode(200)
+  async emergencyCleanup(@Body() body: any) {
+    if (body?.secret !== 'dua2026clean') {
+      return { ok: false, error: 'unauthorized' };
+    }
+    const logger = new Logger('EmergencyCleanup');
+    const result = await this.prisma.$executeRaw`
+      UPDATE "Message" SET "mediaUrl" = NULL
+      WHERE length("mediaUrl") > 51200
+    `;
+    logger.log(`[EMERGENCY] Cleanup: ${result} registros limpos`);
+    return { ok: true, cleaned: result };
   }
 
   @Post('webhook')
