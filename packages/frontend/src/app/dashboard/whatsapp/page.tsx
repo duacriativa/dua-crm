@@ -588,7 +588,7 @@ function ContactPanel({ conv }: { conv: Conversation }) {
                   <p className="text-xs font-semibold text-foreground truncate">{m.name}</p>
                 </div>
                 {m.isAdmin && (
-                  <Crown className="w-3.5 h-3.5 text-amber-400 shrink-0" title="Admin" />
+                  <Crown className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                 )}
               </div>
             ))}
