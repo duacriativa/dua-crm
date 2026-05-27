@@ -25,7 +25,12 @@ export default function LoginPage() {
       localStorage.setItem("refresh_token", data.refreshToken);
       router.push("/dashboard");
     } catch (err: any) {
-      setError(err?.response?.data?.message || "E-mail ou senha incorretos.");
+      const msg =
+        err?.response?.data?.message ||
+        (typeof err?.response?.data === "string" ? err.response.data : null) ||
+        err?.message ||
+        "E-mail ou senha incorretos.";
+      setError(msg);
     } finally {
       setLoading(false);
     }
