@@ -11,15 +11,30 @@ async function bootstrap() {
   app.use(json({ limit: '10mb' }));
   app.use(urlencoded({ extended: true, limit: '10mb' }));
 
-  // ── Segurança: headers HTTP ──────────────────────────────────────────────
-  app.use(helmet());
+  // ── CORS (deve vir ANTES do helmet) ──────────────────────────────────────
+  const allowedOrigins = (process.env.ALLOWED_ORIGINS ?? '')
+    .split(',')
+    .map((o) => o.trim())
+    .filter(Boolean);
 
-  // ── CORS ─────────────────────────────────────────────────────────────────
   app.enableCors({
-    origin: true,
+    origin: (origin, callback) => {
+      // permitir requests sem origin (mobile, curl, Postman)
+      if (!origin) return callback(null, true);
+      // whitelist configurável via env + fallback para desenvolvimento
+      const whitelist = allowedOrigins.length
+        ? allowedOrigins
+        : ['http://localhost:3000', 'http://localhost:3001'];
+      if (whitelist.includes(origin)) return callback(null, true);
+      callback(new Error(`CORS bloqueado para origem: ${origin}`));
+    },
     credentials: true,
     methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
   });
+
+  // ── Segurança: headers HTTP ──────────────────────────────────────────────
+  app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
 
   // ── Validação global de DTOs ──────────────────────────────────────────────
   // whitelist: remove campos não declarados no DTO (evita mass assignment)
