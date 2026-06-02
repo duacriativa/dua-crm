@@ -2,7 +2,7 @@
 
 import { useEffect, useCallback } from "react";
 
-const API = process.env.NEXT_PUBLIC_API_URL ?? "https://renewed-youth-production-7d32.up.railway.app";
+const API = process.env.NEXT_PUBLIC_API_URL ?? "";
 
 function fmt(val: number) {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(val);
