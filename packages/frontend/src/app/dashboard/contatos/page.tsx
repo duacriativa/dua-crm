@@ -10,7 +10,7 @@ import {
   UserCheck, UserX, TrendingDown,
 } from "lucide-react";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
+const API_URL = "";
 function getToken() { return typeof window !== "undefined" ? localStorage.getItem("access_token") : ""; }
 function authHeaders() { return { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` }; }
 

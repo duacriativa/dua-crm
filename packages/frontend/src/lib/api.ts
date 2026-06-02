@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL + '/api/v1',
+  baseURL: '/api/v1',
   withCredentials: true,
 });
 
@@ -23,7 +23,7 @@ api.interceptors.response.use(
       try {
         const refreshToken = localStorage.getItem('refresh_token');
         const { data } = await axios.post(
-          `${process.env.NEXT_PUBLIC_API_URL}/api/v1/auth/refresh`,
+          `/api/v1/auth/refresh`,
           { refreshToken },
         );
         localStorage.setItem('access_token', data.accessToken);

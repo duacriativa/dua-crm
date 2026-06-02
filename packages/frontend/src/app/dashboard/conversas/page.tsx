@@ -8,7 +8,7 @@ import {
   ArrowLeft, RefreshCw, Plus, X, Trash2,
 } from "lucide-react";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
+const API_URL = "";
 
 type Channel = "WHATSAPP" | "INSTAGRAM" | "WEBCHAT";
 type ConversationStatus = "OPEN" | "PENDING" | "RESOLVED" | "ARCHIVED";
