@@ -1,8 +1,8 @@
 [phases.setup]
-cmds = ["echo 'cache-bust-v2-2026-05-13'"]
+cmds = ["echo 'cache-bust-v3-2026-06-02'"]
 
 [phases.install]
 cmds = ["npm install --legacy-peer-deps"]
 
 [phases.build]
-cmds = ["npm run build"]
+cmds = ["rm -rf .next/cache node_modules/.cache", "npm run build"]
