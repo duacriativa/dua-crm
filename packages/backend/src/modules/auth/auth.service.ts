@@ -2,6 +2,7 @@ import {
   Injectable,
   UnauthorizedException,
   ConflictException,
+  InternalServerErrorException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
@@ -57,17 +58,23 @@ export class AuthService {
   }
 
   async login(dto: LoginDto) {
-    const user = await this.prisma.user.findFirst({
-      where: { email: dto.email },
-      include: { tenant: true },
-    });
+    try {
+      const user = await this.prisma.user.findFirst({
+        where: { email: dto.email },
+        include: { tenant: true },
+      });
 
-    if (!user || !user.active) throw new UnauthorizedException('Credenciais inválidas.');
+      if (!user || !user.active) throw new UnauthorizedException('Credenciais inválidas.');
 
-    const valid = await bcrypt.compare(dto.password, user.passwordHash);
-    if (!valid) throw new UnauthorizedException('Credenciais inválidas.');
+      const valid = await bcrypt.compare(dto.password, user.passwordHash);
+      if (!valid) throw new UnauthorizedException('Credenciais inválidas.');
 
-    return this.issueTokens(user.id, user.tenantId, user.role);
+      return await this.issueTokens(user.id, user.tenantId, user.role);
+    } catch (err: any) {
+      if (err.status) throw err;
+      console.error('[Auth.login] erro:', err.message ?? err);
+      throw new InternalServerErrorException(err.message ?? 'Erro interno no login');
+    }
   }
 
   async refresh(rawRefreshToken: string) {

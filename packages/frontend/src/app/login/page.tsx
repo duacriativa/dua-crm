@@ -25,11 +25,12 @@ export default function LoginPage() {
       localStorage.setItem("refresh_token", data.refreshToken);
       router.push("/dashboard");
     } catch (err: any) {
+      const data = err?.response?.data;
       const msg =
-        err?.response?.data?.message ||
-        (typeof err?.response?.data === "string" ? err.response.data : null) ||
+        (typeof data === "object" && data?.message) ||
+        (typeof data === "string" && data) ||
         err?.message ||
-        "E-mail ou senha incorretos.";
+        "Falha ao conectar com o servidor.";
       setError(msg);
     } finally {
       setLoading(false);
