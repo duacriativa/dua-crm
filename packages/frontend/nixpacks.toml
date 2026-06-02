@@ -1,5 +1,5 @@
 [phases.setup]
-cmds = ["echo 'cache-bust-v4-2026-06-02'"]
+cmds = ["echo 'cache-bust-v5-2026-06-02'"]
 
 [phases.install]
 cmds = ["npm install --legacy-peer-deps"]
