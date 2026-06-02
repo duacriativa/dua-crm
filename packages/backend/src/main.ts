@@ -5,7 +5,9 @@ import { json, urlencoded } from 'express';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
+  console.log('[Bootstrap] Iniciando NestJS...');
   const app = await NestFactory.create(AppModule);
+  console.log('[Bootstrap] AppModule inicializado com sucesso');
 
   // ── Body size limit (webhook Evolution API envia QR codes em base64) ───────
   app.use(json({ limit: '10mb' }));
@@ -59,4 +61,7 @@ async function bootstrap() {
   console.log(`ModaCRM Backend rodando na porta ${process.env.APP_PORT ?? 3001}`);
 }
 
-bootstrap();
+bootstrap().catch((err) => {
+  console.error('[Bootstrap] ERRO FATAL ao iniciar o servidor:', err);
+  process.exit(1);
+});

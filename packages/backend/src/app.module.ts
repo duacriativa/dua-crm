@@ -35,9 +35,11 @@ import { EventEmitterModule } from '@nestjs/event-emitter';
     // ── Filas assíncronas (automações, campanhas) ───────────────────────────
     BullModule.forRoot({
       connection: {
-        host: process.env.REDIS_HOST,
-        port: Number(process.env.REDIS_PORT),
-        password: process.env.REDIS_PASSWORD,
+        host: process.env.REDIS_HOST ?? '127.0.0.1',
+        port: parseInt(process.env.REDIS_PORT ?? '6379', 10),
+        password: process.env.REDIS_PASSWORD || undefined,
+        lazyConnect: true,
+        maxRetriesPerRequest: null,
       },
     }),
 
