@@ -11,28 +11,30 @@ async function bootstrap() {
   app.use(json({ limit: '10mb' }));
   app.use(urlencoded({ extended: true, limit: '10mb' }));
 
-  // ── CORS (deve vir ANTES do helmet) ──────────────────────────────────────
-  const corsOrigins = (process.env.ALLOWED_ORIGINS ?? 'http://localhost:3000')
+  // ── CORS manual via Express puro (antes de qualquer middleware NestJS) ──
+  const allowedOrigins = (process.env.ALLOWED_ORIGINS ?? '')
     .split(',')
-    .map((o) => o.trim())
+    .map((s) => s.trim())
     .filter(Boolean);
 
-  app.enableCors({
-    origin: corsOrigins,
-    credentials: true,
-    methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
-    preflightContinue: false,
-    optionsSuccessStatus: 204,
+  app.use((req: any, res: any, next: any) => {
+    const origin: string | undefined = req.headers['origin'];
+    if (origin && allowedOrigins.includes(origin)) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+      res.setHeader('Access-Control-Allow-Credentials', 'true');
+    }
+    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PATCH,DELETE,OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization');
+    if (req.method === 'OPTIONS') {
+      res.writeHead(204);
+      res.end();
+      return;
+    }
+    next();
   });
 
   // ── Segurança: headers HTTP ──────────────────────────────────────────────
-  app.use(
-    helmet({
-      crossOriginResourcePolicy: false,
-      contentSecurityPolicy: false,
-    }),
-  );
+  app.use(helmet({ crossOriginResourcePolicy: false, contentSecurityPolicy: false }));
 
   // ── Validação global de DTOs ──────────────────────────────────────────────
   // whitelist: remove campos não declarados no DTO (evita mass assignment)
