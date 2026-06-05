@@ -22,10 +22,10 @@ async function main() {
   }
 
   const email = 'suporte@duacriativa.com';
+  const passwordHash = await bcrypt.hash('d@Niel0p9o8i', 12);
   const existing = await prisma.user.findFirst({ where: { email } });
 
   if (!existing) {
-    const passwordHash = await bcrypt.hash('d@Niel0p9o8i', 12);
     const user = await prisma.user.create({
       data: {
         tenantId: tenant.id,
@@ -33,11 +33,17 @@ async function main() {
         name: 'Daniel Guedes',
         passwordHash,
         role: 'OWNER',
+        active: true,
       },
     });
     console.log('Usuário master criado:', user.email);
   } else {
-    console.log('Usuário já existe:', email);
+    // Sempre atualiza a senha e garante active=true
+    await prisma.user.update({
+      where: { id: existing.id },
+      data: { passwordHash, active: true, tenantId: tenant.id },
+    });
+    console.log('Usuário já existe — senha sincronizada:', email);
   }
 }
 
