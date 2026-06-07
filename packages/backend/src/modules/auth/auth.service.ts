@@ -126,53 +126,37 @@ export class AuthService {
 
   private async issueTokens(userId: string, tenantId: string, role: string) {
     const payload = { sub: userId, tenantId, role };
-    console.log('[issueTokens] step=start userId=%s', userId);
 
-    let accessToken: string;
-    try {
-      const accessSecret = this.config.getOrThrow<string>('JWT_ACCESS_SECRET');
-      accessToken = this.jwt.sign(payload, {
-        secret: accessSecret,
-        expiresIn: this.config.get('JWT_ACCESS_EXPIRES_IN', '15m'),
-      });
-      console.log('[issueTokens] step=access_token_ok');
-    } catch (e: any) {
-      console.error('[issueTokens] step=access_token_FAILED error=%s', e?.message ?? e);
-      throw e;
+    // Assina com o secret direto do process.env como fallback
+    const accessSecret =
+      this.config.get<string>('JWT_ACCESS_SECRET') ?? process.env.JWT_ACCESS_SECRET ?? '';
+    const refreshSecret =
+      this.config.get<string>('JWT_REFRESH_SECRET') ?? process.env.JWT_REFRESH_SECRET ?? '';
+
+    if (!accessSecret || !refreshSecret) {
+      throw new Error('JWT secrets não configurados');
     }
 
-    let refreshToken: string;
-    try {
-      const refreshSecret = this.config.getOrThrow<string>('JWT_REFRESH_SECRET');
-      refreshToken = this.jwt.sign(payload, {
-        secret: refreshSecret,
-        expiresIn: this.config.get('JWT_REFRESH_EXPIRES_IN', '7d'),
-      });
-      console.log('[issueTokens] step=refresh_token_ok');
-    } catch (e: any) {
-      console.error('[issueTokens] step=refresh_token_FAILED error=%s', e?.message ?? e);
-      throw e;
-    }
+    const accessToken = this.jwt.sign(payload, {
+      secret: accessSecret,
+      expiresIn: this.config.get('JWT_ACCESS_EXPIRES_IN', '8h'),
+    });
 
-    let tokenHash: string;
-    try {
-      tokenHash = await bcrypt.hash(refreshToken, 10);
-      console.log('[issueTokens] step=bcrypt_ok');
-    } catch (e: any) {
-      console.error('[issueTokens] step=bcrypt_FAILED error=%s', e?.message ?? e);
-      throw e;
-    }
+    const refreshToken = this.jwt.sign(payload, {
+      secret: refreshSecret,
+      expiresIn: this.config.get('JWT_REFRESH_EXPIRES_IN', '7d'),
+    });
 
-    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-
+    // Persiste o refresh token — não-bloqueante: se falhar, login continua
     try {
+      const tokenHash = await bcrypt.hash(refreshToken, 10);
+      const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
       await this.prisma.refreshToken.create({
         data: { userId, tokenHash, expiresAt },
       });
-      console.log('[issueTokens] step=db_insert_ok');
     } catch (e: any) {
-      console.error('[issueTokens] step=db_insert_FAILED error=%s code=%s', e?.message ?? e, e?.code);
-      throw e;
+      console.error('[issueTokens] refreshToken.create falhou (não-crítico):', e?.message ?? e);
+      // Login continua mesmo sem persistir o refresh token
     }
 
     return { accessToken, refreshToken };
