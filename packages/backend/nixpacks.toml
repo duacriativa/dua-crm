@@ -5,4 +5,4 @@ cmds = ["npm install --legacy-peer-deps --include=dev"]
 cmds = ["npx prisma generate", "npm run build"]
 
 [start]
-cmd = "npx prisma migrate deploy && npx ts-node --transpile-only prisma/seed.ts; node dist/main"
+cmd = "npx prisma migrate deploy && node prisma/seed.js; node dist/main"
