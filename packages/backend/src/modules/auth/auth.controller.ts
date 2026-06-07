@@ -1,4 +1,4 @@
-import { Controller, Post, Body, HttpCode, HttpStatus, UseGuards, Req } from '@nestjs/common';
+import { Controller, Get, Post, Body, HttpCode, HttpStatus, UseGuards, Req } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { RegisterTenantDto } from './dto/register-tenant.dto';
@@ -7,6 +7,11 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
+
+  @Get('diag')
+  diag() {
+    return this.authService.diag();
+  }
 
   @Post('login')
   @HttpCode(HttpStatus.OK)

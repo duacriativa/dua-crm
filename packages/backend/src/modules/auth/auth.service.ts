@@ -72,8 +72,9 @@ export class AuthService {
       return await this.issueTokens(user.id, user.tenantId, user.role);
     } catch (err: any) {
       if (err.status) throw err;
-      console.error('[Auth.login] erro:', err.message ?? err);
-      throw new InternalServerErrorException(err.message ?? 'Erro interno no login');
+      const detail = err.message ?? String(err);
+      console.error('[Auth.login] erro:', detail);
+      throw new InternalServerErrorException(`Login falhou: ${detail}`);
     }
   }
 
@@ -122,6 +123,59 @@ export class AuthService {
       where: { userId, revokedAt: null },
       data: { revokedAt: new Date() },
     });
+  }
+
+  async diag() {
+    const results: Record<string, any> = {};
+
+    results.env = {
+      DATABASE_URL: process.env.DATABASE_URL
+        ? `SET(host=${process.env.DATABASE_URL.split('@')[1]?.split('/')[0] ?? '?'})`
+        : 'MISSING',
+      JWT_ACCESS_SECRET: process.env.JWT_ACCESS_SECRET
+        ? `SET(len=${process.env.JWT_ACCESS_SECRET.length})`
+        : 'MISSING',
+      JWT_REFRESH_SECRET: process.env.JWT_REFRESH_SECRET
+        ? `SET(len=${process.env.JWT_REFRESH_SECRET.length})`
+        : 'MISSING',
+      ENCRYPTION_KEY: process.env.ENCRYPTION_KEY
+        ? `SET(len=${process.env.ENCRYPTION_KEY.length})`
+        : 'MISSING',
+    };
+
+    try {
+      await this.prisma.$queryRaw`SELECT 1`;
+      results.db_ping = 'OK';
+    } catch (e: any) {
+      results.db_ping = `FAIL: ${e.message}`;
+    }
+
+    try {
+      results.user_count = await this.prisma.user.count();
+    } catch (e: any) {
+      results.user_count = `FAIL: ${e.message}`;
+    }
+
+    try {
+      results.refresh_token_count = await this.prisma.refreshToken.count();
+    } catch (e: any) {
+      results.refresh_token_count = `FAIL: ${e.message}`;
+    }
+
+    try {
+      const testPayload = { sub: 'diag', tenantId: 'diag', role: 'diag' };
+      const secret = this.config.get<string>('JWT_ACCESS_SECRET') ?? process.env.JWT_ACCESS_SECRET ?? '';
+      if (secret) {
+        this.jwt.sign(testPayload, { secret, expiresIn: '1m' });
+        results.jwt_sign = 'OK';
+      } else {
+        results.jwt_sign = 'FAIL: no secret';
+      }
+    } catch (e: any) {
+      results.jwt_sign = `FAIL: ${e.message}`;
+    }
+
+    return results;
   }
 
   private async issueTokens(userId: string, tenantId: string, role: string) {
