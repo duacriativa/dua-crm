@@ -4,6 +4,16 @@ import helmet from 'helmet';
 import { json, urlencoded } from 'express';
 import { AppModule } from './app.module';
 
+// Captura rejeições não tratadas em vez de crashar o processo.
+// Em Node 18+ uma unhandledRejection sem handler mata o processo — isso previne
+// o ERR_CONNECTION_CLOSED que o cliente vê quando o backend morre mid-request.
+process.on('unhandledRejection', (reason: any) => {
+  console.error('[UnhandledRejection] processo não vai crashar — reason:', reason?.message ?? reason);
+});
+process.on('uncaughtException', (err: Error) => {
+  console.error('[UncaughtException] processo não vai crashar — error:', err?.message, err?.stack);
+});
+
 async function bootstrap() {
   console.log('[Bootstrap] Iniciando NestJS...');
 
