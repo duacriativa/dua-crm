@@ -5,4 +5,4 @@ cmds = ["echo 'cache-bust-v6-2026-06-07'"]
 cmds = ["npm install --legacy-peer-deps"]
 
 [phases.build]
-cmds = ["npm run build"]
+cmds = ["rm -rf .next/cache/webpack", "npm run build"]
