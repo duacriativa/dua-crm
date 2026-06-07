@@ -74,7 +74,7 @@ export default function DashboardPage() {
   useEffect(() => { load(); }, [load]);
 
   // ── Métricas calculadas ──
-  const totalLeads = contacts?.leadStats?.total ?? 0;
+  const totalLeads = contacts?.leads?.total ?? 0;
   const received = fin?.received ?? 0;
   const pending = fin?.pending ?? 0;
   const overdue = fin?.overdue ?? 0;
