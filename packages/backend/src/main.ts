@@ -6,6 +6,17 @@ import { AppModule } from './app.module';
 
 async function bootstrap() {
   console.log('[Bootstrap] Iniciando NestJS...');
+
+  // Log env var presence (not values) for diagnosis
+  const requiredVars = [
+    'DATABASE_URL', 'JWT_ACCESS_SECRET', 'JWT_REFRESH_SECRET',
+    'JWT_ACCESS_EXPIRES_IN', 'JWT_REFRESH_EXPIRES_IN', 'ENCRYPTION_KEY',
+  ];
+  for (const v of requiredVars) {
+    const val = process.env[v];
+    console.log(`[Bootstrap] ${v}: ${val ? `SET(len=${val.length})` : 'MISSING'}`);
+  }
+
   const app = await NestFactory.create(AppModule);
   console.log('[Bootstrap] AppModule inicializado com sucesso');
 
