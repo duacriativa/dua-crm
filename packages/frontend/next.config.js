@@ -1,5 +1,14 @@
+const path = require('path');
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  webpack: (config) => {
+    config.resolve.alias = {
+      ...config.resolve.alias,
+      '@': path.join(__dirname, 'src'),
+    };
+    return config;
+  },
   // Proxy reverso: /api/v1/* → backend interno (sem CORS, sem URL pública)
   async rewrites() {
     const backendUrl =
