@@ -3,6 +3,7 @@ import {
   UnauthorizedException,
   ConflictException,
   InternalServerErrorException,
+  Logger,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
@@ -15,24 +16,96 @@ const BCRYPT_ROUNDS = 12;
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
   ) {}
 
+  // ── Login ────────────────────────────────────────────────────────────────────
+
+  async login(dto: LoginDto): Promise<{ accessToken: string; refreshToken: string }> {
+    this.logger.log(`[login] email=${dto.email}`);
+
+    // 1. Busca usuário
+    let user: { id: string; tenantId: string; role: string; active: boolean; passwordHash: string } | null;
+    try {
+      user = await this.prisma.user.findFirst({
+        where: { email: dto.email },
+        select: { id: true, tenantId: true, role: true, active: true, passwordHash: true },
+      });
+      this.logger.log(`[login] user_found=${!!user} active=${user?.active ?? 'n/a'}`);
+    } catch (e: any) {
+      this.logger.error(`[login] DB erro: ${e.message}`);
+      throw new InternalServerErrorException(`Falha ao buscar usuário: ${e.message}`);
+    }
+
+    if (!user || !user.active) {
+      throw new UnauthorizedException('Credenciais inválidas.');
+    }
+
+    // 2. Verifica senha
+    let valid: boolean;
+    try {
+      valid = await bcrypt.compare(dto.password, user.passwordHash);
+      this.logger.log(`[login] senha_valida=${valid}`);
+    } catch (e: any) {
+      this.logger.error(`[login] bcrypt erro: ${e.message}`);
+      throw new InternalServerErrorException(`Falha na verificação de senha: ${e.message}`);
+    }
+
+    if (!valid) {
+      throw new UnauthorizedException('Credenciais inválidas.');
+    }
+
+    // 3. Gera tokens
+    const payload = { sub: user.id, tenantId: user.tenantId, role: user.role };
+    const accessSecret = this.config.get<string>('JWT_ACCESS_SECRET') ?? process.env.JWT_ACCESS_SECRET;
+    const refreshSecret = this.config.get<string>('JWT_REFRESH_SECRET') ?? process.env.JWT_REFRESH_SECRET;
+
+    if (!accessSecret || !refreshSecret) {
+      this.logger.error('[login] JWT secrets ausentes');
+      throw new InternalServerErrorException('JWT secrets não configurados.');
+    }
+
+    let accessToken: string;
+    let refreshToken: string;
+    try {
+      accessToken = this.jwt.sign(payload, { secret: accessSecret, expiresIn: '8h' });
+      refreshToken = this.jwt.sign(payload, { secret: refreshSecret, expiresIn: '7d' });
+      this.logger.log('[login] tokens gerados OK');
+    } catch (e: any) {
+      this.logger.error(`[login] JWT erro: ${e.message}`);
+      throw new InternalServerErrorException(`Falha ao gerar token: ${e.message}`);
+    }
+
+    // 4. Persiste refresh token (fire-and-forget — não bloqueia login)
+    bcrypt.hash(refreshToken, 10)
+      .then(tokenHash =>
+        this.prisma.refreshToken.create({
+          data: {
+            userId: user!.id,
+            tokenHash,
+            expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+          },
+        })
+      )
+      .catch((e: any) => this.logger.warn(`[login] refreshToken.create falhou (não-crítico): ${e.message}`));
+
+    return { accessToken, refreshToken };
+  }
+
+  // ── Register ─────────────────────────────────────────────────────────────────
+
   async register(dto: RegisterTenantDto) {
-    const slug = dto.brandName
-      .toLowerCase()
-      .replace(/\s+/g, '-')
-      .replace(/[^a-z0-9-]/g, '');
+    const slug = dto.brandName.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
 
     const exists = await this.prisma.tenant.findUnique({ where: { slug } });
     if (exists) throw new ConflictException('Essa marca já está cadastrada.');
 
-    const emailInUse = await this.prisma.user.findFirst({
-      where: { email: dto.email },
-    });
+    const emailInUse = await this.prisma.user.findFirst({ where: { email: dto.email } });
     if (emailInUse) throw new ConflictException('E-mail já cadastrado.');
 
     const passwordHash = await bcrypt.hash(dto.password, BCRYPT_ROUNDS);
@@ -42,41 +115,23 @@ export class AuthService {
         name: dto.brandName,
         slug,
         users: {
-          create: {
-            email: dto.email,
-            name: dto.ownerName,
-            passwordHash,
-            role: 'OWNER',
-          },
+          create: { email: dto.email, name: dto.ownerName, passwordHash, role: 'OWNER' },
         },
       },
       include: { users: true },
     });
 
     const user = tenant.users[0];
-    return this.issueTokens(user.id, tenant.id, user.role);
+    const accessSecret = this.config.get<string>('JWT_ACCESS_SECRET') ?? process.env.JWT_ACCESS_SECRET ?? '';
+    const refreshSecret = this.config.get<string>('JWT_REFRESH_SECRET') ?? process.env.JWT_REFRESH_SECRET ?? '';
+    const p = { sub: user.id, tenantId: tenant.id, role: user.role };
+    return {
+      accessToken: this.jwt.sign(p, { secret: accessSecret, expiresIn: '8h' }),
+      refreshToken: this.jwt.sign(p, { secret: refreshSecret, expiresIn: '7d' }),
+    };
   }
 
-  async login(dto: LoginDto) {
-    try {
-      const user = await this.prisma.user.findFirst({
-        where: { email: dto.email },
-        include: { tenant: true },
-      });
-
-      if (!user || !user.active) throw new UnauthorizedException('Credenciais inválidas.');
-
-      const valid = await bcrypt.compare(dto.password, user.passwordHash);
-      if (!valid) throw new UnauthorizedException('Credenciais inválidas.');
-
-      return await this.issueTokens(user.id, user.tenantId, user.role);
-    } catch (err: any) {
-      if (err.status) throw err;
-      const detail = err.message ?? String(err);
-      console.error('[Auth.login] erro:', detail);
-      throw new InternalServerErrorException(`Login falhou: ${detail}`);
-    }
-  }
+  // ── Refresh ──────────────────────────────────────────────────────────────────
 
   async refresh(rawRefreshToken: string) {
     let payload: { sub: string; tenantId: string; role: string };
@@ -88,20 +143,13 @@ export class AuthService {
       throw new UnauthorizedException('Refresh token inválido.');
     }
 
-    // Valida hash do refresh token no banco (rotation pattern)
     const stored = await this.prisma.refreshToken.findFirst({
-      where: {
-        userId: payload.sub,
-        revokedAt: null,
-        expiresAt: { gt: new Date() },
-      },
+      where: { userId: payload.sub, revokedAt: null, expiresAt: { gt: new Date() } },
     });
-
     if (!stored) throw new UnauthorizedException('Sessão expirada. Faça login novamente.');
 
     const valid = await bcrypt.compare(rawRefreshToken, stored.tokenHash);
     if (!valid) {
-      // Token reuse detectado — revogar todos os tokens do usuário
       await this.prisma.refreshToken.updateMany({
         where: { userId: payload.sub },
         data: { revokedAt: new Date() },
@@ -109,14 +157,30 @@ export class AuthService {
       throw new UnauthorizedException('Token inválido. Sessão encerrada por segurança.');
     }
 
-    // Revogar token usado e emitir novo par
     await this.prisma.refreshToken.update({
       where: { id: stored.id },
       data: { revokedAt: new Date() },
     });
 
-    return this.issueTokens(payload.sub, payload.tenantId, payload.role);
+    // Re-emite novo par de tokens com o mesmo payload
+    const accessSecret = this.config.getOrThrow<string>('JWT_ACCESS_SECRET');
+    const refreshSecret = this.config.getOrThrow<string>('JWT_REFRESH_SECRET');
+    const newPayload = { sub: payload.sub, tenantId: payload.tenantId, role: payload.role };
+    const accessToken = this.jwt.sign(newPayload, { secret: accessSecret, expiresIn: '8h' });
+    const newRefreshToken = this.jwt.sign(newPayload, { secret: refreshSecret, expiresIn: '7d' });
+
+    bcrypt.hash(newRefreshToken, 10)
+      .then(tokenHash =>
+        this.prisma.refreshToken.create({
+          data: { userId: payload.sub, tokenHash, expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) },
+        })
+      )
+      .catch((e: any) => this.logger.warn(`[refresh] refreshToken.create falhou: ${e.message}`));
+
+    return { accessToken, refreshToken: newRefreshToken };
   }
+
+  // ── Logout ───────────────────────────────────────────────────────────────────
 
   async logout(userId: string) {
     await this.prisma.refreshToken.updateMany({
@@ -125,6 +189,8 @@ export class AuthService {
     });
   }
 
+  // ── Diagnóstico ──────────────────────────────────────────────────────────────
+
   async diag() {
     const results: Record<string, any> = {};
 
@@ -132,15 +198,9 @@ export class AuthService {
       DATABASE_URL: process.env.DATABASE_URL
         ? `SET(host=${process.env.DATABASE_URL.split('@')[1]?.split('/')[0] ?? '?'})`
         : 'MISSING',
-      JWT_ACCESS_SECRET: process.env.JWT_ACCESS_SECRET
-        ? `SET(len=${process.env.JWT_ACCESS_SECRET.length})`
-        : 'MISSING',
-      JWT_REFRESH_SECRET: process.env.JWT_REFRESH_SECRET
-        ? `SET(len=${process.env.JWT_REFRESH_SECRET.length})`
-        : 'MISSING',
-      ENCRYPTION_KEY: process.env.ENCRYPTION_KEY
-        ? `SET(len=${process.env.ENCRYPTION_KEY.length})`
-        : 'MISSING',
+      JWT_ACCESS_SECRET: process.env.JWT_ACCESS_SECRET ? `SET(len=${process.env.JWT_ACCESS_SECRET.length})` : 'MISSING',
+      JWT_REFRESH_SECRET: process.env.JWT_REFRESH_SECRET ? `SET(len=${process.env.JWT_REFRESH_SECRET.length})` : 'MISSING',
+      ENCRYPTION_KEY: process.env.ENCRYPTION_KEY ? `SET(len=${process.env.ENCRYPTION_KEY.length})` : 'MISSING',
     };
 
     try {
@@ -157,16 +217,9 @@ export class AuthService {
     }
 
     try {
-      results.refresh_token_count = await this.prisma.refreshToken.count();
-    } catch (e: any) {
-      results.refresh_token_count = `FAIL: ${e.message}`;
-    }
-
-    try {
-      const testPayload = { sub: 'diag', tenantId: 'diag', role: 'diag' };
       const secret = this.config.get<string>('JWT_ACCESS_SECRET') ?? process.env.JWT_ACCESS_SECRET ?? '';
       if (secret) {
-        this.jwt.sign(testPayload, { secret, expiresIn: '1m' });
+        this.jwt.sign({ sub: 'diag' }, { secret, expiresIn: '1m' });
         results.jwt_sign = 'OK';
       } else {
         results.jwt_sign = 'FAIL: no secret';
@@ -176,43 +229,5 @@ export class AuthService {
     }
 
     return results;
-  }
-
-  private async issueTokens(userId: string, tenantId: string, role: string) {
-    const payload = { sub: userId, tenantId, role };
-
-    // Assina com o secret direto do process.env como fallback
-    const accessSecret =
-      this.config.get<string>('JWT_ACCESS_SECRET') ?? process.env.JWT_ACCESS_SECRET ?? '';
-    const refreshSecret =
-      this.config.get<string>('JWT_REFRESH_SECRET') ?? process.env.JWT_REFRESH_SECRET ?? '';
-
-    if (!accessSecret || !refreshSecret) {
-      throw new Error('JWT secrets não configurados');
-    }
-
-    const accessToken = this.jwt.sign(payload, {
-      secret: accessSecret,
-      expiresIn: this.config.get('JWT_ACCESS_EXPIRES_IN', '8h'),
-    });
-
-    const refreshToken = this.jwt.sign(payload, {
-      secret: refreshSecret,
-      expiresIn: this.config.get('JWT_REFRESH_EXPIRES_IN', '7d'),
-    });
-
-    // Persiste o refresh token — não-bloqueante: se falhar, login continua
-    try {
-      const tokenHash = await bcrypt.hash(refreshToken, 10);
-      const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-      await this.prisma.refreshToken.create({
-        data: { userId, tokenHash, expiresAt },
-      });
-    } catch (e: any) {
-      console.error('[issueTokens] refreshToken.create falhou (não-crítico):', e?.message ?? e);
-      // Login continua mesmo sem persistir o refresh token
-    }
-
-    return { accessToken, refreshToken };
   }
 }

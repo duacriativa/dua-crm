@@ -70,9 +70,14 @@ async function bootstrap() {
     }),
   );
 
-  // ── Health check (sem prefixo) ────────────────────────────────────────────
+  // ── Health check com teste de banco ─────────────────────────────────────────
   const httpAdapter = app.getHttpAdapter();
-  httpAdapter.get('/health', (_req: any, res: any) => res.send({ status: 'ok' }));
+  const prismaService = app.get('PrismaService') as any;
+  httpAdapter.get('/health', async (_req: any, res: any) => {
+    const dbOk = await prismaService.ping().catch(() => false);
+    const status = dbOk ? 200 : 503;
+    res.status(status).send({ status: dbOk ? 'ok' : 'degraded', db: dbOk ? 'ok' : 'error' });
+  });
 
   // ── Prefixo global da API ─────────────────────────────────────────────────
   app.setGlobalPrefix('api/v1');
