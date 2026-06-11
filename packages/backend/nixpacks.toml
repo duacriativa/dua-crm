@@ -2,7 +2,7 @@
 cmds = ["npm install --legacy-peer-deps --include=dev"]
 
 [phases.build]
-cmds = ["npx prisma generate", "npm run build"]
+cmds = ["npx prisma generate"]
 
 [start]
-cmd = "npx prisma migrate deploy && node prisma/seed.js; node dist/main"
+cmd = "npm run build && npx prisma migrate deploy && node prisma/seed.js; node dist/main"
