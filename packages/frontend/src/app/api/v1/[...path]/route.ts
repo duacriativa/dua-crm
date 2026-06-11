@@ -30,27 +30,29 @@ async function proxy(req: NextRequest, path: string[]): Promise<NextResponse> {
       headers: { 'Content-Type': contentType },
     });
   } catch (e: any) {
-    const msg = e?.cause?.code === 'ECONNREFUSED'
-      ? `Backend offline (${BACKEND})`
-      : `Proxy error: ${e.message}`;
-    return NextResponse.json({ statusCode: 502, message: msg }, { status: 502 });
+    const code = e?.cause?.code ?? e?.code ?? 'UNKNOWN';
+    const msg = code === 'ECONNREFUSED'
+      ? `Backend offline — ECONNREFUSED conectando em ${BACKEND}`
+      : `Proxy error (${code}): ${e.message ?? String(e)}`;
+
+    console.error('[api-proxy] ERRO:', msg, '| url:', url);
+
+    return NextResponse.json(
+      { statusCode: 502, message: msg },
+      { status: 502 },
+    );
   }
 }
 
-type Ctx = { params: Promise<{ path: string[] }> };
+type Ctx = { params: { path: string[] } | Promise<{ path: string[] }> };
 
-export async function GET(req: NextRequest, ctx: Ctx) {
-  return proxy(req, (await ctx.params).path);
+async function resolve(ctx: Ctx) {
+  const p = await ctx.params;
+  return p.path;
 }
-export async function POST(req: NextRequest, ctx: Ctx) {
-  return proxy(req, (await ctx.params).path);
-}
-export async function PUT(req: NextRequest, ctx: Ctx) {
-  return proxy(req, (await ctx.params).path);
-}
-export async function PATCH(req: NextRequest, ctx: Ctx) {
-  return proxy(req, (await ctx.params).path);
-}
-export async function DELETE(req: NextRequest, ctx: Ctx) {
-  return proxy(req, (await ctx.params).path);
-}
+
+export async function GET(req: NextRequest, ctx: Ctx) { return proxy(req, await resolve(ctx)); }
+export async function POST(req: NextRequest, ctx: Ctx) { return proxy(req, await resolve(ctx)); }
+export async function PUT(req: NextRequest, ctx: Ctx) { return proxy(req, await resolve(ctx)); }
+export async function PATCH(req: NextRequest, ctx: Ctx) { return proxy(req, await resolve(ctx)); }
+export async function DELETE(req: NextRequest, ctx: Ctx) { return proxy(req, await resolve(ctx)); }
