@@ -73,8 +73,10 @@ export class AuthService {
     let accessToken: string;
     let refreshToken: string;
     try {
-      accessToken = this.jwt.sign(payload, { secret: accessSecret, expiresIn: '8h' });
-      refreshToken = this.jwt.sign(payload, { secret: refreshSecret, expiresIn: '7d' });
+      const accessExpiresIn = this.config.get<string>('JWT_ACCESS_EXPIRES_IN') ?? '8h';
+      const refreshExpiresIn = this.config.get<string>('JWT_REFRESH_EXPIRES_IN') ?? '7d';
+      accessToken = this.jwt.sign(payload, { secret: accessSecret, expiresIn: accessExpiresIn });
+      refreshToken = this.jwt.sign(payload, { secret: refreshSecret, expiresIn: refreshExpiresIn });
       this.logger.log('[login] tokens gerados OK');
     } catch (e: any) {
       this.logger.error(`[login] JWT erro: ${e.message}`);
@@ -124,10 +126,12 @@ export class AuthService {
     const user = tenant.users[0];
     const accessSecret = this.config.get<string>('JWT_ACCESS_SECRET') ?? process.env.JWT_ACCESS_SECRET ?? '';
     const refreshSecret = this.config.get<string>('JWT_REFRESH_SECRET') ?? process.env.JWT_REFRESH_SECRET ?? '';
+    const accessExpiresIn = this.config.get<string>('JWT_ACCESS_EXPIRES_IN') ?? '8h';
+    const refreshExpiresIn = this.config.get<string>('JWT_REFRESH_EXPIRES_IN') ?? '7d';
     const p = { sub: user.id, tenantId: tenant.id, role: user.role };
     return {
-      accessToken: this.jwt.sign(p, { secret: accessSecret, expiresIn: '8h' }),
-      refreshToken: this.jwt.sign(p, { secret: refreshSecret, expiresIn: '7d' }),
+      accessToken: this.jwt.sign(p, { secret: accessSecret, expiresIn: accessExpiresIn }),
+      refreshToken: this.jwt.sign(p, { secret: refreshSecret, expiresIn: refreshExpiresIn }),
     };
   }
 
@@ -165,9 +169,11 @@ export class AuthService {
     // Re-emite novo par de tokens com o mesmo payload
     const accessSecret = this.config.getOrThrow<string>('JWT_ACCESS_SECRET');
     const refreshSecret = this.config.getOrThrow<string>('JWT_REFRESH_SECRET');
+    const accessExpiresIn = this.config.get<string>('JWT_ACCESS_EXPIRES_IN') ?? '8h';
+    const refreshExpiresIn = this.config.get<string>('JWT_REFRESH_EXPIRES_IN') ?? '7d';
     const newPayload = { sub: payload.sub, tenantId: payload.tenantId, role: payload.role };
-    const accessToken = this.jwt.sign(newPayload, { secret: accessSecret, expiresIn: '8h' });
-    const newRefreshToken = this.jwt.sign(newPayload, { secret: refreshSecret, expiresIn: '7d' });
+    const accessToken = this.jwt.sign(newPayload, { secret: accessSecret, expiresIn: accessExpiresIn });
+    const newRefreshToken = this.jwt.sign(newPayload, { secret: refreshSecret, expiresIn: refreshExpiresIn });
 
     bcrypt.hash(newRefreshToken, 10)
       .then(tokenHash =>

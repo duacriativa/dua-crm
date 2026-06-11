@@ -31,3 +31,8 @@ packages/backend/prisma/migrations/*.sql.bak
 
 # Claude
 .claude/
+
+# One-off scripts with credentials/data — never commit
+import_clientes.js
+import_*.js
+seed_*.js
