@@ -24,12 +24,9 @@ export class AuthService {
     private readonly config: ConfigService,
   ) {}
 
-  // ── Login ────────────────────────────────────────────────────────────────────
-
   async login(dto: LoginDto): Promise<{ accessToken: string; refreshToken: string }> {
     this.logger.log(`[login] email=${dto.email}`);
 
-    // 1. Busca usuário
     let user: { id: string; tenantId: string; role: string; active: boolean; passwordHash: string } | null;
     try {
       user = await this.prisma.user.findFirst({
@@ -39,35 +36,33 @@ export class AuthService {
       this.logger.log(`[login] user_found=${!!user} active=${user?.active ?? 'n/a'}`);
     } catch (e: any) {
       this.logger.error(`[login] DB erro: ${e.message}`);
-      throw new InternalServerErrorException(`Falha ao buscar usuário: ${e.message}`);
+      throw new InternalServerErrorException(`Falha ao buscar usuario: ${e.message}`);
     }
 
     if (!user || !user.active) {
-      throw new UnauthorizedException('Credenciais inválidas.');
+      throw new UnauthorizedException('Credenciais invalidas.');
     }
 
-    // 2. Verifica senha
     let valid: boolean;
     try {
       valid = await bcrypt.compare(dto.password, user.passwordHash);
       this.logger.log(`[login] senha_valida=${valid}`);
     } catch (e: any) {
       this.logger.error(`[login] bcrypt erro: ${e.message}`);
-      throw new InternalServerErrorException(`Falha na verificação de senha: ${e.message}`);
+      throw new InternalServerErrorException(`Falha na verificacao de senha: ${e.message}`);
     }
 
     if (!valid) {
-      throw new UnauthorizedException('Credenciais inválidas.');
+      throw new UnauthorizedException('Credenciais invalidas.');
     }
 
-    // 3. Gera tokens
     const payload = { sub: user.id, tenantId: user.tenantId, role: user.role };
     const accessSecret = this.config.get<string>('JWT_ACCESS_SECRET') ?? process.env.JWT_ACCESS_SECRET;
     const refreshSecret = this.config.get<string>('JWT_REFRESH_SECRET') ?? process.env.JWT_REFRESH_SECRET;
 
     if (!accessSecret || !refreshSecret) {
       this.logger.error('[login] JWT secrets ausentes');
-      throw new InternalServerErrorException('JWT secrets não configurados.');
+      throw new InternalServerErrorException('JWT secrets nao configurados.');
     }
 
     let accessToken: string;
@@ -83,7 +78,6 @@ export class AuthService {
       throw new InternalServerErrorException(`Falha ao gerar token: ${e.message}`);
     }
 
-    // 4. Persiste refresh token (fire-and-forget — não bloqueia login)
     bcrypt.hash(refreshToken, 10)
       .then(tokenHash =>
         this.prisma.refreshToken.create({
@@ -94,27 +88,25 @@ export class AuthService {
           },
         })
       )
-      .catch((e: any) => this.logger.warn(`[login] refreshToken.create falhou (não-crítico): ${e.message}`));
+      .catch((e: any) => this.logger.warn(`[login] refreshToken.create falhou (nao-critico): ${e.message}`));
 
     return { accessToken, refreshToken };
   }
-
-  // ── Register ─────────────────────────────────────────────────────────────────
 
   async register(dto: RegisterTenantDto) {
     const slug = dto.brandName.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
 
     const exists = await this.prisma.tenant.findUnique({ where: { slug } });
-    if (exists) throw new ConflictException('Essa marca já está cadastrada.');
+    if (exists) throw new ConflictException('Essa marca ja esta cadastrada.');
 
     const emailInUse = await this.prisma.user.findFirst({ where: { email: dto.email } });
-    if (emailInUse) throw new ConflictException('E-mail já cadastrado.');
+    if (emailInUse) throw new ConflictException('E-mail ja cadastrado.');
 
     const passwordHash = await bcrypt.hash(dto.password, BCRYPT_ROUNDS);
 
     const tenant = await this.prisma.tenant.create({
       data: {
-        name: dto.brandName',
+        name: dto.brandName,
         slug,
         users: {
           create: { email: dto.email, name: dto.ownerName, passwordHash, role: 'OWNER' },
@@ -135,8 +127,6 @@ export class AuthService {
     };
   }
 
-  // ── Refresh ──────────────────────────────────────────────────────────────────
-
   async refresh(rawRefreshToken: string) {
     let payload: { sub: string; tenantId: string; role: string };
     try {
@@ -144,13 +134,13 @@ export class AuthService {
         secret: this.config.getOrThrow('JWT_REFRESH_SECRET'),
       });
     } catch {
-      throw new UnauthorizedException('Refresh token inválido.');
+      throw new UnauthorizedException('Refresh token invalido.');
     }
 
     const stored = await this.prisma.refreshToken.findFirst({
       where: { userId: payload.sub, revokedAt: null, expiresAt: { gt: new Date() } },
     });
-    if (!stored) throw new UnauthorizedException('Sessão expirada. Faça login novamente.');
+    if (!stored) throw new UnauthorizedException('Sessao expirada. Faca login novamente.');
 
     const valid = await bcrypt.compare(rawRefreshToken, stored.tokenHash);
     if (!valid) {
@@ -158,7 +148,7 @@ export class AuthService {
         where: { userId: payload.sub },
         data: { revokedAt: new Date() },
       });
-      throw new UnauthorizedException('Token inválido. Sessão encerrada por segurança.');
+      throw new UnauthorizedException('Token invalido. Sessao encerrada por seguranca.');
     }
 
     await this.prisma.refreshToken.update({
@@ -166,7 +156,6 @@ export class AuthService {
       data: { revokedAt: new Date() },
     });
 
-    // Re-emite novo par de tokens com o mesmo payload
     const accessSecret = this.config.getOrThrow<string>('JWT_ACCESS_SECRET');
     const refreshSecret = this.config.getOrThrow<string>('JWT_REFRESH_SECRET');
     const accessExpiresIn = this.config.get<string>('JWT_ACCESS_EXPIRES_IN') ?? '8h';
@@ -186,16 +175,12 @@ export class AuthService {
     return { accessToken, refreshToken: newRefreshToken };
   }
 
-  // ── Logout ───────────────────────────────────────────────────────────────────
-
   async logout(userId: string) {
     await this.prisma.refreshToken.updateMany({
       where: { userId, revokedAt: null },
       data: { revokedAt: new Date() },
     });
   }
-
-  // ── Diagnóstico ──────────────────────────────────────────────────────────────
 
   async diag() {
     const results: Record<string, any> = {};
