@@ -30,10 +30,11 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
       await this.$queryRaw`SELECT 1 AS ok`;
       this.logger.log('Banco OK ✓');
     } catch (e: any) {
-      // Lança aqui para que o NestJS falhe na inicialização.
-      // Railway vai mostrar "Failed" em vez de "Online" quando o banco estiver inacessível.
-      this.logger.error(`BANCO INACESSÍVEL: ${e.message}`);
-      throw e;
+      // NÃO relança — deixa o app subir mesmo com DB inacessível.
+      // O health endpoint retorna 503/degraded e os endpoints que usam DB
+      // retornam 500 com mensagem clara. Isso é melhor do que o processo morrer
+      // e Railway mostrar "Application failed to respond" para TODOS os requests.
+      this.logger.error(`BANCO INACESSÍVEL na inicialização: ${e.message}`);
     }
   }
 
