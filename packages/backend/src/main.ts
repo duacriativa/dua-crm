@@ -3,6 +3,7 @@ import { ValidationPipe } from '@nestjs/common';
 import helmet from 'helmet';
 import { json, urlencoded } from 'express';
 import { AppModule } from './app.module';
+import { PrismaService } from './prisma/prisma.service';
 
 // Captura rejeições não tratadas em vez de crashar o processo.
 // Em Node 18+ uma unhandledRejection sem handler mata o processo — isso previne
@@ -72,7 +73,7 @@ async function bootstrap() {
 
   // ── Health check com teste de banco ─────────────────────────────────────────
   const httpAdapter = app.getHttpAdapter();
-  const prismaService = app.get('PrismaService') as any;
+  const prismaService = app.get(PrismaService);
   httpAdapter.get('/health', async (_req: any, res: any) => {
     const dbOk = await prismaService.ping().catch(() => false);
     const status = dbOk ? 200 : 503;
