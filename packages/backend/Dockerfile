@@ -14,4 +14,4 @@ COPY . .
 RUN npm run build
 RUN ls -la dist/main.js
 
-CMD ["sh", "-c", "npx prisma migrate deploy && node dist/main"]
+CMD ["node", "dist/main"]
