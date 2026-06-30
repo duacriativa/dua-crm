@@ -132,4 +132,104 @@ export class FinancialService {
       ltvCacRatio: cac > 0 ? Math.round((ltv / cac) * 10) / 10 : 0,
     };
   }
+
+  async getClientes(tenantId: string, month?: string) {
+    const now = new Date();
+    const [year, mon] = month
+      ? month.split('-').map(Number)
+      : [now.getFullYear(), now.getMonth() + 1];
+
+    const startOfMonth = new Date(year, mon - 1, 1);
+    const endOfMonth = new Date(year, mon, 0, 23, 59, 59);
+
+    const contracts = await this.prisma.contract.findMany({
+      where: { tenantId, status: 'ACTIVE' },
+      orderBy: { clientName: 'asc' },
+      include: {
+        financialEntries: {
+          where: { dueDate: { gte: startOfMonth, lte: endOfMonth }, isCommission: false },
+          orderBy: { dueDate: 'asc' },
+        },
+      },
+    });
+
+    const SERVICE_LABELS: Record<string, string> = {
+      SOCIAL_MEDIA: 'G. Redes',
+      PAID_TRAFFIC: 'G. Anúncios',
+      CRM_SETUP: 'CRM',
+      CONSULTING: 'Consultoria',
+      OTHER: 'Outro',
+    };
+
+    const clients = contracts.map((c) => {
+      const entry = c.financialEntries[0] ?? null;
+      return {
+        contractId: c.id,
+        clientName: c.clientName,
+        serviceType: c.serviceType,
+        serviceLabel: SERVICE_LABELS[c.serviceType] ?? c.serviceType,
+        monthlyValue: c.monthlyValue,
+        entry: entry
+          ? { id: entry.id, status: entry.status, paidAt: entry.paidAt, dueDate: entry.dueDate, value: entry.value }
+          : null,
+      };
+    });
+
+    const contratado = clients.reduce((s, c) => s + c.monthlyValue, 0);
+    const recebido = clients
+      .filter((c) => c.entry?.status === 'PAID')
+      .reduce((s, c) => s + (c.entry?.value ?? c.monthlyValue), 0);
+    const pendente = clients
+      .filter((c) => !c.entry || c.entry.status === 'PENDING')
+      .reduce((s, c) => s + c.monthlyValue, 0);
+
+    const byService: Record<string, { label: string; contratado: number; recebido: number; pendente: number }> = {};
+    for (const c of clients) {
+      if (!byService[c.serviceType]) {
+        byService[c.serviceType] = { label: c.serviceLabel, contratado: 0, recebido: 0, pendente: 0 };
+      }
+      byService[c.serviceType].contratado += c.monthlyValue;
+      if (c.entry?.status === 'PAID') {
+        byService[c.serviceType].recebido += c.entry.value;
+      } else {
+        byService[c.serviceType].pendente += c.monthlyValue;
+      }
+    }
+
+    return {
+      month: `${year}-${String(mon).padStart(2, '0')}`,
+      totals: { contratado, recebido, pendente },
+      byService,
+      clients,
+    };
+  }
+
+  async createEntry(tenantId: string, dto: { contractId: string; value: number; dueDate: string; description?: string }) {
+    const contract = await this.prisma.contract.findFirst({
+      where: { id: dto.contractId, tenantId },
+    });
+    if (!contract) throw new Error('Contrato não encontrado');
+
+    return this.prisma.financialEntry.create({
+      data: {
+        tenantId,
+        contractId: dto.contractId,
+        clientName: contract.clientName,
+        description: dto.description ?? 'Mensalidade',
+        value: dto.value,
+        status: 'PENDING',
+        dueDate: new Date(dto.dueDate),
+      },
+    });
+  }
+
+  async togglePay(tenantId: string, entryId: string, paid: boolean) {
+    return this.prisma.financialEntry.updateMany({
+      where: { id: entryId, tenantId },
+      data: {
+        status: paid ? 'PAID' : 'PENDING',
+        paidAt: paid ? new Date() : null,
+      },
+    });
+  }
 }
