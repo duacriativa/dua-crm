@@ -5,10 +5,8 @@ RUN apt-get update -y && apt-get install -y openssl && rm -rf /var/lib/apt/lists
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm install --legacy-peer-deps --include=dev --ignore-scripts
-
 COPY prisma ./prisma
-RUN npx prisma generate
+RUN npm install --legacy-peer-deps --include=dev
 
 COPY . .
 RUN npm run build
