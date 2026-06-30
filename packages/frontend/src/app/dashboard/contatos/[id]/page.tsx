@@ -7,8 +7,9 @@ import {
   DollarSign, MessageCircle, Edit, MoreVertical, Trash2,
   User, Clock, Globe, Filter, Briefcase, Search,
   Save, ChevronRight, Sparkles, AlertTriangle, TrendingUp,
-  Star, Zap, ChevronDown, Check,
+  Star, Zap, ChevronDown, Check, FileText, Plus, XCircle, CheckCircle2,
 } from "lucide-react";
+import api from "@/lib/api";
 
 const API_URL = "";
 
@@ -337,6 +338,212 @@ function BusinessProfileEditor({ contact, onSave }: { contact: any; onSave: (f: 
         </div>
       )}
     </>
+  );
+}
+
+const SERVICE_CONFIG: Record<string, { short: string; color: string }> = {
+  SOCIAL_MEDIA: { short: "G. Redes",    color: "bg-violet-100 text-violet-700" },
+  PAID_TRAFFIC:  { short: "G. Anúncios", color: "bg-blue-100 text-blue-700" },
+  CRM_SETUP:     { short: "CRM",         color: "bg-emerald-100 text-emerald-700" },
+  CONSULTING:    { short: "Consultoria", color: "bg-amber-100 text-amber-700" },
+  OTHER:         { short: "Outro",       color: "bg-gray-100 text-gray-600" },
+};
+
+function fmtVal(v: number) {
+  return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v);
+}
+
+function ContractsSection({ contactName }: { contactName: string }) {
+  const [contracts, setContracts] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [cancelId, setCancelId] = useState<string | null>(null);
+  const [cancelReason, setCancelReason] = useState("");
+  const [cancelling, setCancelling] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState({
+    serviceType: "SOCIAL_MEDIA", monthlyValue: "", signedAt: "", startsAt: "",
+  });
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const res = await api.get("/contracts");
+      const all: any[] = Array.isArray(res.data) ? res.data : [];
+      const name = contactName.toLowerCase();
+      setContracts(all.filter((c) => c.clientName.toLowerCase() === name));
+    } catch { } finally { setLoading(false); }
+  };
+
+  useEffect(() => { load(); }, [contactName]);
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      await api.post("/contracts", {
+        clientName: contactName,
+        serviceType: form.serviceType,
+        monthlyValue: parseFloat(form.monthlyValue),
+        totalValue: parseFloat(form.monthlyValue),
+        installments: 1,
+        signedAt: form.signedAt,
+        startsAt: form.startsAt || form.signedAt,
+      });
+      setShowForm(false);
+      setForm({ serviceType: "SOCIAL_MEDIA", monthlyValue: "", signedAt: "", startsAt: "" });
+      load();
+    } catch { } finally { setSaving(false); }
+  };
+
+  const cancelContract = async () => {
+    if (!cancelId || !cancelReason.trim()) return;
+    setCancelling(true);
+    try {
+      await api.patch(`/contracts/${cancelId}/cancel`, { reason: cancelReason });
+      setCancelId(null);
+      setCancelReason("");
+      load();
+    } catch { } finally { setCancelling(false); }
+  };
+
+  const active = contracts.filter((c) => c.status === "ACTIVE");
+  const inactive = contracts.filter((c) => c.status !== "ACTIVE");
+
+  return (
+    <div className="bg-card surface-card p-5 shadow-none border border-border">
+      <div className="flex items-center justify-between mb-4 px-1">
+        <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Contratos</h3>
+        <button
+          onClick={() => setShowForm((v) => !v)}
+          className="flex items-center gap-1 text-xs text-primary border border-primary/30 rounded-lg px-2 py-1 hover:bg-primary/5 transition-colors"
+        >
+          <Plus size={12} /> Novo
+        </button>
+      </div>
+
+      {showForm && (
+        <div className="mb-4 p-3 border border-border rounded-xl space-y-2 bg-muted/20">
+          <div>
+            <label className="text-[10px] text-muted-foreground font-bold uppercase tracking-wide block mb-1">Serviço</label>
+            <select
+              className="w-full border border-border bg-background text-foreground rounded-lg px-2 py-1.5 text-xs focus:outline-none"
+              value={form.serviceType}
+              onChange={(e) => setForm((p) => ({ ...p, serviceType: e.target.value }))}
+            >
+              {Object.entries(SERVICE_CONFIG).map(([k, v]) => (
+                <option key={k} value={k}>{v.short}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="text-[10px] text-muted-foreground font-bold uppercase tracking-wide block mb-1">Valor mensal (R$)</label>
+            <input
+              type="number"
+              className="w-full border border-border bg-background text-foreground rounded-lg px-2 py-1.5 text-xs focus:outline-none"
+              placeholder="2500"
+              value={form.monthlyValue}
+              onChange={(e) => setForm((p) => ({ ...p, monthlyValue: e.target.value }))}
+            />
+          </div>
+          <div>
+            <label className="text-[10px] text-muted-foreground font-bold uppercase tracking-wide block mb-1">Data de assinatura</label>
+            <input
+              type="date"
+              className="w-full border border-border bg-background text-foreground rounded-lg px-2 py-1.5 text-xs focus:outline-none"
+              value={form.signedAt}
+              onChange={(e) => setForm((p) => ({ ...p, signedAt: e.target.value }))}
+            />
+          </div>
+          <div className="flex gap-2 pt-1">
+            <button
+              onClick={save}
+              disabled={saving || !form.monthlyValue || !form.signedAt}
+              className="flex-1 py-1.5 text-xs font-semibold text-white bg-primary rounded-lg hover:opacity-90 disabled:opacity-50"
+            >
+              {saving ? "Salvando..." : "Salvar"}
+            </button>
+            <button onClick={() => setShowForm(false)} className="px-3 py-1.5 text-xs text-muted-foreground border border-border rounded-lg hover:bg-muted/30">
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {loading ? (
+        <p className="text-xs text-muted-foreground text-center py-4">Carregando...</p>
+      ) : contracts.length === 0 ? (
+        <p className="text-xs text-muted-foreground italic px-1">Nenhum contrato cadastrado.</p>
+      ) : (
+        <div className="space-y-2">
+          {active.map((c) => {
+            const svc = SERVICE_CONFIG[c.serviceType] ?? SERVICE_CONFIG.OTHER;
+            return (
+              <div key={c.id} className="flex items-center justify-between rounded-xl p-3 bg-muted/20 border border-border group">
+                <div>
+                  <div className="flex items-center gap-2 mb-0.5">
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${svc.color}`}>{svc.short}</span>
+                    <span className="flex items-center gap-1 text-[10px] text-green-600"><CheckCircle2 size={10} /> Ativo</span>
+                  </div>
+                  <p className="text-sm font-semibold text-foreground">{fmtVal(c.monthlyValue)}<span className="text-xs text-muted-foreground font-normal">/mês</span></p>
+                  <p className="text-[10px] text-muted-foreground">desde {new Date(c.signedAt).toLocaleDateString("pt-BR")}</p>
+                </div>
+                <button
+                  onClick={() => setCancelId(c.id)}
+                  className="text-[10px] text-red-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-all"
+                >
+                  Cancelar
+                </button>
+              </div>
+            );
+          })}
+          {inactive.map((c) => {
+            const svc = SERVICE_CONFIG[c.serviceType] ?? SERVICE_CONFIG.OTHER;
+            return (
+              <div key={c.id} className="flex items-center justify-between rounded-xl p-3 bg-muted/10 border border-border/50 opacity-50">
+                <div>
+                  <div className="flex items-center gap-2 mb-0.5">
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${svc.color}`}>{svc.short}</span>
+                    <span className="flex items-center gap-1 text-[10px] text-red-500"><XCircle size={10} /> Cancelado</span>
+                  </div>
+                  <p className="text-sm font-semibold text-foreground">{fmtVal(c.monthlyValue)}<span className="text-xs text-muted-foreground font-normal">/mês</span></p>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Modal cancelamento */}
+      {cancelId && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+          <div className="bg-card border border-border rounded-2xl p-6 w-full max-w-sm shadow-2xl">
+            <h3 className="text-sm font-semibold text-foreground mb-1">Cancelar contrato</h3>
+            <p className="text-xs text-muted-foreground mb-3">{contactName}</p>
+            <label className="text-xs text-muted-foreground block mb-1.5">Motivo</label>
+            <textarea
+              className="w-full border border-border bg-background text-foreground rounded-lg px-3 py-2 text-sm mb-4 focus:outline-none focus:ring-2 focus:ring-red-500/30"
+              rows={3}
+              placeholder="Ex: rescisão, inadimplência..."
+              value={cancelReason}
+              onChange={(e) => setCancelReason(e.target.value)}
+              autoFocus
+            />
+            <div className="flex gap-2">
+              <button
+                onClick={cancelContract}
+                disabled={!cancelReason.trim() || cancelling}
+                className="flex-1 bg-red-600 text-white text-sm font-medium py-2 rounded-lg hover:bg-red-700 disabled:opacity-40"
+              >
+                {cancelling ? "Cancelando..." : "Confirmar"}
+              </button>
+              <button onClick={() => { setCancelId(null); setCancelReason(""); }} className="text-sm text-muted-foreground px-4 py-2 rounded-lg border border-border hover:bg-muted/20">
+                Voltar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -885,6 +1092,9 @@ export default function ContactProfilePage() {
                 )}
               </div>
             </div>
+
+            {/* Contratos */}
+            <ContractsSection contactName={contact.name} />
 
           </div>
         </div>

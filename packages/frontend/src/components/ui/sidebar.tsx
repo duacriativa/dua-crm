@@ -18,7 +18,6 @@ const navItems = [
   { icon: Calendar,        label: "Agenda",        href: "/dashboard/agenda" },
   { icon: DollarSign,      label: "Financeiro",    href: "/dashboard/financeiro" },
   { icon: Briefcase,       label: "Serviços",      href: "/dashboard/servicos" },
-  { icon: FileText,        label: "Contratos",     href: "/dashboard/contratos" },
   { icon: ClipboardList,   label: "Briefings",     href: "/dashboard/briefings" },
   { icon: Settings,        label: "Configurações", href: "/dashboard/configuracoes" },
 ];
