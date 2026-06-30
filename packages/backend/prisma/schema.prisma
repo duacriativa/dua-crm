@@ -484,3 +484,22 @@ model Service {
   @@index([tenantId])
   @@index([tenantId, isActive])
 }
+
+// ─── Kommo Integration ────────────────────────────────────────────────────────
+
+model KommoLead {
+  id        String   @id @default(cuid())
+  tenantId  String
+  kommoId   Int
+  name      String
+  stageId   Int?
+  stageName String?
+  status    String   @default("active") // active | won | lost
+  value     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, kommoId])
+  @@index([tenantId])
+  @@index([tenantId, status])
+}

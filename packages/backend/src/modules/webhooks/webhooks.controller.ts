@@ -70,6 +70,50 @@ export class WebhooksController {
     return { ok: true };
   }
 
+  @Post('kommo')
+  @HttpCode(200)
+  async receiveKommo(@Body() body: any) {
+    try {
+      const tenant = await this.prisma.tenant.findUnique({ where: { slug: 'dua-criativa' } });
+      if (!tenant) return { ok: true };
+
+      const tenantId = tenant.id;
+
+      const processLeads = async (leads: any[], status?: string) => {
+        for (const lead of leads) {
+          const kommoId = parseInt(lead.id, 10);
+          if (!kommoId) continue;
+          await this.prisma.$executeRaw`
+            INSERT INTO "KommoLead" ("id", "tenantId", "kommoId", "name", "stageId", "stageName", "status", "value", "updatedAt")
+            VALUES (gen_random_uuid()::text, ${tenantId}, ${kommoId}, ${lead.name ?? 'Lead'}, ${lead.status_id ? parseInt(lead.status_id, 10) : null}, ${lead.pipeline_id ?? null}, ${status ?? 'active'}, ${lead.price ? parseInt(lead.price, 10) : 0}, NOW())
+            ON CONFLICT ("tenantId", "kommoId") DO UPDATE
+              SET "name" = EXCLUDED."name",
+                  "stageId" = COALESCE(EXCLUDED."stageId", "KommoLead"."stageId"),
+                  "status" = EXCLUDED."status",
+                  "value" = EXCLUDED."value",
+                  "updatedAt" = NOW()
+          `;
+        }
+      };
+
+      const leadsData = body?.leads ?? {};
+      if (leadsData.add?.length)    await processLeads(leadsData.add, 'active');
+      if (leadsData.update?.length) await processLeads(leadsData.update);
+      if (leadsData.status?.length) await processLeads(leadsData.status);
+      if (leadsData.delete?.length) {
+        for (const lead of leadsData.delete) {
+          const kommoId = parseInt(lead.id, 10);
+          if (kommoId) await this.prisma.$executeRaw`DELETE FROM "KommoLead" WHERE "tenantId" = ${tenantId} AND "kommoId" = ${kommoId}`;
+        }
+      }
+
+      return { ok: true };
+    } catch (err: any) {
+      this.logger.error('Kommo webhook error: ' + err.message);
+      return { ok: true };
+    }
+  }
+
   @Post('lead')
   @HttpCode(200)
   async receiveLead(@Body() body: any) {

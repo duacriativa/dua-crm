@@ -455,6 +455,23 @@ function TabIntegracoes() {
 
   useEffect(() => { checkWaStatus(); }, [checkWaStatus]);
 
+  const [kommoStats, setKommoStats] = useState<{ total: number; active: number; won: number; conversionRate: number } | null>(null);
+  const [kommoCopied, setKommoCopied] = useState(false);
+  const KOMMO_WEBHOOK_URL = `${typeof window !== "undefined" ? window.location.origin.replace(":3000", ":3001") : ""}/api/v1/webhooks/kommo`.replace("http://localhost:3001", "https://renewed-youth-production-7d32.up.railway.app");
+
+  useEffect(() => {
+    fetch(`${API_URL}/api/v1/kommo/stats`, { headers: authHeaders() })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => d && setKommoStats(d))
+      .catch(() => {});
+  }, []);
+
+  const copyWebhookUrl = () => {
+    navigator.clipboard.writeText(KOMMO_WEBHOOK_URL);
+    setKommoCopied(true);
+    setTimeout(() => setKommoCopied(false), 2000);
+  };
+
   const comingSoon = [
     { name: "Google Agenda", desc: "Sincronize compromissos", icon: "📅" },
     { name: "Instagram", desc: "Mensagens diretas e comentários", icon: "📸" },
@@ -517,6 +534,56 @@ function TabIntegracoes() {
             <button className="w-full py-2 mt-auto text-sm font-medium rounded-xl transition-colors border border-border text-muted-foreground hover:bg-muted/50">
               Gerenciar
             </button>
+          </div>
+
+          {/* Card do Kommo */}
+          <div className="surface-card p-5 flex flex-col md:col-span-2">
+            <div className="flex items-start justify-between mb-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-muted/50 flex items-center justify-center text-xl">🎯</div>
+                <div>
+                  <p className="font-semibold text-foreground text-sm">Kommo CRM</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">Sincronize leads do funil de vendas</p>
+                </div>
+              </div>
+              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                kommoStats && kommoStats.total > 0
+                  ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30"
+                  : "bg-amber-500/15 text-amber-400 border-amber-500/30"
+              }`}>
+                {kommoStats && kommoStats.total > 0 ? "Ativo" : "Aguardando setup"}
+              </span>
+            </div>
+
+            {kommoStats && kommoStats.total > 0 && (
+              <div className="grid grid-cols-3 gap-3 mb-4">
+                <div className="bg-muted/30 rounded-xl p-3 text-center">
+                  <p className="text-lg font-bold text-foreground">{kommoStats.total}</p>
+                  <p className="text-[10px] text-muted-foreground">Total leads</p>
+                </div>
+                <div className="bg-muted/30 rounded-xl p-3 text-center">
+                  <p className="text-lg font-bold text-foreground">{kommoStats.won}</p>
+                  <p className="text-[10px] text-muted-foreground">Fechados</p>
+                </div>
+                <div className="bg-muted/30 rounded-xl p-3 text-center">
+                  <p className="text-lg font-bold text-primary">{kommoStats.conversionRate}%</p>
+                  <p className="text-[10px] text-muted-foreground">Conversão</p>
+                </div>
+              </div>
+            )}
+
+            <div className="mb-3">
+              <p className="text-xs text-muted-foreground mb-1.5">URL do Webhook — cole no Kommo em Configurações → Web Hooks:</p>
+              <div className="flex gap-2">
+                <code className="flex-1 text-[10px] bg-muted/50 border border-border rounded-lg px-3 py-2 text-muted-foreground truncate font-mono">
+                  {KOMMO_WEBHOOK_URL}
+                </code>
+                <button onClick={copyWebhookUrl} className="px-3 py-2 text-xs font-medium border border-border rounded-lg hover:bg-muted/50 transition-colors shrink-0 flex items-center gap-1.5">
+                  {kommoCopied ? <><Check className="w-3 h-3 text-emerald-400" />Copiado!</> : <><Hash className="w-3 h-3" />Copiar</>}
+                </button>
+              </div>
+              <p className="text-[10px] text-muted-foreground mt-2">Eventos: Adicionar lead, Atualizar lead, Mudar status</p>
+            </div>
           </div>
 
         </div>
