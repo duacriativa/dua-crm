@@ -9,8 +9,7 @@ COPY prisma ./prisma
 RUN npx prisma generate
 
 COPY . .
-RUN npm run build || (echo "=== nest build FAILED ===" && exit 1)
-RUN echo "=== dist/ contents ===" && ls -la dist/ 2>/dev/null || echo "dist/ does not exist"
+RUN npm run build
 RUN ls -la dist/main.js
 
 CMD ["sh", "-c", "npx prisma migrate deploy && node dist/main"]
