@@ -455,7 +455,7 @@ function TabIntegracoes() {
 
   useEffect(() => { checkWaStatus(); }, [checkWaStatus]);
 
-  const [kommoStats, setKommoStats] = useState<{ total: number; active: number; won: number; conversionRate: number } | null>(null);
+  const [kommoStats, setKommoStats] = useState<{ total: number; entrada: number; qualificados: number; atendimento: number; clientes: number; won: number; lost: number; conversionRate: number } | null>(null);
   const [kommoCopied, setKommoCopied] = useState(false);
   const KOMMO_WEBHOOK_URL = `${typeof window !== "undefined" ? window.location.origin.replace(":3000", ":3001") : ""}/api/v1/webhooks/kommo`.replace("http://localhost:3001", "https://renewed-youth-production-7d32.up.railway.app");
 
@@ -556,18 +556,38 @@ function TabIntegracoes() {
             </div>
 
             {kommoStats && kommoStats.total > 0 && (
-              <div className="grid grid-cols-3 gap-3 mb-4">
-                <div className="bg-muted/30 rounded-xl p-3 text-center">
-                  <p className="text-lg font-bold text-foreground">{kommoStats.total}</p>
-                  <p className="text-[10px] text-muted-foreground">Total leads</p>
+              <div className="space-y-3 mb-4">
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="bg-muted/30 rounded-xl p-3 text-center">
+                    <p className="text-lg font-bold text-foreground">{kommoStats.total}</p>
+                    <p className="text-[10px] text-muted-foreground">Total</p>
+                  </div>
+                  <div className="bg-muted/30 rounded-xl p-3 text-center">
+                    <p className="text-lg font-bold text-blue-400">{kommoStats.entrada}</p>
+                    <p className="text-[10px] text-muted-foreground">Entrada</p>
+                  </div>
+                  <div className="bg-muted/30 rounded-xl p-3 text-center">
+                    <p className="text-lg font-bold text-yellow-400">{kommoStats.qualificados}</p>
+                    <p className="text-[10px] text-muted-foreground">Qualificados</p>
+                  </div>
                 </div>
-                <div className="bg-muted/30 rounded-xl p-3 text-center">
-                  <p className="text-lg font-bold text-foreground">{kommoStats.won}</p>
-                  <p className="text-[10px] text-muted-foreground">Fechados</p>
-                </div>
-                <div className="bg-muted/30 rounded-xl p-3 text-center">
-                  <p className="text-lg font-bold text-primary">{kommoStats.conversionRate}%</p>
-                  <p className="text-[10px] text-muted-foreground">Conversão</p>
+                <div className="grid grid-cols-4 gap-2">
+                  <div className="bg-muted/30 rounded-xl p-3 text-center">
+                    <p className="text-lg font-bold text-purple-400">{kommoStats.atendimento}</p>
+                    <p className="text-[10px] text-muted-foreground">Em atendimento</p>
+                  </div>
+                  <div className="bg-muted/30 rounded-xl p-3 text-center">
+                    <p className="text-lg font-bold text-emerald-400">{kommoStats.won}</p>
+                    <p className="text-[10px] text-muted-foreground">Fechados</p>
+                  </div>
+                  <div className="bg-muted/30 rounded-xl p-3 text-center">
+                    <p className="text-lg font-bold text-red-400">{kommoStats.lost}</p>
+                    <p className="text-[10px] text-muted-foreground">Perdidos</p>
+                  </div>
+                  <div className="bg-muted/30 rounded-xl p-3 text-center">
+                    <p className="text-lg font-bold text-primary">{kommoStats.conversionRate}%</p>
+                    <p className="text-[10px] text-muted-foreground">Conversão</p>
+                  </div>
                 </div>
               </div>
             )}
