@@ -206,7 +206,6 @@ export default function ContratosPage() {
   const activeContracts = contracts.filter((c) => c.status === "ACTIVE");
   const filtered = filter === "ALL" ? contracts : contracts.filter((c) => c.status === filter);
   const upsellNow = activeContracts.filter((c) => c.anniversaryInfo?.isUpsellOpportunity);
-  const anniversariesSoon = activeContracts.filter((c) => c.anniversaryInfo?.daysUntilNextAnniversary <= 7);
 
   // Group filtered contracts by service type
   const grouped = SERVICE_ORDER
@@ -255,22 +254,6 @@ export default function ContratosPage() {
         </div>
       )}
 
-      {anniversariesSoon.length > 0 && !upsellNow.some((u) => anniversariesSoon.find((a) => a.id === u.id)) && (
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
-          <div className="flex items-center gap-2 mb-2">
-            <Calendar className="w-4 h-4 text-amber-600" />
-            <p className="text-sm font-semibold text-amber-700">Aniversários nos próximos 7 dias</p>
-          </div>
-          {anniversariesSoon.map((c) => (
-            <div key={c.id} className="flex items-center justify-between py-1">
-              <span className="text-sm text-amber-800 font-medium">{c.clientName}</span>
-              <span className="text-xs text-amber-600">
-                {c.anniversaryInfo.daysUntilNextAnniversary === 0 ? "Hoje!" : `Em ${c.anniversaryInfo.daysUntilNextAnniversary} dias`} · {c.anniversaryInfo.monthsActive + 1}º mês
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
 
       {/* Formulário */}
       {showForm && (
