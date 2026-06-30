@@ -3,7 +3,7 @@ FROM node:18-alpine
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm install --legacy-peer-deps --include=dev
+RUN npm install --legacy-peer-deps --include=dev --ignore-scripts
 
 COPY prisma ./prisma
 RUN npx prisma generate
