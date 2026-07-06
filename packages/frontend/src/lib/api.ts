@@ -33,6 +33,7 @@ api.interceptors.response.use(
       } catch {
         localStorage.removeItem('access_token');
         localStorage.removeItem('refresh_token');
+        if (typeof window !== 'undefined') window.location.href = '/login';
       }
     }
 
