@@ -157,7 +157,30 @@ export class FinancialService {
     // Cruza com pagamentos reais do Asaas (só faz sentido pro mês corrente,
     // já que a API do Asaas sempre retorna a competência atual)
     const normalize = (s: string) =>
-      s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+      s
+        .normalize('NFD').replace(/[̀-ͯ]/g, '')
+        .toLowerCase()
+        .replace(/\b(ltda|me|eireli|mei|epp|sa|s\/a|comercio|comércio|confeccoes|confecções|store|shop|moda|modas)\b/g, '')
+        .replace(/[^a-z0-9\s]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+    // Casa nome do contrato com nome do cliente no Asaas: exato primeiro,
+    // depois por contenção (um nome dentro do outro) — nomes de empresa no
+    // Asaas raramente batem 100% com o apelido usado no contrato.
+    const findAsaasMatch = <T,>(clientName: string, map: Map<string, T>): T | undefined => {
+      const target = normalize(clientName);
+      if (!target) return undefined;
+      if (map.has(target)) return map.get(target);
+      let best: { key: string; val: T } | null = null;
+      for (const [key, val] of map.entries()) {
+        if (key.length < 3 || target.length < 3) continue;
+        if (key.includes(target) || target.includes(key)) {
+          if (!best || key.length > best.key.length) best = { key, val };
+        }
+      }
+      return best?.val;
+    };
 
     const asaasByClient = new Map<string, { status: 'PAID' | 'PENDING' | 'OVERDUE'; value: number; date?: string }>();
     if (isCurrentMonth) {
@@ -192,7 +215,7 @@ export class FinancialService {
 
     const clients = contracts.map((c) => {
       const manualEntry = c.financialEntries[0] ?? null;
-      const asaasMatch = asaasByClient.get(normalize(c.clientName));
+      const asaasMatch = findAsaasMatch(c.clientName, asaasByClient);
 
       // Asaas manda quando existe (é o dado real); lançamento manual é fallback
       // para clientes não cobrados por lá (ex: pagamento direto, PIX combinado etc).
