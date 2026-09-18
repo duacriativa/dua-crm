@@ -219,7 +219,11 @@ export class ContactsController {
     // Quando promover para CLIENT, registrar clientSince se ainda não tiver
     const promotingToClient = body.type === 'CLIENT';
 
-    return this.prisma.contact.updateMany({
+    const contactBeforeUpdate = body.segment !== undefined
+      ? await this.prisma.contact.findFirst({ where: { id, tenantId } })
+      : null;
+
+    const result = await this.prisma.contact.updateMany({
       where: { id, tenantId },
       data: {
         ...(body.name !== undefined && { name: body.name }),
@@ -235,6 +239,41 @@ export class ContactsController {
         ...(promotingToClient && { clientSince: new Date() }),
       },
     });
+
+    // Marcar cliente como Inativo (DORMANT) cancela automaticamente os
+    // contratos ativos dele — evita que ele continue cobrando no Financeiro
+    // mesmo depois de já ter sido dado como inativo na tela de Clientes.
+    if (body.segment === 'DORMANT' && contactBeforeUpdate?.segment !== 'DORMANT' && contactBeforeUpdate?.name) {
+      await this.cancelActiveContractsForClient(tenantId, contactBeforeUpdate.name);
+    }
+
+    return result;
+  }
+
+  /** Cancela contratos ativos cujo clientName bate (exato ou por contenção) com o nome do contato. */
+  private async cancelActiveContractsForClient(tenantId: string, contactName: string) {
+    const normalize = (s: string) =>
+      s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim();
+
+    const target = normalize(contactName);
+    if (!target) return;
+
+    const activeContracts = await this.prisma.contract.findMany({
+      where: { tenantId, status: 'ACTIVE' },
+      select: { id: true, clientName: true },
+    });
+
+    const matches = activeContracts.filter((c) => {
+      const key = normalize(c.clientName);
+      return key === target || (key.length >= 3 && target.length >= 3 && (key.includes(target) || target.includes(key)));
+    });
+
+    if (matches.length > 0) {
+      await this.prisma.contract.updateMany({
+        where: { id: { in: matches.map((m) => m.id) } },
+        data: { status: 'CANCELLED' },
+      });
+    }
   }
 
   /** PATCH /contacts/:id/qualify — qualificação manual (para leads do WhatsApp) */
