@@ -65,11 +65,12 @@ interface Dashboard {
 }
 
 interface ClientEntry {
-  id: string;
+  id: string | null;
   status: "PENDING" | "PAID" | "OVERDUE" | "CANCELLED";
   paidAt: string | null;
   dueDate: string;
   value: number;
+  source: "asaas" | "manual";
 }
 
 interface ClientRow {
@@ -298,7 +299,7 @@ function ClientesTab({ hideValues }: { hideValues: boolean }) {
   useEffect(() => { load(month); }, [month, load]);
 
   const togglePay = async (client: ClientRow) => {
-    if (!client.entry) return;
+    if (!client.entry || client.entry.source === "asaas" || !client.entry.id) return;
     const newPaid = client.entry.status !== "PAID";
     setToggling(client.entry.id);
     try {
@@ -402,7 +403,9 @@ function ClientesTab({ hideValues }: { hideValues: boolean }) {
           <div className="divide-y divide-border">
             {clientsByService(svc.key).map((client) => {
               const isPaid = client.entry?.status === "PAID";
+              const isOverdue = client.entry?.status === "OVERDUE";
               const hasEntry = !!client.entry;
+              const isFromAsaas = client.entry?.source === "asaas";
               const isToggling = toggling === client.entry?.id;
 
               return (
@@ -424,7 +427,27 @@ function ClientesTab({ hideValues }: { hideValues: boolean }) {
 
                   <div className="flex items-center gap-3">
                     <span className="text-sm font-medium text-foreground">{hideValues ? "R$ •••" : fmt(client.monthlyValue)}</span>
-                    {hasEntry ? (
+                    {hasEntry && isFromAsaas ? (
+                      <span
+                        title="Status vindo automaticamente do Asaas"
+                        className={`flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border ${
+                          isPaid
+                            ? "bg-green-50 border-green-200 text-green-700"
+                            : isOverdue
+                            ? "bg-red-50 border-red-200 text-red-700"
+                            : "bg-amber-50 border-amber-200 text-amber-700"
+                        }`}
+                      >
+                        {isPaid ? (
+                          <><CheckCircle2 className="w-3 h-3" /> Pago</>
+                        ) : isOverdue ? (
+                          <><Clock className="w-3 h-3" /> Atrasado</>
+                        ) : (
+                          <><Clock className="w-3 h-3" /> Pendente</>
+                        )}
+                        <span className="text-[9px] opacity-60 ml-0.5">Asaas</span>
+                      </span>
+                    ) : hasEntry ? (
                       <button
                         onClick={() => togglePay(client)}
                         disabled={isToggling}

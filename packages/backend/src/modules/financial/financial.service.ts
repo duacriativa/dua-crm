@@ -141,6 +141,7 @@ export class FinancialService {
 
     const startOfMonth = new Date(year, mon - 1, 1);
     const endOfMonth = new Date(year, mon, 0, 23, 59, 59);
+    const isCurrentMonth = year === now.getFullYear() && mon === now.getMonth() + 1;
 
     const contracts = await this.prisma.contract.findMany({
       where: { tenantId, status: 'ACTIVE' },
@@ -153,6 +154,34 @@ export class FinancialService {
       },
     });
 
+    // Cruza com pagamentos reais do Asaas (só faz sentido pro mês corrente,
+    // já que a API do Asaas sempre retorna a competência atual)
+    const normalize = (s: string) =>
+      s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+
+    const asaasByClient = new Map<string, { status: 'PAID' | 'PENDING' | 'OVERDUE'; value: number; date?: string }>();
+    if (isCurrentMonth) {
+      try {
+        const asaasSummary = await this.asaas.getMonthlySummary();
+        // Prioridade: pago > atrasado > pendente (se tiver mais de uma cobrança, a "melhor" vence)
+        const applyBucket = (items: any[], status: 'PAID' | 'PENDING' | 'OVERDUE', dateField: string) => {
+          for (const item of items) {
+            const key = normalize(item.customerName ?? item.customer ?? '');
+            if (!key) continue;
+            const existing = asaasByClient.get(key);
+            if (!existing || (status === 'PAID' && existing.status !== 'PAID')) {
+              asaasByClient.set(key, { status, value: item.value, date: item[dateField] });
+            }
+          }
+        };
+        applyBucket(asaasSummary.pending.items, 'PENDING', 'dueDate');
+        applyBucket(asaasSummary.overdue.items, 'OVERDUE', 'dueDate');
+        applyBucket(asaasSummary.paid.items, 'PAID', 'paymentDate');
+      } catch (err: any) {
+        this.logger.error('Erro ao cruzar Asaas em getClientes: ' + err.message);
+      }
+    }
+
     const SERVICE_LABELS: Record<string, string> = {
       SOCIAL_MEDIA: 'G. Redes',
       PAID_TRAFFIC: 'G. Anúncios',
@@ -162,16 +191,32 @@ export class FinancialService {
     };
 
     const clients = contracts.map((c) => {
-      const entry = c.financialEntries[0] ?? null;
+      const manualEntry = c.financialEntries[0] ?? null;
+      const asaasMatch = asaasByClient.get(normalize(c.clientName));
+
+      // Asaas manda quando existe (é o dado real); lançamento manual é fallback
+      // para clientes não cobrados por lá (ex: pagamento direto, PIX combinado etc).
+      let entry: { id: string | null; status: string; paidAt: Date | string | null; dueDate: Date | string | null; value: number; source: 'asaas' | 'manual' } | null = null;
+      if (asaasMatch) {
+        entry = {
+          id: manualEntry?.id ?? null,
+          status: asaasMatch.status,
+          paidAt: asaasMatch.status === 'PAID' ? (asaasMatch.date ?? null) : null,
+          dueDate: asaasMatch.status !== 'PAID' ? (asaasMatch.date ?? null) : null,
+          value: asaasMatch.value,
+          source: 'asaas',
+        };
+      } else if (manualEntry) {
+        entry = { ...manualEntry, source: 'manual' };
+      }
+
       return {
         contractId: c.id,
         clientName: c.clientName,
         serviceType: c.serviceType,
         serviceLabel: SERVICE_LABELS[c.serviceType] ?? c.serviceType,
         monthlyValue: c.monthlyValue,
-        entry: entry
-          ? { id: entry.id, status: entry.status, paidAt: entry.paidAt, dueDate: entry.dueDate, value: entry.value }
-          : null,
+        entry,
       };
     });
 
@@ -180,7 +225,7 @@ export class FinancialService {
       .filter((c) => c.entry?.status === 'PAID')
       .reduce((s, c) => s + (c.entry?.value ?? c.monthlyValue), 0);
     const pendente = clients
-      .filter((c) => !c.entry || c.entry.status === 'PENDING')
+      .filter((c) => !c.entry || c.entry.status === 'PENDING' || c.entry.status === 'OVERDUE')
       .reduce((s, c) => s + c.monthlyValue, 0);
 
     const byService: Record<string, { label: string; contratado: number; recebido: number; pendente: number }> = {};
