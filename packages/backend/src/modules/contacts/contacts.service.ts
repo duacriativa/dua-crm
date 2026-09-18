@@ -37,7 +37,10 @@ export class ContactsService {
         where,
         skip,
         take: limit,
-        orderBy: { updatedAt: 'desc' },
+        // Enum ContactSegment é declarado como NEW, ACTIVE, VIP, AT_RISK, DORMANT —
+        // ordenar 'asc' por ele naturalmente joga os inativos (DORMANT) pro final,
+        // sem misturar com os clientes ativos no topo da lista.
+        orderBy: [{ segment: 'asc' }, { updatedAt: 'desc' }],
         select: {
           id: true,
           name: true,
