@@ -1,4 +1,5 @@
-import { ContractServiceType } from '@prisma/client';
+import { ContractServiceType, ContractStatus } from '@prisma/client';
+import { IsEnum, IsOptional } from 'class-validator';
 
 export class CreateContractDto {
   clientName: string;
@@ -7,6 +8,9 @@ export class CreateContractDto {
   contactId?: string;
   asaasCustomerId?: string;
   serviceType: ContractServiceType;
+  @IsOptional()
+  @IsEnum(ContractStatus)
+  status?: ContractStatus;
   description?: string;
   totalValue: number;
   monthlyValue: number;

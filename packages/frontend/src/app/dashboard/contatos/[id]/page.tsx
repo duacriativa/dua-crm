@@ -361,6 +361,7 @@ function ContractsSection({ contactName }: { contactName: string }) {
   const [cancelReason, setCancelReason] = useState("");
   const [cancelling, setCancelling] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [reactivatingId, setReactivatingId] = useState<string | null>(null);
   const [form, setForm] = useState({
     serviceType: "SOCIAL_MEDIA", monthlyValue: "", signedAt: "", startsAt: "",
   });
@@ -370,8 +371,13 @@ function ContractsSection({ contactName }: { contactName: string }) {
     try {
       const res = await api.get("/contracts");
       const all: any[] = Array.isArray(res.data) ? res.data : [];
-      const name = contactName.toLowerCase();
-      setContracts(all.filter((c) => c.clientName.toLowerCase() === name));
+      const normalize = (s: string) =>
+        s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9\s]/g, "").replace(/\s+/g, " ").trim();
+      const target = normalize(contactName);
+      setContracts(all.filter((c) => {
+        const key = normalize(c.clientName);
+        return key === target || (key.length >= 3 && target.length >= 3 && (key.includes(target) || target.includes(key)));
+      }));
     } catch { } finally { setLoading(false); }
   };
 
@@ -404,6 +410,14 @@ function ContractsSection({ contactName }: { contactName: string }) {
       setCancelReason("");
       load();
     } catch { } finally { setCancelling(false); }
+  };
+
+  const reactivateContract = async (id: string) => {
+    setReactivatingId(id);
+    try {
+      await api.patch(`/contracts/${id}`, { status: "ACTIVE" });
+      load();
+    } catch { } finally { setReactivatingId(null); }
   };
 
   const active = contracts.filter((c) => c.status === "ACTIVE");
@@ -499,7 +513,7 @@ function ContractsSection({ contactName }: { contactName: string }) {
           {inactive.map((c) => {
             const svc = SERVICE_CONFIG[c.serviceType] ?? SERVICE_CONFIG.OTHER;
             return (
-              <div key={c.id} className="flex items-center justify-between rounded-xl p-3 bg-muted/10 border border-border/50 opacity-50">
+              <div key={c.id} className="flex items-center justify-between rounded-xl p-3 bg-muted/10 border border-border/50 opacity-50 hover:opacity-100 transition-opacity group">
                 <div>
                   <div className="flex items-center gap-2 mb-0.5">
                     <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${svc.color}`}>{svc.short}</span>
@@ -507,6 +521,13 @@ function ContractsSection({ contactName }: { contactName: string }) {
                   </div>
                   <p className="text-sm font-semibold text-foreground">{fmtVal(c.monthlyValue)}<span className="text-xs text-muted-foreground font-normal">/mês</span></p>
                 </div>
+                <button
+                  onClick={() => reactivateContract(c.id)}
+                  disabled={reactivatingId === c.id}
+                  className="text-[10px] text-green-600 hover:text-green-700 opacity-0 group-hover:opacity-100 transition-all disabled:opacity-50"
+                >
+                  {reactivatingId === c.id ? "Reativando..." : "Reativar"}
+                </button>
               </div>
             );
           })}
