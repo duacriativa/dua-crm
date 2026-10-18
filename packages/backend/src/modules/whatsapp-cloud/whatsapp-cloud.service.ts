@@ -5,6 +5,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { EncryptionService } from '../../common/services/encryption.service';
 import { FunnelService } from '../pipelines/funnel.service';
 import { PushService } from '../notifications/push.service';
+import { phoneVariants, toBrDigits } from '../../common/phone.util';
 
 type MsgType = 'TEXT' | 'IMAGE' | 'VIDEO' | 'AUDIO' | 'DOCUMENT' | 'INTERACTIVE';
 
@@ -235,9 +236,7 @@ export class WhatsAppCloudService {
   // ── Envio ──────────────────────────────────────────────────────────────────
 
   private toWaId(phone: string) {
-    let digits = (phone || '').replace(/\D/g, '');
-    if ((digits.length === 10 || digits.length === 11) && !digits.startsWith('55')) digits = '55' + digits;
-    return digits;
+    return toBrDigits(phone);
   }
 
   private async post(tenantId: string, path: string, body: any) {
@@ -469,11 +468,7 @@ export class WhatsAppCloudService {
     const raw = this.toWaId(customerWaId);
     const phone = `+${raw}`;
     // Brasil: variantes com e sem o nono dígito
-    const variants = [phone];
-    if (raw.startsWith('55') && raw.length === 12) variants.push(`+${raw.slice(0, 4)}9${raw.slice(4)}`);
-    if (raw.startsWith('55') && raw.length === 13) variants.push(`+${raw.slice(0, 4)}${raw.slice(5)}`);
-
-    let contact = await this.prisma.contact.findFirst({ where: { tenantId, phone: { in: variants } } });
+    let contact = await this.prisma.contact.findFirst({ where: { tenantId, phone: { in: phoneVariants(raw) } } });
     const isNewContact = !contact;
     if (!contact) {
       contact = await this.prisma.contact.create({

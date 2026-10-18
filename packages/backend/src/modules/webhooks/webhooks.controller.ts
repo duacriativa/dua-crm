@@ -2,6 +2,7 @@ import { Controller, Post, Body, HttpCode, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { FunnelService } from '../pipelines/funnel.service';
+import { normalizePhone, phoneVariants } from '../../common/phone.util';
 
 @Controller('webhooks')
 export class WebhooksController {
@@ -124,7 +125,10 @@ export class WebhooksController {
       const tenant = await this.prisma.tenant.findUnique({ where: { slug } });
       if (!tenant) return { ok: false, error: 'Tenant não encontrado' };
 
-      const phone = body.whatsapp ? `+${body.whatsapp.replace(/\D/g, '')}` : null;
+      // Mesmo formato do WhatsApp (+55...), senão quem preenche o form e depois
+      // chama no WhatsApp vira dois contatos
+      const phone = body.whatsapp ? normalizePhone(String(body.whatsapp)) : null;
+      const email = typeof body.email === 'string' && body.email.trim() ? body.email.trim() : null;
 
       // O site manda UTMs em camelCase com "-" quando não há; aceita os dois formatos
       const utm = (snake: string, camel: string) => {
@@ -134,59 +138,53 @@ export class WebhooksController {
       const utmSource = utm('utm_source', 'utmSource');
       const utmMedium = utm('utm_medium', 'utmMedium');
       const utmCampaign = utm('utm_campaign', 'utmCampaign');
+      const faturamento = body.faturamento_mensal || body.faturamento || null;
+      const modelo = body.modelo_venda || body.modelo || null;
 
-      const contact = await this.prisma.contact.upsert({
-        where: { tenantId_phone: { tenantId: tenant.id, phone: phone || '' } },
-        create: {
-          tenantId: tenant.id,
-          type: 'LEAD',
-          name: body.name,
-          phone,
-          email: body.email || null,
-          instagramHandle: body.instagram || null,
-          monthlyRevenue: body.faturamento_mensal || body.faturamento || null,
-          saleModel: body.modelo_venda || body.modelo || null,
-          utmSource,
-          utmMedium,
-          utmCampaign,
-          tags: [
-            body.faturamento_mensal || body.faturamento,
-            body.modelo_venda || body.modelo,
-          ].filter(Boolean) as string[],
-        },
-        update: {
-          email: body.email || undefined,
-          monthlyRevenue: body.faturamento_mensal || body.faturamento || undefined,
-          saleModel: body.modelo_venda || body.modelo || undefined,
-          utmSource: utmSource ?? undefined,
-          utmMedium: utmMedium ?? undefined,
-          utmCampaign: utmCampaign ?? undefined,
-        },
-      }).catch(async () => {
-        return this.prisma.contact.create({
-          data: {
-            tenantId: tenant.id,
-            type: 'LEAD',
-            name: body.name,
-            phone,
-            email: body.email || null,
-            instagramHandle: body.instagram || null,
-            monthlyRevenue: body.faturamento_mensal || body.faturamento || null,
-            saleModel: body.modelo_venda || body.modelo || null,
-            utmSource,
-            utmMedium,
-            utmCampaign,
-            tags: [body.faturamento_mensal || body.faturamento, body.modelo_venda || body.modelo].filter(Boolean) as string[],
-          },
-        });
-      });
+      // Procura pelo telefone (com/sem nono dígito) e, sem telefone, pelo e-mail
+      const existing = phone
+        ? await this.prisma.contact.findFirst({ where: { tenantId: tenant.id, phone: { in: phoneVariants(phone) } } })
+        : email
+          ? await this.prisma.contact.findFirst({ where: { tenantId: tenant.id, email: { equals: email, mode: 'insensitive' } } })
+          : null;
+
+      const contact = existing
+        ? await this.prisma.contact.update({
+            where: { id: existing.id },
+            data: {
+              // Contato criado pelo WhatsApp fica com o número/perfil como nome; o do form é melhor
+              name: body.name && (!existing.name || existing.name === existing.phone) ? body.name : undefined,
+              email: email ?? undefined,
+              instagramHandle: existing.instagramHandle ? undefined : body.instagram || undefined,
+              monthlyRevenue: faturamento ?? undefined,
+              saleModel: modelo ?? undefined,
+              utmSource: utmSource ?? undefined,
+              utmMedium: utmMedium ?? undefined,
+              utmCampaign: utmCampaign ?? undefined,
+              tags: [...new Set([...(existing.tags ?? []), faturamento, modelo].filter(Boolean) as string[])],
+            },
+          })
+        : await this.prisma.contact.create({
+            data: {
+              tenantId: tenant.id,
+              type: 'LEAD',
+              name: body.name,
+              phone,
+              email,
+              instagramHandle: body.instagram || null,
+              monthlyRevenue: faturamento,
+              saleModel: modelo,
+              utmSource,
+              utmMedium,
+              utmCampaign,
+              tags: [faturamento, modelo].filter(Boolean) as string[],
+            },
+          });
 
       // Cai na primeira etapa do funil principal, igual aos leads do WhatsApp.
       // Clique anônimo no botão de WhatsApp (sem telefone nem e-mail) não vira card:
       // a conversa em si já entra no funil pelo canal do WhatsApp.
-      if (phone || body.email) {
-        const faturamento = body.faturamento_mensal || body.faturamento;
-        const modelo = body.modelo_venda || body.modelo;
+      if (phone || email) {
         const leadNotes = [
           'Origem: Site',
           faturamento ? `Faturamento: ${faturamento}` : '',
