@@ -29,6 +29,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
       await this.$connect();
       await this.$queryRaw`SELECT 1 AS ok`;
       this.logger.log('Banco OK ✓');
+      await this.ensureSchema();
     } catch (e: any) {
       // NÃO relança — deixa o app subir mesmo com DB inacessível.
       // O health endpoint retorna 503/degraded e os endpoints que usam DB
@@ -36,6 +37,45 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
       // e Railway mostrar "Application failed to respond" para TODOS os requests.
       this.logger.error(`BANCO INACESSÍVEL na inicialização: ${e.message}`);
     }
+  }
+
+  /**
+   * O deploy (Dockerfile) não roda `prisma migrate deploy`. Alterações novas de
+   * schema entram aqui, idempotentes (IF NOT EXISTS), espelhando prisma/migrations.
+   */
+  private async ensureSchema() {
+    const statements = [
+      // 20261018000001_add_media_id_to_message
+      `ALTER TABLE "Message" ADD COLUMN IF NOT EXISTS "mediaId" TEXT`,
+      // 20261018000002_add_push_subscriptions
+      `CREATE TABLE IF NOT EXISTS "PushSubscription" (
+        "id" TEXT NOT NULL,
+        "tenantId" TEXT NOT NULL,
+        "userId" TEXT NOT NULL,
+        "endpoint" TEXT NOT NULL,
+        "p256dh" TEXT NOT NULL,
+        "auth" TEXT NOT NULL,
+        "userAgent" TEXT,
+        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT "PushSubscription_pkey" PRIMARY KEY ("id")
+      )`,
+      `CREATE UNIQUE INDEX IF NOT EXISTS "PushSubscription_endpoint_key" ON "PushSubscription"("endpoint")`,
+      `CREATE INDEX IF NOT EXISTS "PushSubscription_tenantId_idx" ON "PushSubscription"("tenantId")`,
+      `CREATE TABLE IF NOT EXISTS "AppSetting" (
+        "key" TEXT NOT NULL,
+        "value" TEXT NOT NULL,
+        "updatedAt" TIMESTAMP(3) NOT NULL,
+        CONSTRAINT "AppSetting_pkey" PRIMARY KEY ("key")
+      )`,
+    ];
+    for (const sql of statements) {
+      try {
+        await this.$executeRawUnsafe(sql);
+      } catch (e: any) {
+        this.logger.error(`[ensureSchema] Falhou: ${sql.split('\n')[0]} — ${e.message}`);
+      }
+    }
+    this.logger.log('[ensureSchema] Schema verificado ✓');
   }
 
   async onModuleDestroy() {
