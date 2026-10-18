@@ -32,7 +32,8 @@ async function bootstrap() {
   console.log('[Bootstrap] AppModule inicializado com sucesso');
 
   // ── Body size limit (webhook Evolution API envia QR codes em base64) ───────
-  app.use(json({ limit: '10mb' }));
+  // verify guarda o corpo cru — necessário para validar a assinatura do webhook da Meta
+  app.use(json({ limit: '10mb', verify: (req: any, _res, buf: Buffer) => { req.rawBody = buf; } }));
   app.use(urlencoded({ extended: true, limit: '10mb' }));
 
   // ── CORS manual via Express puro (antes de qualquer middleware NestJS) ──

@@ -1,14 +1,25 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import axios from 'axios';
 import { WhatsAppService } from '../whatsapp/whatsapp.service';
+import { WhatsAppCloudService } from '../whatsapp-cloud/whatsapp-cloud.service';
 
 @Injectable()
 export class ConversationsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly whatsappService: WhatsAppService,
+    private readonly cloud: WhatsAppCloudService,
   ) {}
+
+  /** Número do contato para a Cloud API (sem LID/grupo). */
+  private cloudRecipient(conv: { externalId: string | null; contact: { phone: string | null } }) {
+    const ext = conv.externalId || '';
+    if (ext.endsWith('@g.us')) throw new BadRequestException('A API oficial não envia mensagens para grupos.');
+    const digits = (conv.contact.phone || '').replace(/\D/g, '') || (ext.endsWith('@s.whatsapp.net') ? ext.replace(/\D/g, '') : '');
+    if (!digits) throw new BadRequestException('Contato sem número de telefone válido para a API oficial.');
+    return digits;
+  }
 
   private get evolutionHeaders() {
     return {
@@ -156,6 +167,26 @@ export class ConversationsService {
     });
     if (!conv) throw new NotFoundException('Conversa não encontrada.');
 
+    // API oficial conectada → envia pela Cloud API
+    if (await this.cloud.isConnected(tenantId)) {
+      const { externalId } = await this.cloud.sendText(tenantId, this.cloudRecipient(conv), content, quotedExternalId);
+      const message = await this.prisma.message.create({
+        data: {
+          conversationId,
+          direction: 'OUTBOUND',
+          type: 'TEXT',
+          content,
+          sentAt: new Date(),
+          externalId,
+          quotedContent: quotedContent || null,
+          quotedExternalId: quotedExternalId || null,
+          quotedType: quotedType || null,
+        },
+      });
+      await this.prisma.conversation.update({ where: { id: conversationId }, data: { updatedAt: new Date() } });
+      return message;
+    }
+
     // Suporte a LID (@lid suffix), formato antigo (lid:) e número normal (+5521...)
     const externalId = conv.externalId || '';
     let number: string;
@@ -255,6 +286,26 @@ export class ConversationsService {
       include: { contact: { select: { phone: true } } },
     });
     if (!conv) throw new NotFoundException('Conversa não encontrada.');
+
+    const msgTypeOf = (t: string) => (t === 'image' ? 'IMAGE' : t === 'video' ? 'VIDEO' : t === 'audio' ? 'AUDIO' : 'DOCUMENT');
+
+    // API oficial conectada → upload + envio pela Cloud API
+    if (await this.cloud.isConnected(tenantId)) {
+      const { externalId, mediaId } = await this.cloud.sendMedia(tenantId, this.cloudRecipient(conv), base64, mediatype, filename, caption);
+      const message = await this.prisma.message.create({
+        data: {
+          conversationId,
+          direction: 'OUTBOUND',
+          type: msgTypeOf(mediatype),
+          content: caption || filename,
+          sentAt: new Date(),
+          externalId,
+          mediaId,
+        },
+      });
+      await this.prisma.conversation.update({ where: { id: conversationId }, data: { updatedAt: new Date() } });
+      return message;
+    }
 
     const phone = conv.contact.phone?.replace(/\D/g, '') || conv.externalId.replace(/\D/g, '');
     const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { slug: true } });
@@ -430,6 +481,18 @@ export class ConversationsService {
       where: { id: messageId, conversationId },
     });
     if (!msg) throw new NotFoundException('Mensagem não encontrada.');
+
+    // Mídia da API oficial: baixa sob demanda pelo media id
+    if (msg.mediaId) {
+      try {
+        const dataUri = await this.cloud.downloadMedia(tenantId, msg.mediaId);
+        await this.prisma.message.update({ where: { id: messageId }, data: { mediaUrl: dataUri } });
+        return { mediaUrl: dataUri };
+      } catch (err: any) {
+        throw new NotFoundException(`Não foi possível carregar a mídia: ${err?.response?.data?.error?.message ?? err.message}`);
+      }
+    }
+
     if (!msg.externalId) throw new NotFoundException('Mensagem sem ID externo para recarregar.');
 
     const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { slug: true } });

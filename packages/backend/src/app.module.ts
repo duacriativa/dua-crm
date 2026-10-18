@@ -10,6 +10,7 @@ import { TenantsModule } from './modules/tenants/tenants.module';
 import { ContactsModule } from './modules/contacts/contacts.module';
 import { ConversationsModule } from './modules/conversations/conversations.module';
 import { WhatsAppModule } from './modules/whatsapp/whatsapp.module';
+import { WhatsAppCloudModule } from './modules/whatsapp-cloud/whatsapp-cloud.module';
 import { InstagramModule } from './modules/instagram/instagram.module';
 import { AutomationsModule } from './modules/automations/automations.module';
 import { CampaignsModule } from './modules/campaigns/campaigns.module';
@@ -50,6 +51,7 @@ import { EventEmitterModule } from '@nestjs/event-emitter';
     ContactsModule,
     ConversationsModule,
     WhatsAppModule,
+    WhatsAppCloudModule,
     InstagramModule,
     AutomationsModule,
     CampaignsModule,

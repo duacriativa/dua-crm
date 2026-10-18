@@ -2,6 +2,7 @@ import { Injectable, Logger, HttpException, HttpStatus } from '@nestjs/common';
 import axios from 'axios';
 import { PrismaService } from '../../prisma/prisma.service';
 import { EncryptionService } from '../../common/services/encryption.service';
+import { FunnelService } from '../pipelines/funnel.service';
 
 @Injectable()
 export class WhatsAppService {
@@ -10,6 +11,7 @@ export class WhatsAppService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly encryption: EncryptionService,
+    private readonly funnel: FunnelService,
   ) {}
 
   // Lê sempre do process.env em cada chamada (evita problema de inicialização)
@@ -512,6 +514,11 @@ export class WhatsAppService {
         });
 
         this.logger.log(`Mensagem salva na conversa ${conversationId}`);
+
+        // Alimenta o funil: lead que chamou (fora de grupo) cai na 1ª etapa
+        if (!isFromMe && !isGroup) {
+          await this.funnel.ensureLead(tenant.id, conv.contactId, 'Origem: WhatsApp');
+        }
       }
     } catch (err: any) {
       this.logger.error('Erro no webhook:', err.message);

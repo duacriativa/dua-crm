@@ -7,6 +7,7 @@ import {
   X, ChevronRight, Star, RefreshCw, ArrowLeft,
   Plus, AlertCircle, Smartphone, Download, ZoomIn, Play, Pause, Crown
 } from "lucide-react";
+import { CloudConnect } from "@/components/whatsapp/cloud-connect";
 
 const API_URL = "";
 function getToken() { return typeof window !== "undefined" ? localStorage.getItem("access_token") : ""; }
@@ -384,6 +385,13 @@ function ChatView({ conv, messages, loadingMsgs, text, setText, onSend, sending,
                       )}
                     </div>
                   )}
+                  {/* Mídia ainda não baixada (API oficial baixa sob demanda) */}
+                  {["IMAGE", "VIDEO", "DOCUMENT"].includes(msg.type?.toUpperCase() || "") && !msg.mediaUrl && msg.externalId && (
+                    <button onClick={() => reloadMedia(msg)} disabled={audioReloading}
+                      className="flex items-center gap-1.5 text-xs font-semibold underline opacity-70 hover:opacity-100 disabled:opacity-30 mb-1.5">
+                      <RefreshCw className={`w-3 h-3 ${audioReloading ? "animate-spin" : ""}`} /> Carregar mídia
+                    </button>
+                  )}
                   {/* IMAGE */}
                   {msg.type?.toUpperCase() === "IMAGE" && msg.mediaUrl && (
                     <div className="relative mb-1.5 group cursor-pointer rounded-xl overflow-hidden"
@@ -442,15 +450,17 @@ function ChatView({ conv, messages, loadingMsgs, text, setText, onSend, sending,
   );
 }
 
-function SettingsPanel({ onClose, onDisconnect }: { onClose: () => void; onDisconnect: () => void }) {
+function SettingsPanel({ onClose, onDisconnect, provider }: { onClose: () => void; onDisconnect: () => void; provider: "cloud" | "evolution" }) {
   const [disconnecting, setDisconnecting] = useState(false);
 
   const handleDisconnect = async () => {
-    if (!confirm("Tem certeza que deseja desconectar o WhatsApp? Você precisará escanear o QR Code novamente.")) return;
+    if (!confirm(provider === "cloud"
+      ? "Desconectar a API oficial do CRM? O número continua funcionando no app do celular."
+      : "Tem certeza que deseja desconectar o WhatsApp? Você precisará escanear o QR Code novamente.")) return;
     setDisconnecting(true);
     // Tenta desconectar no backend mas não bloqueia o fluxo se falhar
     try {
-      await fetch(`${API_URL}/api/v1/whatsapp/disconnect`, { method: "POST", headers: authHeaders() });
+      await fetch(`${API_URL}/api/v1/${provider === "cloud" ? "whatsapp-cloud" : "whatsapp"}/disconnect`, { method: "POST", headers: authHeaders() });
     } catch {
       // ignora erro de rede — prossegue com desconexão local
     } finally {
@@ -628,9 +638,23 @@ export default function WhatsAppPage() {
   const [waStatus, setWaStatus] = useState<"checking" | "connected" | "disconnected">("checking");
   const [waQr, setWaQr] = useState<string | null>(null);
   const [waLoading, setWaLoading] = useState(false);
+  const [waProvider, setWaProvider] = useState<"cloud" | "evolution">("evolution");
 
   const checkWaStatus = useCallback(async () => {
     try {
+      // 0. API oficial (Cloud API) conectada tem prioridade sobre a Evolution
+      const cloudRes = await fetch(`${API_URL}/api/v1/whatsapp-cloud/status`, { headers: authHeaders() }).catch(() => null);
+      if (cloudRes?.ok) {
+        const cloud = await cloudRes.json();
+        if (cloud.connected) {
+          setWaProvider("cloud");
+          setWaStatus("connected");
+          setWaQr(null);
+          return true;
+        }
+      }
+      setWaProvider("evolution");
+
       // 1. Tenta o endpoint de status (rápido)
       const res = await fetch(`${API_URL}/api/v1/whatsapp/status`, { headers: authHeaders() });
       if (res.ok) {
@@ -804,8 +828,15 @@ export default function WhatsAppPage() {
                 </div>
                 <h2 className="text-xl font-bold text-foreground mb-2">Conecte seu WhatsApp</h2>
                 <p className="text-sm text-muted-foreground mb-6">
-                  Para enviar e receber mensagens, você precisa conectar seu aparelho escaneando o QR Code.
+                  Conecte pela API oficial da Meta (recomendado) ou pelo QR Code.
                 </p>
+
+                <CloudConnect onConnected={() => checkWaStatus()} />
+                <div className="flex items-center gap-3 w-full my-5">
+                  <div className="h-px flex-1 bg-border" />
+                  <span className="text-[11px] text-muted-foreground">ou via QR Code (não oficial)</span>
+                  <div className="h-px flex-1 bg-border" />
+                </div>
 
                 {waQr ? (
                   <div className="flex flex-col items-center">
@@ -840,7 +871,7 @@ export default function WhatsAppPage() {
             text={text} setText={setText} onSend={sendMessage} sending={sending}
             onBack={() => setMobileView("list")} isMobile onUpdateMessage={updateMessage} />
         )}
-        {mobileView === "settings" && <SettingsPanel onClose={() => setMobileView("list")} onDisconnect={() => setWaStatus("disconnected")} />}
+        {mobileView === "settings" && <SettingsPanel onClose={() => setMobileView("list")} onDisconnect={() => setWaStatus("disconnected")} provider={waProvider} />}
       </div>
 
       {/* ── Desktop ── */}
@@ -870,7 +901,7 @@ export default function WhatsAppPage() {
         )}
         {showSettings && (
           <div className="w-80 shrink-0 border-l border-border bg-background">
-            <SettingsPanel onClose={() => setShowSettings(false)} onDisconnect={() => setWaStatus("disconnected")} />
+            <SettingsPanel onClose={() => setShowSettings(false)} onDisconnect={() => setWaStatus("disconnected")} provider={waProvider} />
           </div>
         )}
       </div>

@@ -253,6 +253,7 @@ model Message {
   type           MessageType      @default(TEXT)
   content        String
   mediaUrl       String?
+  mediaId        String?          // ID da mídia na WhatsApp Cloud API (download sob demanda)
   templateName   String?
   externalId     String?          // Meta message ID
   senderName       String?        // nome de quem enviou (em grupos: pushName do remetente)
