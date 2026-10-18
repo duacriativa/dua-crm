@@ -158,7 +158,7 @@ function MobileNav() {
 
   return (
     <>
-      <header className="lg:hidden fixed top-0 left-0 right-0 z-40 flex items-center justify-between px-4 h-14 bg-sidebar border-b border-sidebar-border">
+      <header className="lg:hidden fixed top-0 left-0 right-0 z-40 flex items-center justify-between px-4 h-[calc(3.5rem+env(safe-area-inset-top))] pt-[env(safe-area-inset-top)] bg-sidebar border-b border-sidebar-border">
         <div className="flex items-center gap-2">
           <img src="/brand/logo-dua-crm-branco.png" alt="dua.crm" className="h-6 w-auto" />
         </div>
@@ -176,7 +176,7 @@ function MobileNav() {
       {open && <div className="lg:hidden fixed inset-0 z-50 bg-black/60 backdrop-blur-sm" onClick={() => setOpen(false)} />}
 
       <aside className={`lg:hidden fixed top-0 right-0 bottom-0 z-50 w-72 bg-sidebar text-sidebar-foreground flex flex-col shadow-2xl transition-transform duration-300 ease-in-out ${open ? "translate-x-0" : "translate-x-full"}`}>
-        <div className="flex items-center justify-between px-5 py-4 border-b border-sidebar-border">
+        <div className="flex items-center justify-between px-5 py-4 pt-[calc(1rem+env(safe-area-inset-top))] border-b border-sidebar-border">
           <div className="flex items-center gap-2.5">
             <img src="/brand/logo-dua-crm-branco.png" alt="dua.crm" className="h-7 w-auto" />
           </div>
@@ -203,7 +203,7 @@ function MobileNav() {
           })}
         </nav>
 
-        <div className="px-3 pb-6 pt-3 border-t border-sidebar-border">
+        <div className="px-3 pb-[calc(1.5rem+env(safe-area-inset-bottom))] pt-3 border-t border-sidebar-border">
           <button onClick={handleLogout}
             className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-muted-foreground hover:bg-sidebar-accent/60 hover:text-foreground transition-all">
             <LogOut className="w-5 h-5 shrink-0" />
@@ -212,7 +212,7 @@ function MobileNav() {
         </div>
       </aside>
 
-      <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-sidebar border-t border-sidebar-border flex items-center">
+      <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-sidebar border-t border-sidebar-border flex items-center pb-[env(safe-area-inset-bottom)]">
         {navItems.slice(0, 4).map((item) => {
           const active = isActive(item.href);
           return (
