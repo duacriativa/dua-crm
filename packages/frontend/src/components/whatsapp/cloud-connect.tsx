@@ -70,7 +70,7 @@ export function CloudConnect({ onConnected }: { onConnected: () => void }) {
     try {
       const res = await fetch(`${API_URL}/api/v1/whatsapp-cloud/embedded-signup`, {
         method: "POST", headers: authHeaders(),
-        body: JSON.stringify({ code, phoneNumberId, wabaId, coexistence: true }),
+        body: JSON.stringify({ code, phoneNumberId, wabaId, coexistence: true, redirectUri: window.location.href }),
       });
       const data = await res.json();
       if (!res.ok) { setError(data?.message || "Falha ao concluir a conexão."); return; }

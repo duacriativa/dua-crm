@@ -104,22 +104,39 @@ export class WhatsAppCloudService {
    * troca o `code` por um token de negócio, inscreve o app na WABA
    * e pede a sincronização de contatos e histórico do app.
    */
-  async completeEmbeddedSignup(tenantId: string, code: string, wabaId: string | undefined, phoneNumberId: string | undefined, coexistence: boolean) {
+  async completeEmbeddedSignup(tenantId: string, code: string, wabaId: string | undefined, phoneNumberId: string | undefined, coexistence: boolean, redirectUri?: string) {
     const appId = process.env.META_APP_ID;
     const appSecret = process.env.META_APP_SECRET;
     if (!appId || !appSecret) throw new BadRequestException('META_APP_ID/META_APP_SECRET não configurados no backend.');
     if (!code) throw new BadRequestException('code é obrigatório.');
 
-    let accessToken: string;
-    try {
-      const res = await axios.get(`${this.graphUrl}/oauth/access_token`, {
-        params: { client_id: appId, client_secret: appSecret, code },
-        timeout: 15000,
-      });
-      accessToken = res.data?.access_token;
-    } catch (err: any) {
-      throw new BadRequestException(`Falha ao trocar code por token: ${err?.response?.data?.error?.message ?? err.message}`);
+    // O code do SDK JS pode ficar amarrado à URL da página onde o login abriu:
+    // tenta sem redirect_uri e, se a Meta reclamar, com as variações da URL.
+    const candidates: (string | undefined)[] = [undefined];
+    if (redirectUri) {
+      const base = redirectUri.split('#')[0].split('?')[0];
+      candidates.push(base, base.endsWith('/') ? base.slice(0, -1) : `${base}/`, new URL(base).origin + '/');
     }
+    candidates.push('');
+
+    let accessToken: string | undefined;
+    let lastError = '';
+    for (const redirect_uri of candidates) {
+      try {
+        const params: any = { client_id: appId, client_secret: appSecret, code };
+        if (redirect_uri !== undefined) params.redirect_uri = redirect_uri;
+        const res = await axios.get(`${this.graphUrl}/oauth/access_token`, { params, timeout: 15000 });
+        accessToken = res.data?.access_token;
+        if (accessToken) {
+          this.logger.log(`[Cloud] Code trocado (redirect_uri=${redirect_uri === undefined ? 'omitido' : JSON.stringify(redirect_uri)})`);
+          break;
+        }
+      } catch (err: any) {
+        lastError = err?.response?.data?.error?.message ?? err.message;
+        if (!/redirect_uri/i.test(lastError)) break; // erro de outro tipo: não adianta tentar outra URL
+      }
+    }
+    if (!accessToken && lastError) throw new BadRequestException(`Falha ao trocar code por token: ${lastError}`);
     if (!accessToken) throw new BadRequestException('Meta não retornou access_token.');
 
     // O Embedded Signup às vezes não devolve os IDs (ex.: conta já autorizada antes):

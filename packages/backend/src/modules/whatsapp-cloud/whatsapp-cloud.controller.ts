@@ -23,8 +23,8 @@ export class WhatsAppCloudController {
   /** POST /whatsapp-cloud/embedded-signup — finaliza o onboarding (coexistência) */
   @Post('embedded-signup')
   @UseGuards(JwtAuthGuard)
-  embeddedSignup(@Req() req: any, @Body() body: { code: string; wabaId: string; phoneNumberId: string; coexistence?: boolean }) {
-    return this.cloud.completeEmbeddedSignup(req.user.tenantId, body.code, body.wabaId, body.phoneNumberId, body.coexistence !== false);
+  embeddedSignup(@Req() req: any, @Body() body: { code: string; wabaId?: string; phoneNumberId?: string; coexistence?: boolean; redirectUri?: string }) {
+    return this.cloud.completeEmbeddedSignup(req.user.tenantId, body.code, body.wabaId, body.phoneNumberId, body.coexistence !== false, body.redirectUri);
   }
 
   /** POST /whatsapp-cloud/manual — conecta com token de System User */
