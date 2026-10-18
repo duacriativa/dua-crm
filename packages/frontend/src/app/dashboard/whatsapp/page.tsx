@@ -27,6 +27,7 @@ interface Message {
   id: string; content: string; direction: "inbound" | "outbound";
   createdAt: string; sentAt?: string; type?: string; mediaUrl?: string;
   externalId?: string; senderName?: string;
+  pending?: boolean; failed?: boolean;
 }
 interface GroupMember {
   id: string; name: string; isAdmin: boolean;
@@ -344,7 +345,7 @@ function ChatView({ conv, messages, loadingMsgs, text, setText, onSend, sending,
 
           return (
             <div key={msg.id} className={`flex ${isOut ? "justify-end" : "justify-start"} ${showSender ? "mt-3" : "mt-1"}`}>
-              <div className={`max-w-[72%] ${isOut ? "" : ""}`}>
+              <div className={`max-w-[72%] transition-opacity ${msg.pending ? "opacity-60" : ""}`}>
                 {/* Nome do remetente no grupo */}
                 {showSender && (
                   <p className={`text-xs font-semibold mb-1 ml-1 ${senderColor(msg.senderName!)}`}>
@@ -423,7 +424,7 @@ function ChatView({ conv, messages, loadingMsgs, text, setText, onSend, sending,
                   )}
                   {/* Timestamp */}
                   <p className={`text-[10px] mt-0.5 text-right ${isOut ? "text-white/50" : "text-muted-foreground"}`}>
-                    {msg.sentAt ? new Date(msg.sentAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : ""}
+                    {msg.failed ? "⚠️ não enviada" : msg.pending ? "enviando…" : msg.sentAt ? new Date(msg.sentAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : ""}
                   </p>
                 </div>
               </div>
@@ -631,6 +632,7 @@ export default function WhatsAppPage() {
   const [tab, setTab] = useState<ConvTab>("all");
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
+  const pendingRef = useRef<{ convId: string; msg: Message }[]>([]);
   const [showSettings, setShowSettings] = useState(false);
   const [mobileView, setMobileView] = useState<MobileView>("list");
 
@@ -749,7 +751,8 @@ export default function WhatsAppPage() {
       const res = await fetch(`${API_URL}/api/v1/conversations/${convId}/messages`, { headers: authHeaders() });
       if (!res.ok) return;
       const data = await res.json();
-      setMessages(Array.isArray(data.messages) ? data.messages : Array.isArray(data) ? data : []);
+      const server: Message[] = Array.isArray(data.messages) ? data.messages : Array.isArray(data) ? data : [];
+      setMessages([...server, ...pendingRef.current.filter(p => p.convId === convId).map(p => p.msg)]);
     } catch {
       // silencioso
     } finally {
@@ -792,25 +795,41 @@ export default function WhatsAppPage() {
     setMessages(prev => prev.map(m => m.id === msgId ? { ...m, ...updates } : m));
   }, []);
 
+  // Envio otimista: a mensagem aparece na hora e é confirmada em segundo plano
   const sendMessage = async () => {
-    if (!text.trim() || !selected || sending) return;
-    setSending(true);
+    if (!text.trim() || !selected) return;
+    const content = text.trim();
+    const convId = selected.id;
+    const tempId = `tmp-${Date.now()}`;
+    const temp: Message = {
+      id: tempId, content, direction: "outbound", type: "TEXT",
+      createdAt: new Date().toISOString(), sentAt: new Date().toISOString(), pending: true,
+    };
+    pendingRef.current.push({ convId, msg: temp });
+    setMessages(prev => [...prev, temp]);
+    setText("");
+
+    const settle = (updates: Partial<Message> | null) => {
+      pendingRef.current = pendingRef.current.filter(p => p.msg.id !== tempId);
+      setMessages(prev => updates ? prev.map(m => m.id === tempId ? { ...m, ...updates } : m) : prev.filter(m => m.id !== tempId));
+    };
+
     try {
-      const res = await fetch(`${API_URL}/api/v1/conversations/${selected.id}/messages`, {
+      const res = await fetch(`${API_URL}/api/v1/conversations/${convId}/messages`, {
         method: "POST", headers: authHeaders(),
-        body: JSON.stringify({ content: text.trim(), type: "text" }),
+        body: JSON.stringify({ content, type: "text" }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
+        settle({ pending: false, failed: true });
         alert(`Erro ao enviar: ${err.message || "Erro desconhecido"}`);
         return;
       }
-      setText("");
-      fetchMessages(selected.id);
+      const saved = await res.json().catch(() => null);
+      settle(saved?.id ? { ...saved, pending: false } : { pending: false });
     } catch (e: any) {
+      settle({ pending: false, failed: true });
       alert(`Erro de rede: ${e.message}`);
-    } finally {
-      setSending(false);
     }
   };
 
