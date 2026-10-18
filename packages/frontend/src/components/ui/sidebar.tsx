@@ -88,13 +88,10 @@ function DesktopSidebar() {
     <aside className={`relative hidden lg:flex flex-col h-screen bg-sidebar text-sidebar-foreground border-r border-sidebar-border transition-all duration-300 shrink-0 ${collapsed ? "w-16" : "w-60"}`}>
       {/* Logo */}
       <div className="flex items-center gap-2.5 px-4 py-5 border-b border-sidebar-border">
-        <div className="w-8 h-8 rounded-xl bg-gradient-primary flex items-center justify-center shrink-0 shadow-glow">
-          <span className="text-white font-bold text-sm">D</span>
-        </div>
-        {!collapsed && (
-          <span className="text-lg font-bold tracking-tight text-foreground">
-            dua<span className="text-primary">CRM</span>
-          </span>
+        {collapsed ? (
+          <img src="/icons/icon-192.png" alt="Dua CRM" className="w-8 h-8 rounded-xl shrink-0 shadow-glow" />
+        ) : (
+          <img src="/brand/logo-dua-crm-branco.png" alt="dua.crm" className="h-7 w-auto" />
         )}
       </div>
 
@@ -163,12 +160,7 @@ function MobileNav() {
     <>
       <header className="lg:hidden fixed top-0 left-0 right-0 z-40 flex items-center justify-between px-4 h-14 bg-sidebar border-b border-sidebar-border">
         <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-lg bg-gradient-primary flex items-center justify-center shrink-0">
-            <span className="text-white font-bold text-xs">D</span>
-          </div>
-          <span className="font-semibold text-sm text-foreground">
-            dua<span className="text-primary">CRM</span>
-          </span>
+          <img src="/brand/logo-dua-crm-branco.png" alt="dua.crm" className="h-6 w-auto" />
         </div>
         <div className="flex items-center gap-1">
           <button className="relative p-2 rounded-xl hover:bg-sidebar-accent transition-colors">
@@ -186,10 +178,7 @@ function MobileNav() {
       <aside className={`lg:hidden fixed top-0 right-0 bottom-0 z-50 w-72 bg-sidebar text-sidebar-foreground flex flex-col shadow-2xl transition-transform duration-300 ease-in-out ${open ? "translate-x-0" : "translate-x-full"}`}>
         <div className="flex items-center justify-between px-5 py-4 border-b border-sidebar-border">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-gradient-primary flex items-center justify-center shadow-glow">
-              <span className="text-white font-bold text-sm">D</span>
-            </div>
-            <span className="text-lg font-bold text-foreground">dua<span className="text-primary">CRM</span></span>
+            <img src="/brand/logo-dua-crm-branco.png" alt="dua.crm" className="h-7 w-auto" />
           </div>
           <button onClick={() => setOpen(false)} className="p-2 rounded-xl hover:bg-sidebar-accent transition-colors">
             <X className="w-4 h-4 text-muted-foreground" />

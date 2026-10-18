@@ -45,6 +45,7 @@ export default function LoginPage() {
 
         {/* Formulário */}
         <div className="max-w-sm w-full mx-auto">
+          <img src="/brand/logo-dua-crm-branco.png" alt="dua.crm" className="h-9 w-auto mb-8" />
           <h1 className="text-3xl font-black text-white mb-2 leading-tight">
             Bem-vindo de<br />
             <span className="text-primary">volta</span>
