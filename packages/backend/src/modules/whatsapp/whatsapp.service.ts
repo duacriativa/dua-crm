@@ -3,6 +3,7 @@ import axios from 'axios';
 import { PrismaService } from '../../prisma/prisma.service';
 import { EncryptionService } from '../../common/services/encryption.service';
 import { FunnelService } from '../pipelines/funnel.service';
+import { PushService } from '../notifications/push.service';
 
 @Injectable()
 export class WhatsAppService {
@@ -12,6 +13,7 @@ export class WhatsAppService {
     private readonly prisma: PrismaService,
     private readonly encryption: EncryptionService,
     private readonly funnel: FunnelService,
+    private readonly push: PushService,
   ) {}
 
   // Lê sempre do process.env em cada chamada (evita problema de inicialização)
@@ -518,6 +520,16 @@ export class WhatsAppService {
         // Alimenta o funil: lead que chamou (fora de grupo) cai na 1ª etapa
         if (!isFromMe && !isGroup) {
           await this.funnel.ensureLead(tenant.id, conv.contactId, 'Origem: WhatsApp');
+        }
+
+        // Notifica os aparelhos com o PWA instalado (só conversas privadas)
+        if (!isFromMe && !isGroup) {
+          this.push.sendToTenant(tenant.id, {
+            title: pushName,
+            body: content.slice(0, 140),
+            url: `/dashboard/whatsapp?conv=${conversationId}`,
+            tag: conversationId,
+          });
         }
       }
     } catch (err: any) {

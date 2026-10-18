@@ -1,0 +1,16 @@
+{
+  "name": "Dua CRM",
+  "short_name": "Dua CRM",
+  "description": "Atendimento e funil de vendas da Dua Criativa",
+  "start_url": "/dashboard/whatsapp",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0e0e14",
+  "theme_color": "#7C3AED",
+  "lang": "pt-BR",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

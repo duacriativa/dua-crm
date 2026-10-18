@@ -4,7 +4,9 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "Dua CRM",
   description: "CRM inteligente para marcas de moda",
-  icons: { icon: "/favicon.svg" },
+  icons: { icon: "/favicon.svg", apple: "/icons/apple-touch-icon.png" },
+  manifest: "/manifest.webmanifest",
+  appleWebApp: { capable: true, title: "Dua CRM", statusBarStyle: "black-translucent" },
 };
 
 export const viewport: Viewport = {
@@ -12,6 +14,7 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 1,
   viewportFit: "cover",
+  themeColor: "#7C3AED",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

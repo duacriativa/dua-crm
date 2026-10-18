@@ -504,3 +504,24 @@ model KommoLead {
   @@index([tenantId])
   @@index([tenantId, status])
 }
+
+// Aparelhos que recebem notificação push (PWA do CRM)
+model PushSubscription {
+  id        String   @id @default(cuid())
+  tenantId  String
+  userId    String
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  @@index([tenantId])
+}
+
+// Configurações internas do sistema (ex.: chaves VAPID geradas automaticamente)
+model AppSetting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}

@@ -4,6 +4,7 @@ import * as crypto from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { EncryptionService } from '../../common/services/encryption.service';
 import { FunnelService } from '../pipelines/funnel.service';
+import { PushService } from '../notifications/push.service';
 
 type MsgType = 'TEXT' | 'IMAGE' | 'VIDEO' | 'AUDIO' | 'DOCUMENT' | 'INTERACTIVE';
 
@@ -31,6 +32,7 @@ export class WhatsAppCloudService {
     private readonly prisma: PrismaService,
     private readonly encryption: EncryptionService,
     private readonly funnel: FunnelService,
+    private readonly push: PushService,
   ) {}
 
   // Lê sempre do process.env em cada chamada (evita problema de inicialização)
@@ -509,9 +511,16 @@ export class WhatsAppCloudService {
       });
     }
 
-    // Alimenta o funil: lead novo que chamou agora cai na 1ª etapa
     if (direction === 'INBOUND' && !opts.history) {
+      // Alimenta o funil: lead novo que chamou agora cai na 1ª etapa
       await this.funnel.ensureLead(tenantId, contact.id, isNewContact ? 'Origem: WhatsApp' : undefined);
+      // Notifica os aparelhos com o PWA instalado
+      this.push.sendToTenant(tenantId, {
+        title: contact.name || phone,
+        body: parsed.content.slice(0, 140),
+        url: `/dashboard/whatsapp?conv=${conv.id}`,
+        tag: conv.id,
+      });
     }
   }
 

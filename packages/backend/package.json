@@ -16,28 +16,29 @@
     "db:seed-contracts": "ts-node prisma/seed-contracts.ts"
   },
   "dependencies": {
+    "@nestjs/bullmq": "^10.0.0",
     "@nestjs/common": "^10.0.0",
-    "@nestjs/event-emitter": "^2.0.0",
-    "@nestjs/core": "^10.0.0",
     "@nestjs/config": "^3.0.0",
+    "@nestjs/core": "^10.0.0",
+    "@nestjs/event-emitter": "^2.0.0",
     "@nestjs/jwt": "^10.0.0",
     "@nestjs/passport": "^10.0.0",
     "@nestjs/platform-express": "^10.0.0",
     "@nestjs/throttler": "^5.0.0",
-    "@nestjs/bullmq": "^10.0.0",
     "@prisma/client": "^5.0.0",
+    "axios": "^1.6.0",
+    "bcrypt": "^5.1.0",
     "bullmq": "^5.0.0",
+    "class-transformer": "^0.5.0",
+    "class-validator": "^0.14.0",
+    "helmet": "^7.0.0",
+    "ioredis": "^5.0.0",
     "passport": "^0.6.0",
     "passport-jwt": "^4.0.0",
     "passport-local": "^1.0.0",
-    "bcrypt": "^5.1.0",
-    "class-validator": "^0.14.0",
-    "class-transformer": "^0.5.0",
-    "helmet": "^7.0.0",
-    "ioredis": "^5.0.0",
-    "axios": "^1.6.0",
     "reflect-metadata": "^0.1.13",
-    "rxjs": "^7.8.0"
+    "rxjs": "^7.8.0",
+    "web-push": "^3.6.7"
   },
   "devDependencies": {
     "@nestjs/cli": "^10.0.0",
@@ -45,6 +46,7 @@
     "@types/bcrypt": "^5.0.0",
     "@types/node": "^20.0.0",
     "@types/passport-jwt": "^4.0.0",
+    "@types/web-push": "^3.6.4",
     "prisma": "^5.0.0",
     "typescript": "^5.0.0"
   }

@@ -1,6 +1,7 @@
 "use client";
 
 import { Sidebar } from "@/components/ui/sidebar";
+import { PushPrompt } from "@/components/notifications/push-prompt";
 import { Bell, Search, Globe, Headphones, Trophy, X, UserPlus, TrendingUp, ChevronRight } from "lucide-react";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
@@ -368,6 +369,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </div>
         </header>
         <main className="flex-1 overflow-auto pt-14 pb-[calc(4rem+env(safe-area-inset-bottom))] lg:pt-0 lg:pb-0">
+          <PushPrompt />
           {children}
         </main>
       </div>
