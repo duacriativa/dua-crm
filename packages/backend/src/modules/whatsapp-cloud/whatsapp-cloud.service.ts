@@ -188,15 +188,20 @@ export class WhatsAppCloudService {
   }
 
   /** Conexão manual com token de System User (alternativa ao Embedded Signup). */
-  async connectManual(tenantId: string, phoneNumberId: string, wabaId: string, accessToken: string) {
-    if (!phoneNumberId || !wabaId || !accessToken) throw new BadRequestException('phoneNumberId, wabaId e accessToken são obrigatórios.');
+  async connectManual(tenantId: string, phoneNumberId: string | undefined, wabaId: string, accessToken: string) {
+    accessToken = (accessToken || '').trim();
+    wabaId = (wabaId || '').trim();
+    if (!wabaId || !accessToken) throw new BadRequestException('ID da conta do WhatsApp (WABA) e token são obrigatórios.');
     try {
+      // Sem o phoneNumberId, usa o número da WABA (também valida o token)
+      if (!phoneNumberId) phoneNumberId = (await this.discoverAssets(accessToken, wabaId)).phoneNumberId;
       await axios.get(`${this.graphUrl}/${phoneNumberId}`, {
         headers: { Authorization: `Bearer ${accessToken}` },
         timeout: 10000,
       });
     } catch (err: any) {
-      throw new BadRequestException(`Token ou phoneNumberId inválido: ${err?.response?.data?.error?.message ?? err.message}`);
+      if (err instanceof BadRequestException) throw err;
+      throw new BadRequestException(`Token ou conta inválidos: ${err?.response?.data?.error?.message ?? err.message}`);
     }
     await this.subscribeApp(wabaId, accessToken);
     await this.saveCredential(tenantId, phoneNumberId, wabaId, accessToken);

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { RefreshCw, ShieldCheck } from "lucide-react";
+import { RefreshCw, ShieldCheck, KeyRound } from "lucide-react";
 
 const API_URL = "";
 function getToken() { return typeof window !== "undefined" ? localStorage.getItem("access_token") : ""; }
@@ -35,6 +35,8 @@ export function CloudConnect({ onConnected }: { onConnected: () => void }) {
   const [config, setConfig] = useState<CloudConfig | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showManual, setShowManual] = useState(false);
+  const [manual, setManual] = useState({ wabaId: "", accessToken: "" });
   const sessionInfo = useRef<{ phoneNumberId?: string; wabaId?: string }>({});
 
   useEffect(() => {
@@ -103,6 +105,26 @@ export function CloudConnect({ onConnected }: { onConnected: () => void }) {
     );
   };
 
+  const connectManual = async () => {
+    if (!manual.wabaId.trim() || !manual.accessToken.trim()) { setError("Preencha o ID da conta e o token."); return; }
+    setError(null);
+    setBusy(true);
+    try {
+      const res = await fetch(`${API_URL}/api/v1/whatsapp-cloud/manual`, {
+        method: "POST", headers: authHeaders(),
+        body: JSON.stringify({ wabaId: manual.wabaId.trim(), accessToken: manual.accessToken.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setError(data?.message || "Falha ao conectar."); return; }
+      setManual({ wabaId: "", accessToken: "" });
+      onConnected();
+    } catch {
+      setError("Erro de rede ao conectar.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   if (!config) return null;
 
   return (
@@ -117,6 +139,24 @@ export function CloudConnect({ onConnected }: { onConnected: () => void }) {
           ? "Seu número continua no app WhatsApp Business do celular e as conversas chegam aqui."
           : "Falta configurar META_APP_ID, META_APP_SECRET e META_CONFIG_ID no backend."}
       </p>
+      <button onClick={() => setShowManual((v) => !v)}
+        className="mt-3 flex items-center justify-center gap-1.5 w-full text-xs font-medium text-muted-foreground hover:text-foreground">
+        <KeyRound className="w-3.5 h-3.5" /> Conectar conta existente com token
+      </button>
+      {showManual && (
+        <div className="mt-3 space-y-2 text-left">
+          <input value={manual.wabaId} onChange={(e) => setManual((m) => ({ ...m, wabaId: e.target.value }))}
+            placeholder="ID da conta do WhatsApp (WABA)" inputMode="numeric"
+            className="w-full px-3 py-2 text-sm rounded-xl border border-border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50" />
+          <input value={manual.accessToken} onChange={(e) => setManual((m) => ({ ...m, accessToken: e.target.value }))}
+            placeholder="Token do usuário do sistema" type="password" autoComplete="off"
+            className="w-full px-3 py-2 text-sm rounded-xl border border-border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50" />
+          <button onClick={connectManual} disabled={busy}
+            className="w-full py-2.5 text-sm font-semibold text-white bg-primary rounded-xl hover:opacity-90 disabled:opacity-50">
+            {busy ? "Conectando..." : "Conectar"}
+          </button>
+        </div>
+      )}
       {error && <p className="text-xs text-rose-500 mt-2">{error}</p>}
     </div>
   );

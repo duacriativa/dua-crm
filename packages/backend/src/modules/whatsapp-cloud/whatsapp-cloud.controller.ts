@@ -30,7 +30,7 @@ export class WhatsAppCloudController {
   /** POST /whatsapp-cloud/manual — conecta com token de System User */
   @Post('manual')
   @UseGuards(JwtAuthGuard)
-  manual(@Req() req: any, @Body() body: { phoneNumberId: string; wabaId: string; accessToken: string }) {
+  manual(@Req() req: any, @Body() body: { phoneNumberId?: string; wabaId: string; accessToken: string }) {
     return this.cloud.connectManual(req.user.tenantId, body.phoneNumberId, body.wabaId, body.accessToken);
   }
 
