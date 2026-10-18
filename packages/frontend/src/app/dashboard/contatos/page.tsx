@@ -569,7 +569,7 @@ export default function ContatosPage() {
               ))}
             </div>
             <table className="hidden sm:table w-full text-sm">
-              <thead className="border-b border-border bg-muted/20 sticky top-0 z-10">
+              <thead className="border-b border-border bg-background sticky top-0 z-10 shadow-[0_1px_0_hsl(var(--border))]">
                 <tr>
                   <th className="pl-5 pr-0 py-3 w-8">
                     <input type="checkbox" checked={allSelected} onChange={toggleSelectAll}
