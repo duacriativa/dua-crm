@@ -172,7 +172,9 @@ export default function FunilPage() {
         body: JSON.stringify({ name: newPipelineName.trim() }),
       });
       const data = await res.json();
-      setPipelines((prev) => [...prev, data]);
+      if (!res.ok) { alert(data?.message || "Não foi possível criar o funil."); return; }
+      const created: Pipeline = { ...data, stages: (data.stages || []).map((s: Stage) => ({ ...s, leads: s.leads || [] })) };
+      setPipelines((prev) => [...prev, created]);
       setNewPipelineName("");
       setShowNewPipeline(false);
     } finally { setSaving(false); }
@@ -321,8 +323,8 @@ export default function FunilPage() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {pipelines.map((pipeline) => {
-              const totalLeads = pipeline.stages.reduce((s, st) => s + st.leads.length, 0);
-              const totalValue = pipeline.stages.reduce((s, st) => s + st.leads.reduce((a, l) => a + (l.value || 0), 0), 0);
+              const totalLeads = pipeline.stages.reduce((s, st) => s + (st.leads?.length || 0), 0);
+              const totalValue = pipeline.stages.reduce((s, st) => s + (st.leads || []).reduce((a, l) => a + (l.value || 0), 0), 0);
               return (
                 <button key={pipeline.id} onClick={() => setActivePipeline(pipeline)}
                   className="surface-card p-5 hover:border-primary/40 hover:shadow-elegant transition-all text-left group">
@@ -369,7 +371,7 @@ export default function FunilPage() {
               <input value={newPipelineName} onChange={(e) => setNewPipelineName(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && createPipeline()}
                 placeholder="Ex: Vendas Varejo, Atacado Premium..." autoFocus
-                className="w-full px-4 py-2.5 text-sm border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500" />
+                className="w-full px-4 py-2.5 text-sm border border-border rounded-xl bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-brand-500" />
               <p className="text-xs text-muted-foreground mt-2">Serão criadas 3 etapas padrão: Novo Lead, Em Andamento, Fechado</p>
               <div className="flex gap-3 mt-5">
                 <button onClick={() => setShowNewPipeline(false)} className="flex-1 py-2.5 text-sm font-medium text-muted-foreground border border-border rounded-xl hover:bg-muted/20">Cancelar</button>
@@ -441,7 +443,7 @@ export default function FunilPage() {
                     <div className="flex-1 flex flex-col gap-2">
                       <input autoFocus value={editingStageName} onChange={(e) => setEditingStageName(e.target.value)}
                         onKeyDown={(e) => { if (e.key === "Enter") saveStageEdit(stage.id); if (e.key === "Escape") setEditingStageId(null); }}
-                        className="text-sm font-semibold border border-brand-300 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-brand-500 w-full" />
+                        className="text-sm font-semibold border border-brand-300 rounded-lg px-2 py-1 bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-brand-500 w-full" />
                       <div className="flex gap-1 flex-wrap">
                         {COLORS.map((c) => (
                           <button key={c} onClick={() => setEditingStageColor(c)}
@@ -565,7 +567,7 @@ export default function FunilPage() {
                         className="w-full text-sm border-b border-border pb-1.5 mb-2 focus:outline-none focus:border-primary bg-transparent text-foreground placeholder:text-muted-foreground" />
                       <input value={newLead.value} onChange={(e) => setNewLead((p) => ({ ...p, value: e.target.value }))}
                         placeholder="Valor (opcional)" type="number"
-                        className="w-full text-sm border-b border-border pb-1.5 mb-3 focus:outline-none focus:border-primary" />
+                        className="w-full text-sm border-b border-border pb-1.5 mb-3 focus:outline-none focus:border-primary bg-transparent text-foreground placeholder:text-muted-foreground" />
                       <div className="flex gap-2">
                         <button onClick={() => addLead(stage.id)} disabled={saving}
                           className="flex-1 py-1.5 text-xs font-semibold text-white bg-gradient-primary rounded-lg hover:opacity-90 disabled:opacity-50">
@@ -758,7 +760,7 @@ export default function FunilPage() {
                         <input
                           autoFocus
                           type="number"
-                          className="flex-1 border border-brand-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-300"
+                          className="flex-1 border border-brand-300 rounded-lg px-3 py-1.5 text-sm bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-brand-300"
                           value={editValueInput}
                           onChange={(e) => setEditValueInput(e.target.value)}
                           onKeyDown={async (e) => {
