@@ -107,6 +107,9 @@ export default function ContatosPage() {
   const [brevoSyncing, setBrevoSyncing] = useState(false);
   const [brevoResult, setBrevoResult] = useState<{ synced: number; type: string } | null>(null);
   const segMenuRef = useRef<HTMLDivElement>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkMenuOpen, setBulkMenuOpen] = useState(false);
+  const [bulkSaving, setBulkSaving] = useState(false);
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -130,6 +133,9 @@ export default function ContatosPage() {
   }, [segFilter, search]);
 
   useEffect(() => { fetchContacts(); }, [fetchContacts]);
+
+  // Seleção some ao trocar de aba/busca para não alterar clientes que não estão visíveis
+  useEffect(() => { setSelected(new Set()); setBulkMenuOpen(false); }, [segFilter, search]);
 
   // Reload de métricas globais (independente do filtro de tab)
   // Re-roda sempre que o segFilter muda — assim cards e tabs ficam sincronizados
@@ -275,6 +281,36 @@ export default function ContatosPage() {
       body: JSON.stringify({ segment }),
     });
     fetchStats(); // atualiza cards e contagens das tabs
+  };
+
+  const toggleSelect = (id: string) => {
+    setSelected(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+  const allSelected = contacts.length > 0 && contacts.every(c => selected.has(c.id));
+  const toggleSelectAll = () => setSelected(allSelected ? new Set() : new Set(contacts.map(c => c.id)));
+
+  const bulkUpdateSegment = async (segment: string) => {
+    const ids = Array.from(selected);
+    if (ids.length === 0 || bulkSaving) return;
+    setBulkMenuOpen(false);
+    setBulkSaving(true);
+    try {
+      // Em lotes de 10 para não sobrecarregar a API
+      for (let i = 0; i < ids.length; i += 10) {
+        await Promise.all(ids.slice(i, i + 10).map(id =>
+          fetch(`${API_URL}/api/v1/contacts/${id}`, {
+            method: "PATCH", headers: authHeaders(),
+            body: JSON.stringify({ segment }),
+          })
+        ));
+      }
+      setSelected(new Set());
+      fetchContacts(); fetchStats();
+    } finally { setBulkSaving(false); }
   };
 
   const fixLids = async () => {
@@ -451,6 +487,38 @@ export default function ContatosPage() {
             </button>
           ))}
         </div>
+
+        {/* Ações em lote */}
+        {selected.size > 0 && (
+          <div className="mt-3 flex items-center gap-3 px-4 py-2.5 rounded-xl border border-primary/30 bg-primary/10">
+            <span className="text-sm font-semibold text-foreground">
+              {selected.size} selecionado{selected.size > 1 ? "s" : ""}
+            </span>
+            <div className="relative">
+              <button onClick={() => setBulkMenuOpen(o => !o)} disabled={bulkSaving}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-primary rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50">
+                {bulkSaving ? <RefreshCw className="w-3.5 h-3.5 animate-spin"/> : <Edit className="w-3.5 h-3.5"/>}
+                {bulkSaving ? "Salvando..." : "Alterar segmento"}
+                <ChevronDown className="w-3 h-3 opacity-70"/>
+              </button>
+              {bulkMenuOpen && (
+                <div className="absolute left-0 top-9 bg-card border border-border rounded-xl shadow-elegant z-50 w-40 py-1 overflow-hidden">
+                  {Object.entries(SEG_LABEL).map(([val, label]) => (
+                    <button key={val} onClick={() => bulkUpdateSegment(val)}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-foreground hover:bg-muted/60 transition-colors text-left">
+                      <span className={`w-2 h-2 rounded-full ${val==="NEW"?"bg-blue-400":val==="ACTIVE"?"bg-emerald-400":val==="VIP"?"bg-amber-400":val==="AT_RISK"?"bg-red-400":"bg-slate-400"}`} />
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <button onClick={() => { setSelected(new Set()); setBulkMenuOpen(false); }} disabled={bulkSaving}
+              className="ml-auto text-xs text-muted-foreground hover:text-foreground transition-colors">
+              Limpar seleção
+            </button>
+          </div>
+        )}
       </div>
 
       {/* ── Lista / Grid ── */}
@@ -503,6 +571,10 @@ export default function ContatosPage() {
             <table className="hidden sm:table w-full text-sm">
               <thead className="border-b border-border bg-muted/20 sticky top-0 z-10">
                 <tr>
+                  <th className="pl-5 pr-0 py-3 w-8">
+                    <input type="checkbox" checked={allSelected} onChange={toggleSelectAll}
+                      title="Selecionar todos" className="w-4 h-4 accent-primary cursor-pointer align-middle"/>
+                  </th>
                   {["Cliente","Contato","Segmento","Serviço","Tags",""].map((h,i)=>(
                     <th key={i} className={`px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide text-left ${i===5?"w-12":""}`}>{h}</th>
                   ))}
@@ -513,7 +585,11 @@ export default function ContatosPage() {
                   const service = c.notes?.split("\n").find(l=>l.startsWith("Serviço:"))?.replace("Serviço: ","");
                   return(
                     <tr key={c.id} onClick={()=>router.push(`/dashboard/contatos/${c.id}`)}
-                      className="hover:bg-muted/25 transition-colors group cursor-pointer">
+                      className={`hover:bg-muted/25 transition-colors group cursor-pointer ${selected.has(c.id) ? "bg-primary/5" : ""}`}>
+                      <td className="pl-5 pr-0 py-3.5" onClick={e => e.stopPropagation()}>
+                        <input type="checkbox" checked={selected.has(c.id)} onChange={() => toggleSelect(c.id)}
+                          className="w-4 h-4 accent-primary cursor-pointer align-middle"/>
+                      </td>
                       <td className="px-5 py-3.5">
                         <div className="flex items-center gap-3">
                           <div className={`w-9 h-9 rounded-full bg-gradient-to-br ${avatarGrad(c.name)} text-white font-bold text-sm flex items-center justify-center shrink-0`}>
