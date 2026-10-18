@@ -46,6 +46,7 @@ export default function FunilPage() {
   const router = useRouter();
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [activePipeline, setActivePipeline] = useState<Pipeline | null>(null);
   const [showNewPipeline, setShowNewPipeline] = useState(false);
   const [newPipelineName, setNewPipelineName] = useState("");
@@ -79,11 +80,25 @@ export default function FunilPage() {
   const [loadingContact, setLoadingContact] = useState(false);
   const [selectedStage, setSelectedStage] = useState<Stage | null>(null);
 
-  const fetchPipelines = useCallback(async (silent = false) => {
+  const fetchPipelines = useCallback(async (silent = false, attempt = 0): Promise<void> => {
+    let data: Pipeline[];
     try {
       const res = await fetch(`${API_URL}/api/v1/pipelines`, { headers: authHeaders() });
-      if (!res.ok) return;
-      const data = await res.json();
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      data = await res.json();
+    } catch {
+      // API fora do ar (ex.: durante deploy) — tenta de novo antes de mostrar erro,
+      // para não exibir a tela vazia como se os funis tivessem sumido
+      if (attempt < 4) {
+        await new Promise(r => setTimeout(r, 2000 * (attempt + 1)));
+        return fetchPipelines(silent, attempt + 1);
+      }
+      if (!silent) setLoadError(true);
+      setLoading(false);
+      return;
+    }
+    setLoadError(false);
+    try {
       setPipelines(data);
       // Só atualiza activePipeline no carregamento inicial (não silent)
       // silent=true é usado após salvar etapa/lead — não sobrescreve drag recente
@@ -320,6 +335,14 @@ export default function FunilPage() {
 
         {loading ? (
           <div className="flex items-center justify-center py-20 text-muted-foreground"><RefreshCw className="w-6 h-6 animate-spin" /></div>
+        ) : loadError ? (
+          <div className="flex flex-col items-center justify-center py-20 text-muted-foreground gap-3">
+            <p className="text-sm">Não foi possível carregar os funis agora. Seus dados continuam salvos.</p>
+            <button onClick={() => { setLoading(true); setLoadError(false); fetchPipelines(); }}
+              className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-primary border border-primary/30 rounded-xl hover:bg-primary/10 transition-colors">
+              <RefreshCw className="w-4 h-4" />Tentar novamente
+            </button>
+          </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {pipelines.map((pipeline) => {
