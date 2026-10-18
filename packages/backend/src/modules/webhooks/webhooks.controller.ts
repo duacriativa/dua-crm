@@ -1,6 +1,7 @@
 import { Controller, Post, Body, HttpCode, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { FunnelService } from '../pipelines/funnel.service';
 
 @Controller('webhooks')
 export class WebhooksController {
@@ -9,6 +10,7 @@ export class WebhooksController {
   constructor(
     private readonly prisma: PrismaService,
     private readonly events: EventEmitter2,
+    private readonly funnel: FunnelService,
   ) {}
 
   @Post('asaas')
@@ -124,19 +126,29 @@ export class WebhooksController {
 
       const phone = body.whatsapp ? `+${body.whatsapp.replace(/\D/g, '')}` : null;
 
+      // O site manda UTMs em camelCase com "-" quando não há; aceita os dois formatos
+      const utm = (snake: string, camel: string) => {
+        const v = body[snake] ?? body[camel];
+        return typeof v === 'string' && v.trim() && v.trim() !== '-' ? v.trim() : null;
+      };
+      const utmSource = utm('utm_source', 'utmSource');
+      const utmMedium = utm('utm_medium', 'utmMedium');
+      const utmCampaign = utm('utm_campaign', 'utmCampaign');
+
       const contact = await this.prisma.contact.upsert({
         where: { tenantId_phone: { tenantId: tenant.id, phone: phone || '' } },
         create: {
           tenantId: tenant.id,
+          type: 'LEAD',
           name: body.name,
           phone,
           email: body.email || null,
           instagramHandle: body.instagram || null,
           monthlyRevenue: body.faturamento_mensal || body.faturamento || null,
           saleModel: body.modelo_venda || body.modelo || null,
-          utmSource: body.utm_source || null,
-          utmMedium: body.utm_medium || null,
-          utmCampaign: body.utm_campaign || null,
+          utmSource,
+          utmMedium,
+          utmCampaign,
           tags: [
             body.faturamento_mensal || body.faturamento,
             body.modelo_venda || body.modelo,
@@ -146,75 +158,42 @@ export class WebhooksController {
           email: body.email || undefined,
           monthlyRevenue: body.faturamento_mensal || body.faturamento || undefined,
           saleModel: body.modelo_venda || body.modelo || undefined,
-          utmSource: body.utm_source || undefined,
-          utmMedium: body.utm_medium || undefined,
-          utmCampaign: body.utm_campaign || undefined,
+          utmSource: utmSource ?? undefined,
+          utmMedium: utmMedium ?? undefined,
+          utmCampaign: utmCampaign ?? undefined,
         },
       }).catch(async () => {
         return this.prisma.contact.create({
           data: {
             tenantId: tenant.id,
+            type: 'LEAD',
             name: body.name,
             phone,
             email: body.email || null,
             instagramHandle: body.instagram || null,
             monthlyRevenue: body.faturamento_mensal || body.faturamento || null,
             saleModel: body.modelo_venda || body.modelo || null,
-            utmSource: body.utm_source || null,
-            utmMedium: body.utm_medium || null,
-            utmCampaign: body.utm_campaign || null,
+            utmSource,
+            utmMedium,
+            utmCampaign,
             tags: [body.faturamento_mensal || body.faturamento, body.modelo_venda || body.modelo].filter(Boolean) as string[],
           },
         });
       });
 
-      const pipeline = await this.prisma.pipeline.findFirst({
-        where: { tenantId: tenant.id },
-        include: { stages: { orderBy: { position: 'asc' } } },
-      });
-
-      if (pipeline && pipeline.stages.length > 0) {
-        const targetStage = body.stageName
-          ? (pipeline.stages.find((s) => s.name.toLowerCase() === body.stageName.toLowerCase()) ?? pipeline.stages[0])
-          : pipeline.stages[0];
-
-        // Verificar se o contato já tem um lead neste funil
-        const existingLead = await this.prisma.pipelineLead.findFirst({
-          where: {
-            contactId: contact.id,
-            stage: { pipelineId: pipeline.id },
-          },
-          include: { stage: true },
-        });
-
-        if (existingLead) {
-          // Lead já existe — só atualizar notas, NÃO mover de etapa
-          await this.prisma.pipelineLead.update({
-            where: { id: existingLead.id },
-            data: {
-              notes: [
-                body.faturamento_mensal ? `Faturamento: ${body.faturamento_mensal}` : '',
-                body.modelo_venda ? `Modelo: ${body.modelo_venda}` : '',
-                body.utm_source ? `UTM: ${body.utm_source}/${body.utm_medium}` : '',
-              ].filter(Boolean).join(' | ') || existingLead.notes,
-            },
-          });
-        } else {
-          // Lead novo — criar na primeira etapa
-          const count = await this.prisma.pipelineLead.count({ where: { stageId: targetStage.id } });
-          await this.prisma.pipelineLead.create({
-            data: {
-              stageId: targetStage.id,
-              contactId: contact.id,
-              position: count,
-              notes: [
-                body.faturamento_mensal ? `Faturamento: ${body.faturamento_mensal}` : '',
-                body.modelo_venda ? `Modelo: ${body.modelo_venda}` : '',
-                body.utm_source ? `UTM: ${body.utm_source}/${body.utm_medium}` : '',
-              ].filter(Boolean).join(' | ') || null,
-            },
-          });
-        }
+      // Cai na primeira etapa do funil principal, igual aos leads do WhatsApp.
+      // Clique anônimo no botão de WhatsApp (sem telefone nem e-mail) não vira card:
+      // a conversa em si já entra no funil pelo canal do WhatsApp.
+      if (phone || body.email) {
+        const faturamento = body.faturamento_mensal || body.faturamento;
+        const modelo = body.modelo_venda || body.modelo;
+        const leadNotes = [
+          'Origem: Site',
+          faturamento ? `Faturamento: ${faturamento}` : '',
+          modelo ? `Modelo: ${modelo}` : '',
+          utmSource ? `UTM: ${[utmSource, utmMedium, utmCampaign].filter(Boolean).join('/')}` : '',
+        ].filter(Boolean).join(' | ');
+        await this.funnel.ensureLead(tenant.id, contact.id, leadNotes);
       }
 
       return { ok: true, contactId: contact.id };
