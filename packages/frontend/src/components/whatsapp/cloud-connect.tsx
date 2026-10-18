@@ -65,8 +65,8 @@ export function CloudConnect({ onConnected }: { onConnected: () => void }) {
   const finish = async (code: string) => {
     // O postMessage pode chegar alguns ms depois do callback do login
     for (let i = 0; i < 20 && !sessionInfo.current.phoneNumberId; i++) await new Promise((r) => setTimeout(r, 250));
+    // Sem os IDs o backend descobre a conta e o número pelo token
     const { phoneNumberId, wabaId } = sessionInfo.current;
-    if (!phoneNumberId || !wabaId) { setError("A Meta não retornou o número/WABA. Tente novamente."); setBusy(false); return; }
     try {
       const res = await fetch(`${API_URL}/api/v1/whatsapp-cloud/embedded-signup`, {
         method: "POST", headers: authHeaders(),

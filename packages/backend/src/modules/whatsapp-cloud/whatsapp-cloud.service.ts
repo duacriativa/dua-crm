@@ -104,11 +104,11 @@ export class WhatsAppCloudService {
    * troca o `code` por um token de negócio, inscreve o app na WABA
    * e pede a sincronização de contatos e histórico do app.
    */
-  async completeEmbeddedSignup(tenantId: string, code: string, wabaId: string, phoneNumberId: string, coexistence: boolean) {
+  async completeEmbeddedSignup(tenantId: string, code: string, wabaId: string | undefined, phoneNumberId: string | undefined, coexistence: boolean) {
     const appId = process.env.META_APP_ID;
     const appSecret = process.env.META_APP_SECRET;
     if (!appId || !appSecret) throw new BadRequestException('META_APP_ID/META_APP_SECRET não configurados no backend.');
-    if (!code || !wabaId || !phoneNumberId) throw new BadRequestException('code, wabaId e phoneNumberId são obrigatórios.');
+    if (!code) throw new BadRequestException('code é obrigatório.');
 
     let accessToken: string;
     try {
@@ -122,17 +122,50 @@ export class WhatsAppCloudService {
     }
     if (!accessToken) throw new BadRequestException('Meta não retornou access_token.');
 
+    // O Embedded Signup às vezes não devolve os IDs (ex.: conta já autorizada antes):
+    // descobre a WABA pelo token e o número pela WABA.
+    if (!wabaId || !phoneNumberId) {
+      const found = await this.discoverAssets(accessToken, wabaId);
+      wabaId = found.wabaId;
+      phoneNumberId = found.phoneNumberId;
+    }
+
     await this.subscribeApp(wabaId, accessToken);
     await this.saveCredential(tenantId, phoneNumberId, wabaId, accessToken);
 
     if (coexistence) {
-      // Precisa ser chamado em até 24h após o onboarding
+      // Precisa ser chamado em até 24h após o onboarding (falha sem efeito se o número não for coexistência)
       await this.requestSmbSync(phoneNumberId, accessToken, 'smb_app_state_sync');
       await this.requestSmbSync(phoneNumberId, accessToken, 'history');
     }
 
     this.logger.log(`[Cloud] Tenant ${tenantId} conectado (phone ${phoneNumberId}, coexistence=${coexistence})`);
     return this.getStatus(tenantId);
+  }
+
+  private async discoverAssets(accessToken: string, wabaId?: string) {
+    const auth = { Authorization: `Bearer ${accessToken}` };
+    if (!wabaId) {
+      const dbg = await axios.get(`${this.graphUrl}/debug_token`, {
+        params: { input_token: accessToken, access_token: `${process.env.META_APP_ID}|${process.env.META_APP_SECRET}` },
+        timeout: 15000,
+      });
+      const scopes: any[] = dbg.data?.data?.granular_scopes ?? [];
+      wabaId = scopes.find((s) => s.scope === 'whatsapp_business_management')?.target_ids?.[0]
+        ?? scopes.find((s) => s.scope === 'whatsapp_business_messaging')?.target_ids?.[0];
+    }
+    if (!wabaId) throw new BadRequestException('Nenhuma conta do WhatsApp Business foi compartilhada com o app.');
+
+    const phones = await axios.get(`${this.graphUrl}/${wabaId}/phone_numbers`, {
+      params: { fields: 'id,display_phone_number,verified_name,platform_type' },
+      headers: auth,
+      timeout: 15000,
+    });
+    const list: any[] = phones.data?.data ?? [];
+    this.logger.log(`[Cloud] WABA ${wabaId} números: ${list.map((p) => `${p.display_phone_number}(${p.platform_type})`).join(', ')}`);
+    const phone = list.find((p) => p.platform_type === 'CLOUD_API') ?? list[0];
+    if (!phone) throw new BadRequestException('A conta do WhatsApp Business não tem número cadastrado.');
+    return { wabaId, phoneNumberId: phone.id as string };
   }
 
   /** Conexão manual com token de System User (alternativa ao Embedded Signup). */

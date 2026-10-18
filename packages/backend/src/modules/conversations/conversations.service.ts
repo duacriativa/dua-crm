@@ -71,28 +71,26 @@ export class ConversationsService {
       this.prisma.conversation.count({ where }),
     ]);
 
-    // Conta não lidas (mensagens INBOUND sem readAt)
-    const convsWithMeta = await Promise.all(
-      conversations.map(async (conv) => {
-        const unreadCount = await this.prisma.message.count({
-          where: {
-            conversationId: conv.id,
-            direction: 'INBOUND',
-            readAt: null,
-          },
-        });
-        return {
-          ...conv,
-          contactName: conv.contact.name,
-          contactPhone: conv.contact.phone,
-          profilePicUrl: conv.profilePicUrl || conv.contact.profilePicUrl,
-          isGroup: conv.externalId?.endsWith('@g.us'),
-          lastMessage: conv.messages[0]?.content ?? null,
-          unreadCount,
-          messages: undefined, // não retorna array completo
-        };
-      }),
-    );
+    // Conta não lidas (mensagens INBOUND sem readAt) numa única consulta
+    const unread = conversations.length
+      ? await this.prisma.message.groupBy({
+          by: ['conversationId'],
+          where: { conversationId: { in: conversations.map((c) => c.id) }, direction: 'INBOUND', readAt: null },
+          _count: { _all: true },
+        })
+      : [];
+    const unreadByConv = new Map(unread.map((u) => [u.conversationId, u._count._all]));
+
+    const convsWithMeta = conversations.map((conv) => ({
+      ...conv,
+      contactName: conv.contact.name,
+      contactPhone: conv.contact.phone,
+      profilePicUrl: conv.profilePicUrl || conv.contact.profilePicUrl,
+      isGroup: conv.externalId?.endsWith('@g.us'),
+      lastMessage: conv.messages[0]?.content ?? null,
+      unreadCount: unreadByConv.get(conv.id) ?? 0,
+      messages: undefined, // não retorna array completo
+    }));
 
     return { conversations: convsWithMeta, total, page, limit };
   }
