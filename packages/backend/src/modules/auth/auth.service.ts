@@ -8,11 +8,19 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
+import { createHash } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoginDto } from './dto/login.dto';
 import { RegisterTenantDto } from './dto/register-tenant.dto';
 
 const BCRYPT_ROUNDS = 12;
+const REFRESH_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+// Refresh token é um JWT: o bcrypt só olha os primeiros 72 bytes, que são iguais
+// em todos os tokens do mesmo usuário. Por isso guardamos SHA-256 do token inteiro.
+function hashRefreshToken(token: string): string {
+  return createHash('sha256').update(token).digest('hex');
+}
 
 @Injectable()
 export class AuthService {
@@ -78,17 +86,18 @@ export class AuthService {
       throw new InternalServerErrorException(`Falha ao gerar token: ${e.message}`);
     }
 
-    bcrypt.hash(refreshToken, 10)
-      .then(tokenHash =>
-        this.prisma.refreshToken.create({
-          data: {
-            userId: user!.id,
-            tokenHash,
-            expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-          },
-        })
-      )
-      .catch((e: any) => this.logger.warn(`[login] refreshToken.create falhou (nao-critico): ${e.message}`));
+    try {
+      await this.prisma.refreshToken.create({
+        data: {
+          userId: user.id,
+          tokenHash: hashRefreshToken(refreshToken),
+          expiresAt: new Date(Date.now() + REFRESH_TTL_MS),
+        },
+      });
+    } catch (e: any) {
+      this.logger.error(`[login] refreshToken.create falhou: ${e.message}`);
+      throw new InternalServerErrorException('Falha ao registrar sessao.');
+    }
 
     return { accessToken, refreshToken };
   }
@@ -137,24 +146,45 @@ export class AuthService {
       throw new UnauthorizedException('Refresh token invalido.');
     }
 
-    const stored = await this.prisma.refreshToken.findFirst({
-      where: { userId: payload.sub, revokedAt: null, expiresAt: { gt: new Date() } },
+    const now = new Date();
+    const stored = await this.prisma.refreshToken.findUnique({
+      where: { tokenHash: hashRefreshToken(rawRefreshToken) },
     });
-    if (!stored) throw new UnauthorizedException('Sessao expirada. Faca login novamente.');
 
-    const valid = await bcrypt.compare(rawRefreshToken, stored.tokenHash);
-    if (!valid) {
-      await this.prisma.refreshToken.updateMany({
-        where: { userId: payload.sub },
-        data: { revokedAt: new Date() },
-      });
-      throw new UnauthorizedException('Token invalido. Sessao encerrada por seguranca.');
+    let sessionId: string;
+    if (stored) {
+      if (stored.userId !== payload.sub) {
+        throw new UnauthorizedException('Refresh token invalido.');
+      }
+      if (stored.revokedAt) {
+        // Token já usado sendo apresentado de novo: possível roubo. Encerra tudo do usuário.
+        this.logger.warn(`[refresh] reuso de refresh token user=${payload.sub}`);
+        await this.prisma.refreshToken.updateMany({
+          where: { userId: payload.sub, revokedAt: null },
+          data: { revokedAt: now },
+        });
+        throw new UnauthorizedException('Token invalido. Sessao encerrada por seguranca.');
+      }
+      if (stored.expiresAt <= now) {
+        throw new UnauthorizedException('Sessao expirada. Faca login novamente.');
+      }
+      sessionId = stored.id;
+    } else {
+      // Transição: sessões criadas antes do SHA-256 estão em bcrypt. Aceita uma vez
+      // e a rotação abaixo já grava o novo token em SHA-256.
+      const legacy = await this.findLegacySession(payload.sub, rawRefreshToken, now);
+      if (!legacy) throw new UnauthorizedException('Sessao expirada. Faca login novamente.');
+      sessionId = legacy;
     }
 
-    await this.prisma.refreshToken.update({
-      where: { id: stored.id },
-      data: { revokedAt: new Date() },
+    // Revoga só esta sessão; se outra requisição já a consumiu, não rotaciona de novo.
+    const consumed = await this.prisma.refreshToken.updateMany({
+      where: { id: sessionId, revokedAt: null },
+      data: { revokedAt: now },
     });
+    if (consumed.count !== 1) {
+      throw new UnauthorizedException('Sessao expirada. Faca login novamente.');
+    }
 
     const accessSecret = this.config.getOrThrow<string>('JWT_ACCESS_SECRET');
     const refreshSecret = this.config.getOrThrow<string>('JWT_REFRESH_SECRET');
@@ -165,12 +195,29 @@ export class AuthService {
     const newRefreshToken = this.jwt.sign(newPayload, { secret: refreshSecret, expiresIn: refreshExpiresIn });
 
     // Grava antes de responder: o próximo refresh precisa encontrar este token
-    const tokenHash = await bcrypt.hash(newRefreshToken, 10);
     await this.prisma.refreshToken.create({
-      data: { userId: payload.sub, tokenHash, expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) },
+      data: {
+        userId: payload.sub,
+        tokenHash: hashRefreshToken(newRefreshToken),
+        expiresAt: new Date(Date.now() + REFRESH_TTL_MS),
+      },
     });
 
     return { accessToken, refreshToken: newRefreshToken };
+  }
+
+  // Procura uma sessão ativa antiga (hash bcrypt) do usuário que aceite o token.
+  // Remover quando não houver mais linhas com tokenHash começando por '$2'.
+  private async findLegacySession(userId: string, rawToken: string, now: Date): Promise<string | null> {
+    const candidates = await this.prisma.refreshToken.findMany({
+      where: { userId, revokedAt: null, expiresAt: { gt: now }, tokenHash: { startsWith: '$2' } },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true, tokenHash: true },
+    });
+    for (const c of candidates) {
+      if (await bcrypt.compare(rawToken, c.tokenHash)) return c.id;
+    }
+    return null;
   }
 
   async logout(userId: string) {
