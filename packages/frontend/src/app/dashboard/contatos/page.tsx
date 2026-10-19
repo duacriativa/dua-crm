@@ -1,4 +1,5 @@
 "use client";
+import { authFetch } from "@/lib/auth-fetch";
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
@@ -125,7 +126,7 @@ export default function ContatosPage() {
       const p = new URLSearchParams({ limit: "200", type: "CLIENT" });
       if (segFilter !== "ALL") p.set("segment", segFilter);
       if (search) p.set("search", search);
-      const res = await fetch(`${API_URL}/api/v1/contacts?${p}`, { headers: authHeaders() });
+      const res = await authFetch(`${API_URL}/api/v1/contacts?${p}`, { headers: authHeaders() });
       if (!res.ok) return;
       const data = await res.json();
       setContacts(data.contacts ?? []); setTotal(data.total ?? 0);
@@ -166,7 +167,7 @@ export default function ContatosPage() {
   const fetchStats = useCallback(async () => {
     setStatsLoading(true);
     try {
-      const res = await fetch(`${API_URL}/api/v1/contacts/stats`, { headers: authHeaders() });
+      const res = await authFetch(`${API_URL}/api/v1/contacts/stats`, { headers: authHeaders() });
       if (!res.ok) return;
       const data = await res.json();
       setStats({ ...EMPTY_STATS, ...data, segmentCounts: { ...EMPTY_STATS.segmentCounts, ...(data.segmentCounts ?? {}) } });
@@ -187,7 +188,7 @@ export default function ContatosPage() {
         form.cpfCnpj ? `CPF/CNPJ: ${form.cpfCnpj}` : "",
         form.notes,
       ].filter(Boolean).join("\n");
-      await fetch(`${API_URL}/api/v1/contacts`, {
+      await authFetch(`${API_URL}/api/v1/contacts`, {
         method: "POST", headers: authHeaders(),
         body: JSON.stringify({
           name: form.name.trim(),
@@ -221,7 +222,7 @@ export default function ContatosPage() {
     setImporting(true);
     setImportResult(null);
     try {
-      const res = await fetch(`${API_URL}/api/v1/contacts/import-asaas`, {
+      const res = await authFetch(`${API_URL}/api/v1/contacts/import-asaas`, {
         method: "POST", headers: authHeaders(),
       });
       const data = await res.json();
@@ -254,7 +255,7 @@ export default function ContatosPage() {
 
   const deleteContact = async (id: string, name: string) => {
     if (!confirm(`Excluir "${name}" permanentemente? Esta ação não pode ser desfeita.`)) return;
-    await fetch(`${API_URL}/api/v1/contacts/${id}`, { method: "DELETE", headers: authHeaders() });
+    await authFetch(`${API_URL}/api/v1/contacts/${id}`, { method: "DELETE", headers: authHeaders() });
     fetchContacts(); fetchStats();
   };
 
@@ -263,7 +264,7 @@ export default function ContatosPage() {
     setBrevoSyncing(true);
     setBrevoResult(null);
     try {
-      const res = await fetch(`${API_URL}/api/v1/contacts/sync-brevo`, {
+      const res = await authFetch(`${API_URL}/api/v1/contacts/sync-brevo`, {
         method: "POST", headers: authHeaders(),
         body: JSON.stringify({ contactType }),
       });
@@ -276,7 +277,7 @@ export default function ContatosPage() {
     setSegMenuId(null);
     // Optimistic update
     setContacts(prev => prev.map(c => c.id === id ? { ...c, segment } : c));
-    await fetch(`${API_URL}/api/v1/contacts/${id}`, {
+    await authFetch(`${API_URL}/api/v1/contacts/${id}`, {
       method: "PATCH", headers: authHeaders(),
       body: JSON.stringify({ segment }),
     });
@@ -302,7 +303,7 @@ export default function ContatosPage() {
       // Em lotes de 10 para não sobrecarregar a API
       for (let i = 0; i < ids.length; i += 10) {
         await Promise.all(ids.slice(i, i + 10).map(id =>
-          fetch(`${API_URL}/api/v1/contacts/${id}`, {
+          authFetch(`${API_URL}/api/v1/contacts/${id}`, {
             method: "PATCH", headers: authHeaders(),
             body: JSON.stringify({ segment }),
           })
@@ -318,7 +319,7 @@ export default function ContatosPage() {
     setFixingLids(true);
     setLidResult(null);
     try {
-      const res = await fetch(`${API_URL}/api/v1/contacts/resolve-lids`, {
+      const res = await authFetch(`${API_URL}/api/v1/contacts/resolve-lids`, {
         method: "POST", headers: authHeaders(),
       });
       const data = await res.json();

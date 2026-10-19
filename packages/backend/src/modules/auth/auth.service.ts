@@ -164,13 +164,11 @@ export class AuthService {
     const accessToken = this.jwt.sign(newPayload, { secret: accessSecret, expiresIn: accessExpiresIn });
     const newRefreshToken = this.jwt.sign(newPayload, { secret: refreshSecret, expiresIn: refreshExpiresIn });
 
-    bcrypt.hash(newRefreshToken, 10)
-      .then(tokenHash =>
-        this.prisma.refreshToken.create({
-          data: { userId: payload.sub, tokenHash, expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) },
-        })
-      )
-      .catch((e: any) => this.logger.warn(`[refresh] refreshToken.create falhou: ${e.message}`));
+    // Grava antes de responder: o próximo refresh precisa encontrar este token
+    const tokenHash = await bcrypt.hash(newRefreshToken, 10);
+    await this.prisma.refreshToken.create({
+      data: { userId: payload.sub, tokenHash, expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) },
+    });
 
     return { accessToken, refreshToken: newRefreshToken };
   }

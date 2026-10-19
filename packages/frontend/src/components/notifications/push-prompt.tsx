@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Bell, X, Share } from "lucide-react";
+import { authFetch } from "@/lib/auth-fetch";
 
 const API_URL = "";
 function getToken() { return typeof window !== "undefined" ? localStorage.getItem("access_token") : ""; }
@@ -11,6 +12,10 @@ function urlBase64ToUint8Array(base64: string) {
   const padding = "=".repeat((4 - (base64.length % 4)) % 4);
   const raw = atob((base64 + padding).replace(/-/g, "+").replace(/_/g, "/"));
   return Uint8Array.from([...raw].map((c) => c.charCodeAt(0)));
+}
+
+function sameKey(a: Uint8Array, b: Uint8Array) {
+  return a.length === b.length && a.every((v, i) => v === b[i]);
 }
 
 type State = "hidden" | "ask" | "install-ios" | "working";
@@ -43,13 +48,23 @@ export function PushPrompt() {
 
   const subscribe = async (silent = false) => {
     const reg = await navigator.serviceWorker.ready;
+    const keyRes = await authFetch(`${API_URL}/api/v1/push/public-key`, { headers: authHeaders() });
+    if (!keyRes.ok) throw new Error(`public-key HTTP ${keyRes.status}`);
+    const { publicKey } = await keyRes.json();
+    const serverKey = urlBase64ToUint8Array(publicKey);
+
     let sub = await reg.pushManager.getSubscription();
-    if (!sub) {
-      const { publicKey } = await fetch(`${API_URL}/api/v1/push/public-key`, { headers: authHeaders() }).then((r) => r.json());
-      sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(publicKey) });
+    // Inscrição antiga feita com outra chave VAPID não recebe nada: refaz
+    const oldKey = sub?.options?.applicationServerKey;
+    if (sub && oldKey && !sameKey(new Uint8Array(oldKey), serverKey)) {
+      await sub.unsubscribe().catch(() => {});
+      sub = null;
     }
-    await fetch(`${API_URL}/api/v1/push/subscribe`, { method: "POST", headers: authHeaders(), body: JSON.stringify(sub.toJSON()) });
-    if (!silent) await fetch(`${API_URL}/api/v1/push/test`, { method: "POST", headers: authHeaders() });
+    if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: serverKey });
+
+    const subRes = await authFetch(`${API_URL}/api/v1/push/subscribe`, { method: "POST", headers: authHeaders(), body: JSON.stringify(sub.toJSON()) });
+    if (!subRes.ok) throw new Error(`subscribe HTTP ${subRes.status}`);
+    if (!silent) await authFetch(`${API_URL}/api/v1/push/test`, { method: "POST", headers: authHeaders() });
   };
 
   const enable = async () => {
@@ -57,9 +72,13 @@ export function PushPrompt() {
     try {
       const perm = await Notification.requestPermission();
       if (perm === "granted") { await subscribe(); setState("hidden"); }
-      else setState("hidden");
-    } catch {
-      alert("Não foi possível ativar as notificações neste aparelho.");
+      else {
+        if (perm === "denied") alert("As notificações estão bloqueadas para o CRM neste navegador. Libere em: cadeado ao lado do endereço → Notificações → Permitir.");
+        setState("hidden");
+      }
+    } catch (err: any) {
+      console.error("[push] falha ao ativar", err);
+      alert(`Não foi possível ativar as notificações neste aparelho.\n\n${err?.message ?? err}`);
       setState("ask");
     }
   };

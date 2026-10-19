@@ -1,4 +1,5 @@
 "use client";
+import { authFetch } from "@/lib/auth-fetch";
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import {
@@ -264,7 +265,7 @@ function ChatView({ conv, messages, loadingMsgs, text, setText, onSend, sending,
     if (!msg.externalId) return;
     setReloadingAudio(prev => new Set(prev).add(msg.id));
     try {
-      const res = await fetch(`${API_URL}/api/v1/conversations/${conv.id}/messages/${msg.id}/remedia`, {
+      const res = await authFetch(`${API_URL}/api/v1/conversations/${conv.id}/messages/${msg.id}/remedia`, {
         method: "POST", headers: authHeaders(),
       });
       if (res.ok) {
@@ -461,7 +462,7 @@ function SettingsPanel({ onClose, onDisconnect, provider }: { onClose: () => voi
     setDisconnecting(true);
     // Tenta desconectar no backend mas não bloqueia o fluxo se falhar
     try {
-      await fetch(`${API_URL}/api/v1/${provider === "cloud" ? "whatsapp-cloud" : "whatsapp"}/disconnect`, { method: "POST", headers: authHeaders() });
+      await authFetch(`${API_URL}/api/v1/${provider === "cloud" ? "whatsapp-cloud" : "whatsapp"}/disconnect`, { method: "POST", headers: authHeaders() });
     } catch {
       // ignora erro de rede — prossegue com desconexão local
     } finally {
@@ -505,7 +506,7 @@ function SettingsPanel({ onClose, onDisconnect, provider }: { onClose: () => voi
             <button
               className="w-full flex items-center gap-2 px-3 py-2 text-sm font-medium text-muted-foreground rounded-xl hover:bg-muted/50 hover:text-foreground transition-colors text-left"
               onClick={async () => {
-                const res = await fetch(`${API_URL}/api/v1/whatsapp/sync`, { method: "POST", headers: authHeaders() });
+                const res = await authFetch(`${API_URL}/api/v1/whatsapp/sync`, { method: "POST", headers: authHeaders() });
                 if (res.ok) alert("Sincronização de contatos iniciada! Em alguns minutos os nomes e fotos aparecerão.");
               }}
             >
@@ -514,7 +515,7 @@ function SettingsPanel({ onClose, onDisconnect, provider }: { onClose: () => voi
             <button
               className="w-full flex items-center gap-2 px-3 py-2 text-sm font-medium text-muted-foreground rounded-xl hover:bg-muted/50 hover:text-foreground transition-colors text-left"
               onClick={async () => {
-                const res = await fetch(`${API_URL}/api/v1/conversations/sync-groups`, { method: "POST", headers: authHeaders() });
+                const res = await authFetch(`${API_URL}/api/v1/conversations/sync-groups`, { method: "POST", headers: authHeaders() });
                 if (res.ok) {
                   const data = await res.json();
                   alert(`Nomes de grupos atualizados! ${data.updated} de ${data.total} grupos renomeados.`);
@@ -526,7 +527,7 @@ function SettingsPanel({ onClose, onDisconnect, provider }: { onClose: () => voi
             </button>
             <button className="w-full flex items-center gap-2 px-3 py-2 text-sm font-medium text-muted-foreground rounded-xl hover:bg-muted/50 hover:text-foreground transition-colors text-left" onClick={async () => {
               if (!confirm("Apagar TODAS as conversas e mensagens? Esta ação não pode ser desfeita!")) return;
-              await fetch(`${API_URL}/api/v1/conversations/history`, { method: "DELETE", headers: authHeaders() });
+              await authFetch(`${API_URL}/api/v1/conversations/history`, { method: "DELETE", headers: authHeaders() });
               onClose();
               window.location.reload();
             }}>
@@ -554,7 +555,7 @@ function ContactPanel({ conv }: { conv: Conversation }) {
   useEffect(() => {
     if (!conv.isGroup) { setMembers([]); return; }
     setLoadingMembers(true);
-    fetch(`${API_URL}/api/v1/conversations/${conv.id}/group-members`, { headers: authHeaders() })
+    authFetch(`${API_URL}/api/v1/conversations/${conv.id}/group-members`, { headers: authHeaders() })
       .then(r => r.ok ? r.json() : { members: [] })
       .then(d => setMembers(d.members || []))
       .catch(() => setMembers([]))
@@ -645,7 +646,7 @@ export default function WhatsAppPage() {
   const checkWaStatus = useCallback(async () => {
     try {
       // 0. API oficial (Cloud API) conectada tem prioridade sobre a Evolution
-      const cloudRes = await fetch(`${API_URL}/api/v1/whatsapp-cloud/status`, { headers: authHeaders() }).catch(() => null);
+      const cloudRes = await authFetch(`${API_URL}/api/v1/whatsapp-cloud/status`, { headers: authHeaders() }).catch(() => null);
       if (cloudRes?.ok) {
         const cloud = await cloudRes.json();
         if (cloud.connected) {
@@ -658,7 +659,7 @@ export default function WhatsAppPage() {
       setWaProvider("evolution");
 
       // 1. Tenta o endpoint de status (rápido)
-      const res = await fetch(`${API_URL}/api/v1/whatsapp/status`, { headers: authHeaders() });
+      const res = await authFetch(`${API_URL}/api/v1/whatsapp/status`, { headers: authHeaders() });
       if (res.ok) {
         const data = await res.json();
         if (data.connected) {
@@ -668,7 +669,7 @@ export default function WhatsAppPage() {
         }
       }
       // 2. Se status retornou false ou falhou, tenta connect (já trata instância ativa)
-      const connRes = await fetch(`${API_URL}/api/v1/whatsapp/connect`, {
+      const connRes = await authFetch(`${API_URL}/api/v1/whatsapp/connect`, {
         method: "POST", headers: authHeaders()
       });
       if (connRes.ok) {
@@ -709,10 +710,10 @@ export default function WhatsAppPage() {
     try {
       // Só desconecta se o usuário forçou (botão "Gerar novo código"), nunca na primeira tentativa
       if (forceNew) {
-        await fetch(`${API_URL}/api/v1/whatsapp/disconnect`, { method: "POST", headers: authHeaders() }).catch(() => {});
+        await authFetch(`${API_URL}/api/v1/whatsapp/disconnect`, { method: "POST", headers: authHeaders() }).catch(() => {});
         await new Promise(r => setTimeout(r, 1500)); // aguarda instância ser removida
       }
-      const res = await fetch(`${API_URL}/api/v1/whatsapp/connect`, { method: "POST", headers: authHeaders() });
+      const res = await authFetch(`${API_URL}/api/v1/whatsapp/connect`, { method: "POST", headers: authHeaders() });
       if (!res.ok) { alert("Erro ao conectar — tente novamente"); return; }
       const data = await res.json();
       if (data.connected) {
@@ -734,7 +735,7 @@ export default function WhatsAppPage() {
   const fetchConversations = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     try {
-      const res = await fetch(`${API_URL}/api/v1/conversations?limit=100`, { headers: authHeaders() });
+      const res = await authFetch(`${API_URL}/api/v1/conversations?limit=100`, { headers: authHeaders() });
       if (!res.ok) return;
       const data = await res.json();
       setConversations(Array.isArray(data.conversations) ? data.conversations : Array.isArray(data) ? data : []);
@@ -748,7 +749,7 @@ export default function WhatsAppPage() {
   const fetchMessages = useCallback(async (convId: string, silent = false) => {
     if (!silent) setLoadingMsgs(true);
     try {
-      const res = await fetch(`${API_URL}/api/v1/conversations/${convId}/messages`, { headers: authHeaders() });
+      const res = await authFetch(`${API_URL}/api/v1/conversations/${convId}/messages`, { headers: authHeaders() });
       if (!res.ok) return;
       const data = await res.json();
       const server: Message[] = Array.isArray(data.messages) ? data.messages : Array.isArray(data) ? data : [];
@@ -815,7 +816,7 @@ export default function WhatsAppPage() {
     };
 
     try {
-      const res = await fetch(`${API_URL}/api/v1/conversations/${convId}/messages`, {
+      const res = await authFetch(`${API_URL}/api/v1/conversations/${convId}/messages`, {
         method: "POST", headers: authHeaders(),
         body: JSON.stringify({ content, type: "text" }),
       });

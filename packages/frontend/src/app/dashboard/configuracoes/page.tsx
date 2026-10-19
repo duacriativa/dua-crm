@@ -1,4 +1,5 @@
 "use client";
+import { authFetch } from "@/lib/auth-fetch";
 
 import { useState, useCallback, useEffect } from "react";
 import {
@@ -444,7 +445,7 @@ function TabIntegracoes() {
 
   const checkWaStatus = useCallback(async () => {
     try {
-      const res = await fetch(`${API_URL}/api/v1/whatsapp/status`, { headers: authHeaders() });
+      const res = await authFetch(`${API_URL}/api/v1/whatsapp/status`, { headers: authHeaders() });
       if (!res.ok) return;
       const data = await res.json();
       setWaStatus(data.connected ? "connected" : "disconnected");
@@ -460,7 +461,7 @@ function TabIntegracoes() {
   const KOMMO_WEBHOOK_URL = `${typeof window !== "undefined" ? window.location.origin.replace(":3000", ":3001") : ""}/api/v1/webhooks/kommo`.replace("http://localhost:3001", "https://renewed-youth-production-7d32.up.railway.app");
 
   useEffect(() => {
-    fetch(`${API_URL}/api/v1/kommo/stats`, { headers: authHeaders() })
+    authFetch(`${API_URL}/api/v1/kommo/stats`, { headers: authHeaders() })
       .then(r => r.ok ? r.json() : null)
       .then(d => d && setKommoStats(d))
       .catch(() => {});

@@ -1,4 +1,5 @@
 "use client";
+import { authFetch } from "@/lib/auth-fetch";
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
@@ -83,7 +84,7 @@ export default function FunilPage() {
   const fetchPipelines = useCallback(async (silent = false, attempt = 0): Promise<void> => {
     let data: Pipeline[];
     try {
-      const res = await fetch(`${API_URL}/api/v1/pipelines`, { headers: authHeaders() });
+      const res = await authFetch(`${API_URL}/api/v1/pipelines`, { headers: authHeaders() });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       data = await res.json();
     } catch {
@@ -130,7 +131,7 @@ export default function FunilPage() {
   const deleteLead = async (leadId: string, stageId: string) => {
     if (!activePipeline) return;
     if (!confirm("Excluir este lead do funil?")) return;
-    await fetch(`${API_URL}/api/v1/pipelines/leads/${leadId}`, { method: "DELETE", headers: authHeaders() });
+    await authFetch(`${API_URL}/api/v1/pipelines/leads/${leadId}`, { method: "DELETE", headers: authHeaders() });
     const updated = {
       ...activePipeline,
       stages: activePipeline.stages.map((s) =>
@@ -147,7 +148,7 @@ export default function FunilPage() {
     if (!activePipeline) return;
     if (!confirm("Excluir este contato permanentemente? Esta ação não pode ser desfeita.")) return;
     setCardMenuId(null);
-    await fetch(`${API_URL}/api/v1/contacts/${contactId}`, { method: "DELETE", headers: authHeaders() });
+    await authFetch(`${API_URL}/api/v1/contacts/${contactId}`, { method: "DELETE", headers: authHeaders() });
     // Remove o lead do pipeline também (o contato foi deletado em cascata)
     const updated = {
       ...activePipeline,
@@ -168,7 +169,7 @@ export default function FunilPage() {
     setEditingValue(false);
     setEditValueInput("");
     try {
-      const res = await fetch(`${API_URL}/api/v1/contacts/${lead.contactId}`, { headers: authHeaders() });
+      const res = await authFetch(`${API_URL}/api/v1/contacts/${lead.contactId}`, { headers: authHeaders() });
       if (res.ok) setFullContact(await res.json());
       else setFullContact(lead.contact);
     } catch {
@@ -182,7 +183,7 @@ export default function FunilPage() {
     if (!newPipelineName.trim() || saving) return;
     setSaving(true);
     try {
-      const res = await fetch(`${API_URL}/api/v1/pipelines`, {
+      const res = await authFetch(`${API_URL}/api/v1/pipelines`, {
         method: "POST", headers: authHeaders(),
         body: JSON.stringify({ name: newPipelineName.trim() }),
       });
@@ -199,7 +200,7 @@ export default function FunilPage() {
     if (!newStageName.trim() || !activePipeline || saving) return;
     setSaving(true);
     try {
-      const res = await fetch(`${API_URL}/api/v1/pipelines/${activePipeline.id}/stages`, {
+      const res = await authFetch(`${API_URL}/api/v1/pipelines/${activePipeline.id}/stages`, {
         method: "POST", headers: authHeaders(),
         body: JSON.stringify({ name: newStageName.trim(), color: newStageColor }),
       });
@@ -215,7 +216,7 @@ export default function FunilPage() {
 
   const saveStageEdit = async (stageId: string) => {
     if (!editingStageName.trim() || !activePipeline) return;
-    await fetch(`${API_URL}/api/v1/pipelines/stages/${stageId}`, {
+    await authFetch(`${API_URL}/api/v1/pipelines/stages/${stageId}`, {
       method: "PATCH", headers: authHeaders(),
       body: JSON.stringify({ name: editingStageName.trim(), color: editingStageColor }),
     });
@@ -233,7 +234,7 @@ export default function FunilPage() {
   const deleteStage = async (stageId: string) => {
     if (!activePipeline) return;
     if (!confirm("Deletar esta etapa? Os leads serão removidos.")) return;
-    await fetch(`${API_URL}/api/v1/pipelines/stages/${stageId}`, { method: "DELETE", headers: authHeaders() });
+    await authFetch(`${API_URL}/api/v1/pipelines/stages/${stageId}`, { method: "DELETE", headers: authHeaders() });
     const updated = { ...activePipeline, stages: activePipeline.stages.filter((s) => s.id !== stageId) };
     setActivePipeline(updated);
     setPipelines((prev) => prev.map((p) => p.id === updated.id ? updated : p));
@@ -253,7 +254,7 @@ export default function FunilPage() {
     setPipelines((prev) => prev.map((p) => p.id === activePipeline.id ? { ...p, stages: reordered } : p));
     await Promise.all(
       reordered.map((s) =>
-        fetch(`${API_URL}/api/v1/pipelines/stages/${s.id}`, {
+        authFetch(`${API_URL}/api/v1/pipelines/stages/${s.id}`, {
           method: "PATCH", headers: authHeaders(),
           body: JSON.stringify({ position: s.position }),
         })
@@ -265,7 +266,7 @@ export default function FunilPage() {
     if (!newLead.name.trim() || saving) return;
     setSaving(true);
     try {
-      const res = await fetch(`${API_URL}/api/v1/pipelines/stages/${stageId}/leads`, {
+      const res = await authFetch(`${API_URL}/api/v1/pipelines/stages/${stageId}/leads`, {
         method: "POST", headers: authHeaders(),
         body: JSON.stringify({ name: newLead.name.trim(), phone: newLead.phone || undefined, value: newLead.value ? parseFloat(newLead.value) : undefined }),
       });
@@ -278,7 +279,7 @@ export default function FunilPage() {
   };
 
   const moveLead = async (leadId: string, toStageId: string) => {
-    await fetch(`${API_URL}/api/v1/pipelines/leads/${leadId}/move`, {
+    await authFetch(`${API_URL}/api/v1/pipelines/leads/${leadId}/move`, {
       method: "PATCH", headers: authHeaders(), body: JSON.stringify({ stageId: toStageId }),
     });
   };
@@ -308,7 +309,7 @@ export default function FunilPage() {
 
     // 2. Persiste no backend — se falhar, reverte
     try {
-      const res = await fetch(`${API_URL}/api/v1/pipelines/leads/${leadToMove.lead.id}/move`, {
+      const res = await authFetch(`${API_URL}/api/v1/pipelines/leads/${leadToMove.lead.id}/move`, {
         method: "PATCH", headers: authHeaders(), body: JSON.stringify({ stageId: toStageId }),
       });
       if (!res.ok) throw new Error("Falha ao mover lead");
@@ -790,7 +791,7 @@ export default function FunilPage() {
                             if (e.key === 'Enter') {
                               const val = parseFloat(editValueInput);
                               if (!isNaN(val)) {
-                                await fetch(`${API_URL}/api/v1/pipelines/leads/${selectedLead.id}`, {
+                                await authFetch(`${API_URL}/api/v1/pipelines/leads/${selectedLead.id}`, {
                                   method: 'PATCH', headers: authHeaders(),
                                   body: JSON.stringify({ value: val }),
                                 });
@@ -808,7 +809,7 @@ export default function FunilPage() {
                           onClick={async () => {
                             const val = parseFloat(editValueInput);
                             if (!isNaN(val)) {
-                              await fetch(`${API_URL}/api/v1/pipelines/leads/${selectedLead.id}`, {
+                              await authFetch(`${API_URL}/api/v1/pipelines/leads/${selectedLead.id}`, {
                                 method: 'PATCH', headers: authHeaders(),
                                 body: JSON.stringify({ value: val }),
                               });
@@ -926,7 +927,7 @@ export default function FunilPage() {
                     setActivePipeline(updated);
                     setPipelines(prev => prev.map(p => p.id === updated.id ? updated : p));
                     try {
-                      await fetch(`${API_URL}/api/v1/pipelines/leads/${leadToMove.lead.id}/move`, {
+                      await authFetch(`${API_URL}/api/v1/pipelines/leads/${leadToMove.lead.id}/move`, {
                         method: "PATCH", headers: authHeaders(), body: JSON.stringify({ stageId: st.id }),
                       });
                     } catch { setActivePipeline(activePipeline); }

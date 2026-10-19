@@ -1,4 +1,5 @@
 "use client";
+import { authFetch } from "@/lib/auth-fetch";
 
 import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
@@ -153,7 +154,7 @@ function ConversasInner() {
     if (!selected) return;
     setSavingContact(true);
     try {
-      await fetch(`${API_URL}/api/v1/contacts/${selected.contact.id}`, {
+      await authFetch(`${API_URL}/api/v1/contacts/${selected.contact.id}`, {
         method: "PATCH",
         headers: { ...authHeaders(), "Content-Type": "application/json" },
         body: JSON.stringify({ name: editName, phone: editPhone }),
@@ -180,7 +181,7 @@ function ConversasInner() {
       if (search) params.set("search", search);
       params.set("limit", "50");
 
-      const res = await fetch(`${API_URL}/api/v1/conversations?${params}`, { headers: authHeaders() });
+      const res = await authFetch(`${API_URL}/api/v1/conversations?${params}`, { headers: authHeaders() });
       if (!res.ok) return;
       const data = await res.json();
       setConversations(data.conversations ?? []);
@@ -226,7 +227,7 @@ function ConversasInner() {
     if (!newConvPhone.trim() || startingConv) return;
     setStartingConv(true);
     try {
-      const res = await fetch(`${API_URL}/api/v1/conversations/start`, {
+      const res = await authFetch(`${API_URL}/api/v1/conversations/start`, {
         method: "POST",
         headers: authHeaders(),
         body: JSON.stringify({
@@ -253,7 +254,7 @@ function ConversasInner() {
   const fetchMessages = useCallback(async (convId: string) => {
     setLoadingMsgs(true);
     try {
-      const res = await fetch(`${API_URL}/api/v1/conversations/${convId}/messages`, { headers: authHeaders() });
+      const res = await authFetch(`${API_URL}/api/v1/conversations/${convId}/messages`, { headers: authHeaders() });
       if (!res.ok) return;
       const data = await res.json();
       setMessages(Array.isArray(data) ? data : []);
@@ -328,7 +329,7 @@ function ConversasInner() {
     }, 50);
 
     try {
-      await fetch(`${API_URL}/api/v1/conversations/${selected.id}/messages`, {
+      await authFetch(`${API_URL}/api/v1/conversations/${selected.id}/messages`, {
         method: "POST",
         headers: authHeaders(),
         body: JSON.stringify({
@@ -387,7 +388,7 @@ function ConversasInner() {
       }, 50);
 
       try {
-        await fetch(`${API_URL}/api/v1/conversations/${selected.id}/media`, {
+        await authFetch(`${API_URL}/api/v1/conversations/${selected.id}/media`, {
           method: 'POST',
           headers: authHeaders(),
           body: JSON.stringify({ base64, mediatype, filename: file.name, caption: '' }),
@@ -402,7 +403,7 @@ function ConversasInner() {
 
   const updateStatus = async (status: string) => {
     if (!selected) return;
-    await fetch(`${API_URL}/api/v1/conversations/${selected.id}/status`, {
+    await authFetch(`${API_URL}/api/v1/conversations/${selected.id}/status`, {
       method: "PATCH", headers: authHeaders(), body: JSON.stringify({ status }),
     });
     setSelected((prev) => prev ? { ...prev, status: status as ConversationStatus } : prev);
@@ -412,7 +413,7 @@ function ConversasInner() {
   const deleteConversation = async () => {
     if (!selected) return;
     if (!confirm(`Excluir conversa com ${selected.contact.name}? Todo o histórico será apagado.`)) return;
-    await fetch(`${API_URL}/api/v1/conversations/${selected.id}`, { method: "DELETE", headers: authHeaders() });
+    await authFetch(`${API_URL}/api/v1/conversations/${selected.id}`, { method: "DELETE", headers: authHeaders() });
     setConversations((prev) => prev.filter((c) => c.id !== selected.id));
     setSelected(null);
     setMessages([]);
@@ -437,7 +438,7 @@ function ConversasInner() {
               onClick={async () => {
                 setResolvingLids(true);
                 try {
-                  const res = await fetch(`${API_URL}/api/v1/contacts/resolve-lids`, { method: 'POST', headers: authHeaders() });
+                  const res = await authFetch(`${API_URL}/api/v1/contacts/resolve-lids`, { method: 'POST', headers: authHeaders() });
                   const data = await res.json();
                   if (data.resolved > 0) { alert(`✅ ${data.resolved} contato(s) resolvido(s) de ${data.total}!`); fetchConversations(); }
                   else alert(`Nenhum contato LID pôde ser resolvido automaticamente (${data.total} encontrados).\nUse "Editar" para inserir o número manualmente.`);

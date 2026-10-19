@@ -1,4 +1,5 @@
 "use client";
+import { authFetch } from "@/lib/auth-fetch";
 
 import { useEffect, useRef, useState } from "react";
 import { RefreshCw, ShieldCheck, KeyRound } from "lucide-react";
@@ -40,7 +41,7 @@ export function CloudConnect({ onConnected }: { onConnected: () => void }) {
   const sessionInfo = useRef<{ phoneNumberId?: string; wabaId?: string }>({});
 
   useEffect(() => {
-    fetch(`${API_URL}/api/v1/whatsapp-cloud/config`, { headers: authHeaders() })
+    authFetch(`${API_URL}/api/v1/whatsapp-cloud/config`, { headers: authHeaders() })
       .then((r) => (r.ok ? r.json() : null))
       .then(setConfig)
       .catch(() => setConfig(null));
@@ -70,7 +71,7 @@ export function CloudConnect({ onConnected }: { onConnected: () => void }) {
     // Sem os IDs o backend descobre a conta e o número pelo token
     const { phoneNumberId, wabaId } = sessionInfo.current;
     try {
-      const res = await fetch(`${API_URL}/api/v1/whatsapp-cloud/embedded-signup`, {
+      const res = await authFetch(`${API_URL}/api/v1/whatsapp-cloud/embedded-signup`, {
         method: "POST", headers: authHeaders(),
         body: JSON.stringify({ code, phoneNumberId, wabaId, coexistence: true, redirectUri: window.location.href }),
       });
@@ -110,7 +111,7 @@ export function CloudConnect({ onConnected }: { onConnected: () => void }) {
     setError(null);
     setBusy(true);
     try {
-      const res = await fetch(`${API_URL}/api/v1/whatsapp-cloud/manual`, {
+      const res = await authFetch(`${API_URL}/api/v1/whatsapp-cloud/manual`, {
         method: "POST", headers: authHeaders(),
         body: JSON.stringify({ wabaId: manual.wabaId.trim(), accessToken: manual.accessToken.trim() }),
       });

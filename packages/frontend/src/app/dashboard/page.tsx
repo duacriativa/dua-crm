@@ -1,4 +1,5 @@
 "use client";
+import { authFetch } from "@/lib/auth-fetch";
 
 import { TrendingUp, Users, DollarSign, Activity, ArrowUpRight, ArrowDownRight, MessageSquare, Sparkles, Eye, EyeOff, RefreshCw } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
@@ -56,9 +57,9 @@ export default function DashboardPage() {
     setLoading(true);
     try {
       const [finRes, contactsRes, convosRes] = await Promise.all([
-        fetch(`${API_URL}/api/v1/financial/dashboard`, { headers: authHeaders() }),
-        fetch(`${API_URL}/api/v1/contacts/stats`, { headers: authHeaders() }),
-        fetch(`${API_URL}/api/v1/conversations?limit=4&status=OPEN`, { headers: authHeaders() }),
+        authFetch(`${API_URL}/api/v1/financial/dashboard`, { headers: authHeaders() }),
+        authFetch(`${API_URL}/api/v1/contacts/stats`, { headers: authHeaders() }),
+        authFetch(`${API_URL}/api/v1/conversations?limit=4&status=OPEN`, { headers: authHeaders() }),
       ]);
       if (finRes.ok) setFin(await finRes.json());
       if (contactsRes.ok) setContacts(await contactsRes.json());

@@ -1,4 +1,5 @@
 "use client";
+import { authFetch } from "@/lib/auth-fetch";
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
@@ -83,7 +84,7 @@ function SegmentBadge({ contactId, segment, onChange }: { contactId: string; seg
     setSaving(true);
     onChange(val);
     try {
-      await fetch(`${API_URL}/api/v1/contacts/${contactId}`, {
+      await authFetch(`${API_URL}/api/v1/contacts/${contactId}`, {
         method: "PATCH", headers: authHeaders(),
         body: JSON.stringify({ segment: val }),
       });
@@ -131,7 +132,7 @@ function NotesEditor({ contactId, initialNotes }: { contactId: string; initialNo
     setSaving(true);
     setSaveError("");
     try {
-      const res = await fetch(`${API_URL}/api/v1/contacts/${contactId}`, {
+      const res = await authFetch(`${API_URL}/api/v1/contacts/${contactId}`, {
         method: "PATCH", headers: authHeaders(), body: JSON.stringify({ notes }),
       });
       if (!res.ok) { setSaveError("Erro ao salvar. Tente novamente."); return; }
@@ -184,7 +185,7 @@ function ContactInfoEditor({ contact, onSave }: { contact: any; onSave: (f: any)
       const phone = form.phone.trim() || null;
       const email = form.email.trim() || null;
       const instagramHandle = form.instagramHandle.trim().replace("@", "") || null;
-      const res = await fetch(`${API_URL}/api/v1/contacts/${contact.id}`, {
+      const res = await authFetch(`${API_URL}/api/v1/contacts/${contact.id}`, {
         method: "PATCH", headers: authHeaders(),
         body: JSON.stringify({ phone, email, instagramHandle }),
       });
@@ -294,7 +295,7 @@ function BusinessProfileEditor({ contact, onSave }: { contact: any; onSave: (f: 
         .filter((l: string) => !l.startsWith("Faturamento:") && !l.startsWith("Investimento atual:") && !l.startsWith("Modelo de venda:") && !l.startsWith("Interesse:"))
         .join("\n").trim();
       const body: any = { instagramHandle: form.instagram || null, notes: [profileBlock, cleanNotes].filter(Boolean).join("\n") };
-      const res = await fetch(`${API_URL}/api/v1/contacts/${contact.id}`, { method: "PATCH", headers: authHeaders(), body: JSON.stringify(body) });
+      const res = await authFetch(`${API_URL}/api/v1/contacts/${contact.id}`, { method: "PATCH", headers: authHeaders(), body: JSON.stringify(body) });
       if (!res.ok) { setSaveError("Erro ao salvar. Tente novamente."); return; }
       onSave({ faturamento: form.faturamento, investimento: form.investimento, interesse: form.interesse });
       setOpen(false);
@@ -600,7 +601,7 @@ export default function ContactProfilePage() {
   const fetchContact = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`${API_URL}/api/v1/contacts/${id}`, { headers: authHeaders() });
+      const res = await authFetch(`${API_URL}/api/v1/contacts/${id}`, { headers: authHeaders() });
       if (!res.ok) throw new Error("Não foi possível carregar os dados do contato.");
       const data = await res.json();
       setContact(data);
@@ -636,7 +637,7 @@ export default function ContactProfilePage() {
     if (!contact) return;
     if (!confirm(`Excluir "${contact.name}" permanentemente? Esta ação não pode ser desfeita.`)) return;
     setShowMenu(false);
-    await fetch(`${API_URL}/api/v1/contacts/${contact.id}`, { method: "DELETE", headers: authHeaders() });
+    await authFetch(`${API_URL}/api/v1/contacts/${contact.id}`, { method: "DELETE", headers: authHeaders() });
     router.push("/dashboard/contatos");
   }
 
@@ -668,7 +669,7 @@ export default function ContactProfilePage() {
     }, 1800);
 
     try {
-      const res = await fetch(`${API_URL}/api/v1/contacts/${id}/analyze-instagram`, {
+      const res = await authFetch(`${API_URL}/api/v1/contacts/${id}/analyze-instagram`, {
         method: "POST",
         headers: authHeaders(),
       });
@@ -688,7 +689,7 @@ export default function ContactProfilePage() {
   async function handleSaveAnalysis() {
     setAnalysisSaving(true);
     try {
-      await fetch(`${API_URL}/api/v1/contacts/${id}`, {
+      await authFetch(`${API_URL}/api/v1/contacts/${id}`, {
         method: "PATCH",
         headers: authHeaders(),
         body: JSON.stringify({ analysisInstagram: analysisText }),

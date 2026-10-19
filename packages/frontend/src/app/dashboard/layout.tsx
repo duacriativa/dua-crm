@@ -1,4 +1,5 @@
 "use client";
+import { authFetch } from "@/lib/auth-fetch";
 
 import { Sidebar } from "@/components/ui/sidebar";
 import { PushPrompt } from "@/components/notifications/push-prompt";
@@ -24,8 +25,8 @@ function GlobalSearch() {
     setLoading(true);
     try {
       const [contacts, convs] = await Promise.all([
-        fetch(`${API_URL}/api/v1/contacts?search=${encodeURIComponent(q)}&limit=5`, { headers: authHeaders() }).then(r => r.json()).catch(() => ({})),
-        fetch(`${API_URL}/api/v1/conversations?search=${encodeURIComponent(q)}&limit=3`, { headers: authHeaders() }).then(r => r.json()).catch(() => ({})),
+        authFetch(`${API_URL}/api/v1/contacts?search=${encodeURIComponent(q)}&limit=5`, { headers: authHeaders() }).then(r => r.json()).catch(() => ({})),
+        authFetch(`${API_URL}/api/v1/conversations?search=${encodeURIComponent(q)}&limit=3`, { headers: authHeaders() }).then(r => r.json()).catch(() => ({})),
       ]);
       const items: any[] = [];
       (contacts.contacts ?? []).forEach((c: any) => items.push({ type: c.type === "CLIENT" ? "cliente" : "lead", id: c.id, name: c.name, sub: c.phone || c.email || "", href: `/dashboard/contatos/${c.id}` }));
@@ -89,7 +90,7 @@ function NotificationsDropdown() {
 
   const fetchNotifs = useCallback(async () => {
     try {
-      const res = await fetch(`${API_URL}/api/v1/contacts?limit=10&sort=createdAt`, { headers: authHeaders() });
+      const res = await authFetch(`${API_URL}/api/v1/contacts?limit=10&sort=createdAt`, { headers: authHeaders() });
       if (!res.ok) return;
       const data = await res.json();
       const contacts = (data.contacts ?? []).slice(0, 8).map((c: any) => ({
@@ -175,7 +176,7 @@ function TrophyWidget() {
 
   // Busca valor recebido real do Asaas
   useEffect(() => {
-    fetch(`${API_URL}/api/v1/financial/summary`, { headers: authHeaders() })
+    authFetch(`${API_URL}/api/v1/financial/summary`, { headers: authHeaders() })
       .then(r => r.ok ? r.json() : null)
       .then(d => { if (d?.received) setAtual(d.received); })
       .catch(() => {});

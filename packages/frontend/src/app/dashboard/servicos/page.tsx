@@ -1,4 +1,5 @@
 "use client";
+import { authFetch } from "@/lib/auth-fetch";
 
 import { useState, useEffect, useCallback } from "react";
 import {
@@ -75,7 +76,7 @@ export default function ServicosPage() {
   const fetchServices = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`${API_URL}/api/v1/services`, { headers: authHeaders() });
+      const res = await authFetch(`${API_URL}/api/v1/services`, { headers: authHeaders() });
       if (!res.ok) return;
       setServices(await res.json());
     } finally { setLoading(false); }
@@ -138,9 +139,9 @@ export default function ServicosPage() {
         commission: form.commission !== "" ? Number(form.commission) : undefined,
       };
       if (editingId) {
-        await fetch(`${API_URL}/api/v1/services/${editingId}`, { method: "PATCH", headers: authHeaders(), body: JSON.stringify(body) });
+        await authFetch(`${API_URL}/api/v1/services/${editingId}`, { method: "PATCH", headers: authHeaders(), body: JSON.stringify(body) });
       } else {
-        await fetch(`${API_URL}/api/v1/services`, { method: "POST", headers: authHeaders(), body: JSON.stringify(body) });
+        await authFetch(`${API_URL}/api/v1/services`, { method: "POST", headers: authHeaders(), body: JSON.stringify(body) });
       }
       setShowModal(false);
       fetchServices();
@@ -148,7 +149,7 @@ export default function ServicosPage() {
   };
 
   const handleDelete = async (id: string) => {
-    await fetch(`${API_URL}/api/v1/services/${id}`, { method: "DELETE", headers: authHeaders() });
+    await authFetch(`${API_URL}/api/v1/services/${id}`, { method: "DELETE", headers: authHeaders() });
     setDeleteConfirm(null);
     fetchServices();
   };

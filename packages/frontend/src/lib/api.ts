@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { refreshAccessToken, endSession } from './auth-fetch';
 
 const api = axios.create({
   baseURL: '/api/v1',
@@ -20,21 +21,12 @@ api.interceptors.response.use(
 
     if (error.response?.status === 401 && !original._retry) {
       original._retry = true;
-      try {
-        const refreshToken = localStorage.getItem('refresh_token');
-        const { data } = await axios.post(
-          `/api/v1/auth/refresh`,
-          { refreshToken },
-        );
-        localStorage.setItem('access_token', data.accessToken);
-        localStorage.setItem('refresh_token', data.refreshToken);
-        original.headers.Authorization = `Bearer ${data.accessToken}`;
+      const token = await refreshAccessToken();
+      if (token) {
+        original.headers.Authorization = `Bearer ${token}`;
         return api(original);
-      } catch {
-        localStorage.removeItem('access_token');
-        localStorage.removeItem('refresh_token');
-        if (typeof window !== 'undefined') window.location.href = '/login';
       }
+      endSession();
     }
 
     return Promise.reject(error);
