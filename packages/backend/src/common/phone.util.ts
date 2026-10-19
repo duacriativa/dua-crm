@@ -22,3 +22,13 @@ export function phoneVariants(phone: string) {
   if (raw.startsWith('55') && raw.length === 13) variants.push(`+${raw.slice(0, 4)}${raw.slice(5)}`);
   return variants;
 }
+
+/** Dígitos para o cadastro vindo do formulário do site: tira o 0 inicial e põe DDI 55 em número BR. */
+export function formatPhone(phone: string): string {
+  if (!phone) return '';
+  if (phone.startsWith('lid:')) return phone;
+  let cleaned = phone.replace(/\D/g, '');
+  if (cleaned.startsWith('0') && cleaned.length > 10) cleaned = cleaned.substring(1);
+  if ((cleaned.length === 10 || cleaned.length === 11) && !cleaned.startsWith('55')) cleaned = '55' + cleaned;
+  return cleaned;
+}

@@ -48,12 +48,6 @@ export class ConversationsController {
     );
   }
 
-  /** POST /conversations/sync-groups — atualiza nomes dos grupos via Evolution API */
-  @Post('sync-groups')
-  syncGroupNames(@Request() req: any) {
-    return this.conversationsService.syncGroupNames(req.user.tenantId);
-  }
-
   /** POST /conversations/start — inicia conversa outbound por telefone */
   @Post('start')
   startConversation(
@@ -108,12 +102,6 @@ export class ConversationsController {
   @Delete(':id')
   remove(@Request() req: any, @Param('id') id: string) {
     return this.conversationsService.remove(req.user.tenantId, id);
-  }
-
-  /** GET /conversations/:id/group-members — membros do grupo */
-  @Get(':id/group-members')
-  getGroupMembers(@Request() req: any, @Param('id') id: string) {
-    return this.conversationsService.getGroupMembers(req.user.tenantId, id);
   }
 
   /** POST /conversations/:id/messages/:msgId/remedia — recarrega mídia expirada */

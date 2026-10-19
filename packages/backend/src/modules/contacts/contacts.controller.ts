@@ -6,7 +6,6 @@ import { ContactsService } from './contacts.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AsaasService } from '../asaas/asaas.service';
-import axios from 'axios';
 
 @Controller('contacts')
 @UseGuards(JwtAuthGuard)
@@ -357,61 +356,6 @@ export class ContactsController {
     }
 
     return { analysis: analysisText, parsed };
-  }
-
-  /** POST /contacts/resolve-lids — tenta mapear contatos LID para número real via Evolution API */
-  @Post('resolve-lids')
-  async resolveLids(@Request() req: any) {
-    const tenantId = req.user.tenantId;
-    const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { slug: true } });
-    const instanceName = tenant?.slug ?? tenantId;
-    const evolutionUrl = process.env.EVOLUTION_API_URL;
-    const apiKey = process.env.EVOLUTION_API_KEY;
-
-    const lidContacts = await this.prisma.contact.findMany({
-      where: { tenantId, phone: { startsWith: 'lid:' } },
-    });
-
-    if (!lidContacts.length) return { resolved: 0, total: 0 };
-
-    let evolutionContacts: any[] = [];
-    try {
-      const res = await axios.post(
-        `${evolutionUrl}/chat/findContacts/${instanceName}`,
-        {},
-        { headers: { apikey: apiKey, 'Content-Type': 'application/json' }, timeout: 10000 },
-      );
-      evolutionContacts = Array.isArray(res.data) ? res.data : [];
-    } catch {
-      return { resolved: 0, total: lidContacts.length, error: 'Não foi possível contactar a Evolution API' };
-    }
-
-    const nameToPhone = new Map<string, string>();
-    for (const ec of evolutionContacts) {
-      if (ec.id?.endsWith('@s.whatsapp.net') && ec.pushName) {
-        const phone = '+' + ec.id.replace('@s.whatsapp.net', '');
-        nameToPhone.set(ec.pushName.toLowerCase().trim(), phone);
-      }
-    }
-
-    let resolved = 0;
-    for (const contact of lidContacts) {
-      const key = contact.name?.toLowerCase().trim();
-      const realPhone = key ? nameToPhone.get(key) : undefined;
-      if (!realPhone) continue;
-
-      const existing = await this.prisma.contact.findFirst({ where: { tenantId, phone: realPhone } });
-      if (existing) continue;
-
-      await this.prisma.contact.update({ where: { id: contact.id }, data: { phone: realPhone } });
-      await this.prisma.conversation.updateMany({
-        where: { tenantId, contactId: contact.id, externalId: contact.phone },
-        data: { externalId: realPhone },
-      });
-      resolved++;
-    }
-
-    return { resolved, total: lidContacts.length };
   }
 
   /** POST /contacts/import-asaas — importa clientes do Asaas para a base de contatos */

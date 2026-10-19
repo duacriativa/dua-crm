@@ -56,5 +56,6 @@ principal (o funil mais antigo; se não existir, o CRM cria "Funil de Vendas").
 
 ## Depois de migrar
 
-- A instância Evolution (VPS Hetzner) e o serviço `evolution-api` offline no Railway podem
-  ser desligados quando a API oficial estiver estável.
+- O suporte à Evolution API (QR Code) foi removido do código. A instância Evolution (VPS Hetzner),
+  o serviço `evolution-api` no Railway e as variáveis `EVOLUTION_API_URL`/`EVOLUTION_API_KEY`
+  podem ser desligados/apagados.

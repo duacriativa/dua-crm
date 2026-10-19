@@ -445,8 +445,8 @@ function TabIntegracoes() {
 
   const checkWaStatus = useCallback(async () => {
     try {
-      const res = await authFetch(`${API_URL}/api/v1/whatsapp/status`, { headers: authHeaders() });
-      if (!res.ok) return;
+      const res = await authFetch(`${API_URL}/api/v1/whatsapp-cloud/status`, { headers: authHeaders() });
+      if (!res.ok) { setWaStatus("disconnected"); return; }
       const data = await res.json();
       setWaStatus(data.connected ? "connected" : "disconnected");
     } catch {

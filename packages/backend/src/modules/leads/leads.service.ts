@@ -1,7 +1,7 @@
 import { Injectable, Logger, InternalServerErrorException } from '@nestjs/common';
 import { IsString, IsIn, IsOptional } from 'class-validator';
 import { PrismaService } from '../../prisma/prisma.service';
-import { WhatsAppService } from '../whatsapp/whatsapp.service';
+import { formatPhone } from '../../common/phone.util';
 import { LeadQualificationService } from './lead-qualification.service';
 
 export class CreatePublicLeadDto {
@@ -85,7 +85,7 @@ export class LeadsService {
 
   async createPublicLead(dto: CreatePublicLeadDto) {
     const tenantId = await this.resolveTenantId();
-    const formattedPhone = WhatsAppService.formatPhone(dto.whatsapp);
+    const formattedPhone = formatPhone(dto.whatsapp);
 
     // ── Qualificação automática ──────────────────────────
     const qualResult = this.qualification.qualify({

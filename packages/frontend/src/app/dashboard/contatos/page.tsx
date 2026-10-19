@@ -161,8 +161,6 @@ export default function ContatosPage() {
   const [statsLoading, setStatsLoading] = useState(true);
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<{ created: number; updated: number } | null>(null);
-  const [fixingLids, setFixingLids] = useState(false);
-  const [lidResult, setLidResult] = useState<{ resolved: number; total: number } | null>(null);
 
   const fetchStats = useCallback(async () => {
     setStatsLoading(true);
@@ -314,22 +312,6 @@ export default function ContatosPage() {
     } finally { setBulkSaving(false); }
   };
 
-  const fixLids = async () => {
-    if (fixingLids) return;
-    setFixingLids(true);
-    setLidResult(null);
-    try {
-      const res = await authFetch(`${API_URL}/api/v1/contacts/resolve-lids`, {
-        method: "POST", headers: authHeaders(),
-      });
-      const data = await res.json();
-      setLidResult({ resolved: data.resolved ?? 0, total: data.total ?? 0 });
-      if (data.resolved > 0) fetchContacts();
-    } finally {
-      setFixingLids(false);
-    }
-  };
-
   // Tabs usam SEMPRE os totais globais (segmentCounts vindo do backend),
   // assim a contagem de cada aba não some quando outra é selecionada.
   const segTabs = [
@@ -387,7 +369,7 @@ export default function ContatosPage() {
                 ))}
               </div>
             </div>
-            <button onClick={importFromAsaas} disabled={importing || fixingLids}
+            <button onClick={importFromAsaas} disabled={importing}
               title="Busca todos os clientes cadastrados no Asaas e adiciona ao CRM"
               className="hidden sm:flex items-center gap-1.5 px-3 py-2 text-sm text-muted-foreground border border-border rounded-xl hover:bg-muted/50 transition-colors disabled:opacity-50">
               {importing ? <RefreshCw className="w-4 h-4 animate-spin"/> : <RefreshCw className="w-4 h-4"/>}

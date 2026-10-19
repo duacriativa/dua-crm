@@ -1,14 +1,11 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import axios from 'axios';
-import { WhatsAppService } from '../whatsapp/whatsapp.service';
 import { WhatsAppCloudService } from '../whatsapp-cloud/whatsapp-cloud.service';
 
 @Injectable()
 export class ConversationsService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly whatsappService: WhatsAppService,
     private readonly cloud: WhatsAppCloudService,
   ) {}
 
@@ -21,11 +18,10 @@ export class ConversationsService {
     return digits;
   }
 
-  private get evolutionHeaders() {
-    return {
-      apikey: process.env.EVOLUTION_API_KEY,
-      'Content-Type': 'application/json',
-    };
+  private async ensureCloudConnected(tenantId: string) {
+    if (!(await this.cloud.isConnected(tenantId))) {
+      throw new BadRequestException('WhatsApp oficial não conectado. Conecte o número na tela do WhatsApp.');
+    }
   }
 
   async findAll(
@@ -165,89 +161,8 @@ export class ConversationsService {
     });
     if (!conv) throw new NotFoundException('Conversa não encontrada.');
 
-    // API oficial conectada → envia pela Cloud API
-    if (await this.cloud.isConnected(tenantId)) {
-      const { externalId } = await this.cloud.sendText(tenantId, this.cloudRecipient(conv), content, quotedExternalId);
-      const message = await this.prisma.message.create({
-        data: {
-          conversationId,
-          direction: 'OUTBOUND',
-          type: 'TEXT',
-          content,
-          sentAt: new Date(),
-          externalId,
-          quotedContent: quotedContent || null,
-          quotedExternalId: quotedExternalId || null,
-          quotedType: quotedType || null,
-        },
-      });
-      await this.prisma.conversation.update({ where: { id: conversationId }, data: { updatedAt: new Date() } });
-      return message;
-    }
-
-    // Suporte a LID (@lid suffix), formato antigo (lid:) e número normal (+5521...)
-    const externalId = conv.externalId || '';
-    let number: string;
-    let remoteJid: string;
-
-    if (externalId.endsWith('@lid')) {
-      // Formato nativo: "101868151812267@lid"
-      number = externalId;
-      remoteJid = externalId;
-    } else if (externalId.startsWith('lid:')) {
-      // Formato legado: "lid:101868151812267"
-      const lid = externalId.replace('lid:', '');
-      number = `${lid}@lid`;
-      remoteJid = `${lid}@lid`;
-    } else {
-      const phone = externalId.replace(/\D/g, '');
-      number = phone;
-      remoteJid = `${phone}@s.whatsapp.net`;
-    }
-
-    // Envia via Evolution API (instanceName = tenant slug)
-    const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { slug: true } });
-    const instanceName = tenant?.slug ?? tenantId;
-
-    // Se ainda for LID, tenta resolver via agenda antes de enviar
-    if (number.endsWith('@lid')) {
-      const lid = number.replace('@lid', '');
-      const resolved = await this.whatsappService.resolveLid(instanceName, lid, conv.contact.name, tenantId);
-      if (resolved) {
-        number = `${resolved}@s.whatsapp.net`;
-        remoteJid = number;
-        console.log(`[SendMessage] LID resolvido para ${number} antes do envio`);
-      }
-    }
-
-    const evolutionUrl = `${process.env.EVOLUTION_API_URL}/message/sendText/${instanceName}`;
-
-    const body: any = { number, textMessage: { text: content } };
-
-    // Adiciona quoted se for reply
-    if (quotedExternalId) {
-      const qmContent = quotedType === 'IMAGE' ? { imageMessage: { caption: quotedContent || '' } }
-        : quotedType === 'VIDEO' ? { videoMessage: { caption: quotedContent || '' } }
-        : quotedType === 'AUDIO' ? { audioMessage: {} }
-        : quotedType === 'DOCUMENT' ? { documentMessage: { fileName: quotedContent || '' } }
-        : { conversation: quotedContent || '' };
-      body.quoted = {
-        key: { id: quotedExternalId, fromMe: false, remoteJid },
-        message: qmContent,
-      };
-    }
-
-    console.log('Evolution API send:', evolutionUrl, JSON.stringify(body));
-    let evolutionMsgId: string | null = null;
-    try {
-      const resp = await axios.post(evolutionUrl, body, { headers: this.evolutionHeaders });
-      console.log('Evolution API send ok:', resp.status);
-      evolutionMsgId = resp.data?.key?.id ?? null;
-    } catch (err: any) {
-      console.error('Evolution API send error:', JSON.stringify(err?.response?.data ?? err.message));
-    }
-
-    // Salva no banco
+    await this.ensureCloudConnected(tenantId);
+    const { externalId } = await this.cloud.sendText(tenantId, this.cloudRecipient(conv), content, quotedExternalId);
     const message = await this.prisma.message.create({
       data: {
         conversationId,
@@ -255,19 +170,13 @@ export class ConversationsService {
         type: 'TEXT',
         content,
         sentAt: new Date(),
-        externalId: evolutionMsgId,
+        externalId,
         quotedContent: quotedContent || null,
         quotedExternalId: quotedExternalId || null,
         quotedType: quotedType || null,
       },
     });
-
-    // Atualiza updatedAt da conversa
-    await this.prisma.conversation.update({
-      where: { id: conversationId },
-      data: { updatedAt: new Date() },
-    });
-
+    await this.prisma.conversation.update({ where: { id: conversationId }, data: { updatedAt: new Date() } });
     return message;
   }
 
@@ -287,60 +196,20 @@ export class ConversationsService {
 
     const msgTypeOf = (t: string) => (t === 'image' ? 'IMAGE' : t === 'video' ? 'VIDEO' : t === 'audio' ? 'AUDIO' : 'DOCUMENT');
 
-    // API oficial conectada → upload + envio pela Cloud API
-    if (await this.cloud.isConnected(tenantId)) {
-      const { externalId, mediaId } = await this.cloud.sendMedia(tenantId, this.cloudRecipient(conv), base64, mediatype, filename, caption);
-      const message = await this.prisma.message.create({
-        data: {
-          conversationId,
-          direction: 'OUTBOUND',
-          type: msgTypeOf(mediatype),
-          content: caption || filename,
-          sentAt: new Date(),
-          externalId,
-          mediaId,
-        },
-      });
-      await this.prisma.conversation.update({ where: { id: conversationId }, data: { updatedAt: new Date() } });
-      return message;
-    }
-
-    const phone = conv.contact.phone?.replace(/\D/g, '') || conv.externalId.replace(/\D/g, '');
-    const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { slug: true } });
-    const instanceName = tenant?.slug ?? tenantId;
-    const evolutionUrl = `${process.env.EVOLUTION_API_URL}/message/sendMedia/${instanceName}`;
-
-    let evolutionMsgId: string | null = null;
-    try {
-      const resp = await axios.post(evolutionUrl, {
-        number: phone,
-        mediatype,
-        caption,
-        media: base64,
-        fileName: filename,
-      }, { headers: this.evolutionHeaders });
-      evolutionMsgId = resp.data?.key?.id ?? null;
-    } catch (err: any) {
-      console.error('Evolution sendMedia error:', JSON.stringify(err?.response?.data ?? err.message));
-    }
-
-    const msgType = mediatype === 'image' ? 'IMAGE' : mediatype === 'video' ? 'VIDEO' : mediatype === 'audio' ? 'AUDIO' : 'DOCUMENT';
+    await this.ensureCloudConnected(tenantId);
+    const { externalId, mediaId } = await this.cloud.sendMedia(tenantId, this.cloudRecipient(conv), base64, mediatype, filename, caption);
     const message = await this.prisma.message.create({
       data: {
         conversationId,
         direction: 'OUTBOUND',
-        type: msgType,
+        type: msgTypeOf(mediatype),
         content: caption || filename,
         sentAt: new Date(),
-        externalId: evolutionMsgId,
+        externalId,
+        mediaId,
       },
     });
-
-    await this.prisma.conversation.update({
-      where: { id: conversationId },
-      data: { updatedAt: new Date() },
-    });
-
+    await this.prisma.conversation.update({ where: { id: conversationId }, data: { updatedAt: new Date() } });
     return message;
   }
 
@@ -439,35 +308,6 @@ export class ConversationsService {
     });
   }
 
-  async getGroupMembers(tenantId: string, conversationId: string) {
-    const conv = await this.prisma.conversation.findFirst({
-      where: { id: conversationId, tenantId },
-    });
-    if (!conv) throw new NotFoundException('Conversa não encontrada.');
-    if (!conv.externalId?.endsWith('@g.us')) return { members: [] };
-
-    const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { slug: true } });
-    const instanceName = tenant?.slug ?? tenantId;
-
-    try {
-      const res = await axios.get(
-        `${process.env.EVOLUTION_API_URL}/group/participants/${instanceName}?groupJid=${conv.externalId}`,
-        { headers: this.evolutionHeaders, timeout: 10000 },
-      );
-      // Evolution API returns array directly or wrapped
-      const raw: any[] = Array.isArray(res.data) ? res.data : res.data?.participants ?? [];
-      const members = raw.map((p: any) => ({
-        id: p.id || p.jid,
-        name: p.pushName || p.name || p.id?.split('@')[0] || 'Participante',
-        isAdmin: p.admin === 'admin' || p.admin === 'superadmin' || !!p.isAdmin,
-      }));
-      return { members };
-    } catch (err: any) {
-      console.warn(`[getGroupMembers] ${err.message}`);
-      return { members: [] };
-    }
-  }
-
   async redownloadMedia(tenantId: string, conversationId: string, messageId: string) {
     // Verifica que a conversa pertence ao tenant
     const conv = await this.prisma.conversation.findFirst({
@@ -491,72 +331,6 @@ export class ConversationsService {
       }
     }
 
-    if (!msg.externalId) throw new NotFoundException('Mensagem sem ID externo para recarregar.');
-
-    const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { slug: true } });
-    const instanceName = tenant?.slug ?? tenantId;
-
-    const typeMap: Record<string, string> = {
-      IMAGE: 'imageMessage',
-      VIDEO: 'videoMessage',
-      AUDIO: 'audioMessage',
-      DOCUMENT: 'documentMessage',
-    };
-    const messageType = typeMap[msg.type || ''];
-    if (!messageType) throw new NotFoundException('Tipo de mídia não suportado.');
-
-    try {
-      const res = await axios.post(
-        `${process.env.EVOLUTION_API_URL}/chat/getBase64FromMediaMessage/${instanceName}`,
-        { message: { key: { id: msg.externalId, remoteJid: conv.externalId }, messageType } },
-        { headers: this.evolutionHeaders, timeout: 20000 },
-      );
-      const base64 = res.data?.base64 || res.data?.data;
-      const mime = res.data?.mimetype || res.data?.mediaType || 'application/octet-stream';
-      if (!base64) throw new Error('Sem dados de mídia retornados pela API');
-
-      const dataUri = base64.startsWith('data:') ? base64 : `data:${mime};base64,${base64}`;
-
-      await this.prisma.message.update({
-        where: { id: messageId },
-        data: { mediaUrl: dataUri },
-      });
-
-      return { mediaUrl: dataUri };
-    } catch (err: any) {
-      throw new NotFoundException(`Não foi possível recarregar a mídia: ${err.message}`);
-    }
-  }
-
-  async syncGroupNames(tenantId: string) {
-    const groups = await this.prisma.conversation.findMany({
-      where: { tenantId, externalId: { endsWith: '@g.us' } },
-      include: { contact: true },
-    });
-
-    const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { slug: true } });
-    const instanceName = tenant?.slug ?? tenantId;
-
-    let updated = 0;
-    for (const group of groups) {
-      try {
-        const res = await axios.get(
-          `${process.env.EVOLUTION_API_URL}/group/findGroupInfos/${instanceName}?groupJid=${group.externalId}`,
-          { headers: this.evolutionHeaders, timeout: 10000 },
-        );
-        const groupName = res.data?.subject || res.data?.name;
-        if (groupName && groupName !== group.contact.name) {
-          await this.prisma.contact.update({
-            where: { id: group.contactId },
-            data: { name: groupName },
-          });
-          updated++;
-        }
-      } catch (err: any) {
-        console.warn(`[syncGroupNames] Falha no grupo ${group.externalId}: ${err.message}`);
-      }
-    }
-
-    return { ok: true, total: groups.length, updated };
+    throw new NotFoundException('Mídia indisponível: só mensagens recebidas pela API oficial podem ser recarregadas.');
   }
 }

@@ -314,7 +314,7 @@ function DashboardContent() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-semibold text-emerald-800">WhatsApp Business</p>
-                  <p className="text-xs text-emerald-600">Conectado via QR · Evolution API v1.8.7</p>
+                  <p className="text-xs text-emerald-600">API oficial da Meta (Cloud API)</p>
                 </div>
                 <CheckCircle2 className="h-5 w-5 text-emerald-500 shrink-0" />
               </div>

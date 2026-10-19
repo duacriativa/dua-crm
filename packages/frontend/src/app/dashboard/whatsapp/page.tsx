@@ -6,7 +6,7 @@ import {
   Search, Settings, Users, MessageSquarePlus, Zap,
   Phone, MoreVertical, Send, Paperclip, Smile, Mic,
   X, ChevronRight, Star, RefreshCw, ArrowLeft,
-  Plus, AlertCircle, Smartphone, Download, ZoomIn, Play, Pause, Crown
+  Plus, AlertCircle, Smartphone, Download, ZoomIn, Play, Pause
 } from "lucide-react";
 import { CloudConnect } from "@/components/whatsapp/cloud-connect";
 
@@ -29,9 +29,6 @@ interface Message {
   createdAt: string; sentAt?: string; type?: string; mediaUrl?: string;
   externalId?: string; senderName?: string;
   pending?: boolean; failed?: boolean;
-}
-interface GroupMember {
-  id: string; name: string; isAdmin: boolean;
 }
 
 /** Detecta se um telefone é LID (número longo sem prefixo + ) */
@@ -452,17 +449,15 @@ function ChatView({ conv, messages, loadingMsgs, text, setText, onSend, sending,
   );
 }
 
-function SettingsPanel({ onClose, onDisconnect, provider }: { onClose: () => void; onDisconnect: () => void; provider: "cloud" | "evolution" }) {
+function SettingsPanel({ onClose, onDisconnect }: { onClose: () => void; onDisconnect: () => void }) {
   const [disconnecting, setDisconnecting] = useState(false);
 
   const handleDisconnect = async () => {
-    if (!confirm(provider === "cloud"
-      ? "Desconectar a API oficial do CRM? O número continua funcionando no app do celular."
-      : "Tem certeza que deseja desconectar o WhatsApp? Você precisará escanear o QR Code novamente.")) return;
+    if (!confirm("Desconectar a API oficial do CRM? O número continua funcionando no app do celular.")) return;
     setDisconnecting(true);
     // Tenta desconectar no backend mas não bloqueia o fluxo se falhar
     try {
-      await authFetch(`${API_URL}/api/v1/${provider === "cloud" ? "whatsapp-cloud" : "whatsapp"}/disconnect`, { method: "POST", headers: authHeaders() });
+      await authFetch(`${API_URL}/api/v1/whatsapp-cloud/disconnect`, { method: "POST", headers: authHeaders() });
     } catch {
       // ignora erro de rede — prossegue com desconexão local
     } finally {
@@ -503,28 +498,6 @@ function SettingsPanel({ onClose, onDisconnect, provider }: { onClose: () => voi
         <div className="pt-6 border-t border-border">
           <p className="text-sm font-semibold text-foreground mb-4">Ações da Conta</p>
           <div className="space-y-2">
-            <button
-              className="w-full flex items-center gap-2 px-3 py-2 text-sm font-medium text-muted-foreground rounded-xl hover:bg-muted/50 hover:text-foreground transition-colors text-left"
-              onClick={async () => {
-                const res = await authFetch(`${API_URL}/api/v1/whatsapp/sync`, { method: "POST", headers: authHeaders() });
-                if (res.ok) alert("Sincronização de contatos iniciada! Em alguns minutos os nomes e fotos aparecerão.");
-              }}
-            >
-              <Users className="w-4 h-4" /> Sincronizar contatos (Agenda)
-            </button>
-            <button
-              className="w-full flex items-center gap-2 px-3 py-2 text-sm font-medium text-muted-foreground rounded-xl hover:bg-muted/50 hover:text-foreground transition-colors text-left"
-              onClick={async () => {
-                const res = await authFetch(`${API_URL}/api/v1/conversations/sync-groups`, { method: "POST", headers: authHeaders() });
-                if (res.ok) {
-                  const data = await res.json();
-                  alert(`Nomes de grupos atualizados! ${data.updated} de ${data.total} grupos renomeados.`);
-                  window.location.reload();
-                }
-              }}
-            >
-              <Users className="w-4 h-4" /> Sincronizar nomes de grupos
-            </button>
             <button className="w-full flex items-center gap-2 px-3 py-2 text-sm font-medium text-muted-foreground rounded-xl hover:bg-muted/50 hover:text-foreground transition-colors text-left" onClick={async () => {
               if (!confirm("Apagar TODAS as conversas e mensagens? Esta ação não pode ser desfeita!")) return;
               await authFetch(`${API_URL}/api/v1/conversations/history`, { method: "DELETE", headers: authHeaders() });
@@ -549,19 +522,6 @@ function SettingsPanel({ onClose, onDisconnect, provider }: { onClose: () => voi
 }
 
 function ContactPanel({ conv }: { conv: Conversation }) {
-  const [members, setMembers] = useState<GroupMember[]>([]);
-  const [loadingMembers, setLoadingMembers] = useState(false);
-
-  useEffect(() => {
-    if (!conv.isGroup) { setMembers([]); return; }
-    setLoadingMembers(true);
-    authFetch(`${API_URL}/api/v1/conversations/${conv.id}/group-members`, { headers: authHeaders() })
-      .then(r => r.ok ? r.json() : { members: [] })
-      .then(d => setMembers(d.members || []))
-      .catch(() => setMembers([]))
-      .finally(() => setLoadingMembers(false));
-  }, [conv.id, conv.isGroup]);
-
   return (
     <div className="flex flex-col h-full overflow-y-auto scrollbar-none">
       {/* Avatar + nome */}
@@ -575,38 +535,12 @@ function ContactPanel({ conv }: { conv: Conversation }) {
         </div>
         <p className="font-bold text-foreground text-sm text-center leading-tight">{conv.contactName}</p>
         {conv.isGroup
-          ? <p className="text-xs text-muted-foreground">{members.length > 0 ? `${members.length} participantes` : "Grupo"}</p>
+          ? <p className="text-xs text-muted-foreground">Grupo</p>
           : conv.contactPhone && !isLidPhone(conv.contactPhone)
             ? <p className="text-xs text-muted-foreground flex items-center gap-1"><Phone className="w-3 h-3" />{conv.contactPhone}</p>
             : <p className="text-xs text-muted-foreground italic">Número não resolvido</p>
         }
       </div>
-
-      {/* Membros do grupo */}
-      {conv.isGroup && (
-        <div className="p-4">
-          <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-2">
-            <Users className="w-3.5 h-3.5" /> Membros do Grupo
-          </p>
-          {loadingMembers && <div className="flex justify-center py-4"><RefreshCw className="w-4 h-4 animate-spin text-muted-foreground" /></div>}
-          {!loadingMembers && members.length === 0 && (
-            <p className="text-xs text-muted-foreground italic">Nenhum membro encontrado</p>
-          )}
-          <div className="space-y-2">
-            {members.map(m => (
-              <div key={m.id} className="flex items-center gap-2.5 px-2 py-1.5 rounded-xl hover:bg-muted/30 transition-colors">
-                <Avatar name={m.name} size={8} />
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-semibold text-foreground truncate">{m.name}</p>
-                </div>
-                {m.isAdmin && (
-                  <Crown className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
 
       {/* Ações (para conversas 1:1) */}
       {!conv.isGroup && (
@@ -639,98 +573,18 @@ export default function WhatsAppPage() {
 
   // Status de conexão do WhatsApp
   const [waStatus, setWaStatus] = useState<"checking" | "connected" | "disconnected">("checking");
-  const [waQr, setWaQr] = useState<string | null>(null);
-  const [waLoading, setWaLoading] = useState(false);
-  const [waProvider, setWaProvider] = useState<"cloud" | "evolution">("evolution");
 
   const checkWaStatus = useCallback(async () => {
     try {
-      // 0. API oficial (Cloud API) conectada tem prioridade sobre a Evolution
-      const cloudRes = await authFetch(`${API_URL}/api/v1/whatsapp-cloud/status`, { headers: authHeaders() }).catch(() => null);
-      if (cloudRes?.ok) {
-        const cloud = await cloudRes.json();
-        if (cloud.connected) {
-          setWaProvider("cloud");
-          setWaStatus("connected");
-          setWaQr(null);
-          return true;
-        }
-      }
-      setWaProvider("evolution");
-
-      // 1. Tenta o endpoint de status (rápido)
-      const res = await authFetch(`${API_URL}/api/v1/whatsapp/status`, { headers: authHeaders() });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.connected) {
-          setWaStatus("connected");
-          setWaQr(null);
-          return true;
-        }
-      }
-      // 2. Se status retornou false ou falhou, tenta connect (já trata instância ativa)
-      const connRes = await authFetch(`${API_URL}/api/v1/whatsapp/connect`, {
-        method: "POST", headers: authHeaders()
-      });
-      if (connRes.ok) {
-        const connData = await connRes.json();
-        if (connData.connected) {
-          setWaStatus("connected");
-          setWaQr(null);
-          return true;
-        }
-        if (connData.qrCode) {
-          setWaQr(connData.qrCode);
-          setWaStatus("disconnected");
-          return false;
-        }
-      }
-      setWaStatus("disconnected");
-      return false;
+      const res = await authFetch(`${API_URL}/api/v1/whatsapp-cloud/status`, { headers: authHeaders() });
+      const data = res.ok ? await res.json() : null;
+      setWaStatus(data?.connected ? "connected" : "disconnected");
     } catch {
       setWaStatus("disconnected");
-      return false;
     }
   }, []);
 
   useEffect(() => { checkWaStatus(); }, [checkWaStatus]);
-
-  useEffect(() => {
-    if (waQr && waStatus !== "connected") {
-      const interval = setInterval(async () => {
-        const isConnected = await checkWaStatus();
-        if (isConnected) clearInterval(interval);
-      }, 5000);
-      return () => clearInterval(interval);
-    }
-  }, [waQr, waStatus, checkWaStatus]);
-
-  const generateWaQr = async (forceNew = false) => {
-    setWaLoading(true);
-    try {
-      // Só desconecta se o usuário forçou (botão "Gerar novo código"), nunca na primeira tentativa
-      if (forceNew) {
-        await authFetch(`${API_URL}/api/v1/whatsapp/disconnect`, { method: "POST", headers: authHeaders() }).catch(() => {});
-        await new Promise(r => setTimeout(r, 1500)); // aguarda instância ser removida
-      }
-      const res = await authFetch(`${API_URL}/api/v1/whatsapp/connect`, { method: "POST", headers: authHeaders() });
-      if (!res.ok) { alert("Erro ao conectar — tente novamente"); return; }
-      const data = await res.json();
-      if (data.connected) {
-        setWaStatus("connected");
-        setWaQr(null);
-      } else if (data.qrCode) {
-        setWaQr(data.qrCode);
-        setWaStatus("disconnected");
-      } else {
-        alert("Não foi possível gerar o QR Code. Tente novamente em alguns segundos.");
-      }
-    } catch {
-      alert("Erro ao gerar QR Code");
-    } finally {
-      setWaLoading(false);
-    }
-  };
 
   const fetchConversations = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
@@ -858,35 +712,10 @@ export default function WhatsAppPage() {
                 </div>
                 <h2 className="text-xl font-bold text-foreground mb-2">Conecte seu WhatsApp</h2>
                 <p className="text-sm text-muted-foreground mb-6">
-                  Conecte pela API oficial da Meta (recomendado) ou pelo QR Code.
+                  Conecte pela API oficial da Meta.
                 </p>
 
                 <CloudConnect onConnected={() => checkWaStatus()} />
-                <div className="flex items-center gap-3 w-full my-5">
-                  <div className="h-px flex-1 bg-border" />
-                  <span className="text-[11px] text-muted-foreground">ou via QR Code (não oficial)</span>
-                  <div className="h-px flex-1 bg-border" />
-                </div>
-
-                {waQr ? (
-                  <div className="flex flex-col items-center">
-                    <div className="p-3 bg-white rounded-2xl shadow-sm border border-border mb-4">
-                      <img src={waQr} alt="QR Code WhatsApp" className="w-48 h-48" />
-                    </div>
-                    <p className="text-xs text-muted-foreground mb-4">
-                      Abra o WhatsApp &gt; Aparelhos Conectados
-                    </p>
-                    <button onClick={() => generateWaQr(true)} disabled={waLoading} className="text-sm font-semibold text-primary hover:underline flex items-center gap-2">
-                      {waLoading && <RefreshCw className="w-4 h-4 animate-spin" />}
-                      Gerar novo código
-                    </button>
-                  </div>
-                ) : (
-                  <button onClick={() => generateWaQr()} disabled={waLoading} className="w-full py-3 px-4 flex items-center justify-center gap-2 text-sm font-bold text-white bg-primary rounded-xl hover:opacity-90 transition-opacity disabled:opacity-50">
-                    {waLoading ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Zap className="w-5 h-5" />}
-                    Gerar QR Code
-                  </button>
-                )}
               </>
             )}
           </div>
@@ -901,7 +730,7 @@ export default function WhatsAppPage() {
             text={text} setText={setText} onSend={sendMessage} sending={sending}
             onBack={() => setMobileView("list")} isMobile onUpdateMessage={updateMessage} />
         )}
-        {mobileView === "settings" && <SettingsPanel onClose={() => setMobileView("list")} onDisconnect={() => setWaStatus("disconnected")} provider={waProvider} />}
+        {mobileView === "settings" && <SettingsPanel onClose={() => setMobileView("list")} onDisconnect={() => setWaStatus("disconnected")} />}
       </div>
 
       {/* ── Desktop ── */}
@@ -931,7 +760,7 @@ export default function WhatsAppPage() {
         )}
         {showSettings && (
           <div className="w-80 shrink-0 border-l border-border bg-background">
-            <SettingsPanel onClose={() => setShowSettings(false)} onDisconnect={() => setWaStatus("disconnected")} provider={waProvider} />
+            <SettingsPanel onClose={() => setShowSettings(false)} onDisconnect={() => setWaStatus("disconnected")} />
           </div>
         )}
       </div>
