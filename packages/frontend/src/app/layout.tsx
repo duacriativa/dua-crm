@@ -4,7 +4,14 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "Dua CRM",
   description: "CRM inteligente para marcas de moda",
-  icons: { icon: "/icons/favicon-64.png", apple: "/icons/apple-touch-icon.png" },
+  icons: {
+    icon: [
+      { url: "/favicon.svg?v=2", type: "image/svg+xml" },
+      { url: "/icons/favicon-64.png?v=2", sizes: "64x64", type: "image/png" },
+    ],
+    shortcut: "/favicon.ico?v=2",
+    apple: "/icons/apple-touch-icon.png?v=2",
+  },
   manifest: "/manifest.webmanifest",
   appleWebApp: { capable: true, title: "Dua CRM", statusBarStyle: "black-translucent" },
 };

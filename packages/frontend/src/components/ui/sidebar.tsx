@@ -89,7 +89,7 @@ function DesktopSidebar() {
       {/* Logo */}
       <div className="flex items-center gap-2.5 px-4 py-5 border-b border-sidebar-border">
         {collapsed ? (
-          <img src="/icons/icon-192.png" alt="Dua CRM" className="w-8 h-8 rounded-xl shrink-0 shadow-glow" />
+          <img src="/favicon.svg" alt="Dua CRM" className="w-8 h-8 rounded-xl shrink-0 shadow-glow" />
         ) : (
           <img src="/brand/logo-dua-crm-branco.png" alt="dua.crm" className="h-7 w-auto" />
         )}
