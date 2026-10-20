@@ -491,6 +491,11 @@ export class WhatsAppCloudService {
     const parsed = this.parseMessage(m);
     const sentAt = m.timestamp ? new Date(Number(m.timestamp) * 1000) : new Date();
 
+    // Resposta a outra mensagem: guarda o texto citado para exibir no balão
+    const quoted = parsed.quotedExternalId
+      ? await this.prisma.message.findFirst({ where: { externalId: parsed.quotedExternalId }, select: { content: true, type: true } })
+      : null;
+
     await this.prisma.message.create({
       data: {
         conversationId: conv.id,
@@ -500,6 +505,8 @@ export class WhatsAppCloudService {
         mediaId: parsed.mediaId,
         externalId: m.id,
         quotedExternalId: parsed.quotedExternalId,
+        quotedContent: quoted?.content ?? null,
+        quotedType: quoted?.type ?? null,
         sentAt,
       },
     });

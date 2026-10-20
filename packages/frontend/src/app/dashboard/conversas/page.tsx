@@ -31,7 +31,7 @@ interface Message {
   id: string; externalId?: string | null; content: string; direction: "INBOUND" | "OUTBOUND";
   type: string; sentAt: string; mediaUrl?: string | null;
   quotedContent?: string | null; quotedExternalId?: string | null; quotedType?: string | null;
-  deliveredAt?: string | null; readAt?: string | null; errorCode?: string | null; errorMessage?: string;
+  deliveredAt?: string | null; readAt?: string | null; errorCode?: string | null; errorMessage?: string; quotedFromMe?: boolean;
 }
 interface Conversation {
   id: string; channel: Channel; status: ConversationStatus;
@@ -81,6 +81,14 @@ function ConversasInner() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [loadingMsgs, setLoadingMsgs] = useState(false);
   const [newMessage, setNewMessage] = useState("");
+  // Campo de mensagem cresce até mostrar o texto todo (limite max-h-60)
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  useLayoutEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, [newMessage]);
   // Assinatura: nome que aparece em negrito acima da mensagem (ex: "Financeiro")
   const [signatures, setSignatures] = useState<string[]>([]);
   const [signature, setSignature] = useState("");
@@ -293,7 +301,13 @@ function ConversasInner() {
       const res = await authFetch(`${API_URL}/api/v1/conversations/${convId}/messages`, { headers: authHeaders() });
       if (!res.ok) return;
       const data = await res.json();
-      const list: Message[] = Array.isArray(data) ? data : [];
+      const raw: Message[] = Array.isArray(data) ? data : [];
+      // Completa citações antigas (só com id) a partir das mensagens carregadas
+      const byExt = new Map(raw.filter((m) => m.externalId).map((m) => [m.externalId!, m]));
+      const list = raw.map((m) => {
+        const q = m.quotedExternalId ? byExt.get(m.quotedExternalId) : undefined;
+        return q ? { ...m, quotedContent: m.quotedContent || q.content, quotedType: m.quotedType || q.type, quotedFromMe: q.direction === "OUTBOUND" } : m;
+      });
       // Mantém mensagens otimistas até o servidor devolvê-las (evita a "piscada")
       setMessages((prev) => [
         ...list,
@@ -706,10 +720,11 @@ function ConversasInner() {
                     {/* Citação (quoted reply) */}
                     {msg.quotedContent && (
                       <div className={`mx-2 mt-2 px-3 py-2 rounded-xl text-xs border-l-4 ${isOut ? "bg-white/20 border-white/60 text-white/90" : "bg-gray-50 border-brand-400 text-gray-600"}`}>
-                        <p className={`font-semibold mb-0.5 text-[10px] uppercase tracking-wide ${isOut ? "text-white/70" : "text-brand-600"}`}>
-                          {msg.quotedType === "IMAGE" ? "📷 Imagem" : msg.quotedType === "VIDEO" ? "🎥 Vídeo" : msg.quotedType === "AUDIO" ? "🎵 Áudio" : msg.quotedType === "DOCUMENT" ? "📄 Documento" : "Mensagem"}
+                        <p className={`font-semibold mb-0.5 text-[11px] ${isOut ? "text-white" : "text-brand-600"}`}>
+                          {msg.quotedFromMe === undefined ? "Mensagem" : msg.quotedFromMe ? "Você" : selected.contact.name}
+                          {msg.quotedType && msg.quotedType !== "TEXT" && <span className="font-normal opacity-80"> · {msg.quotedType === "IMAGE" ? "📷 Imagem" : msg.quotedType === "VIDEO" ? "🎥 Vídeo" : msg.quotedType === "AUDIO" ? "🎵 Áudio" : "📄 Documento"}</span>}
                         </p>
-                        <p className="truncate">{msg.quotedContent}</p>
+                        <p className="line-clamp-3 whitespace-pre-wrap">{formatWhatsApp(msg.quotedContent)}</p>
                       </div>
                     )}
                     {/* Thumbnail de imagem/vídeo */}
@@ -848,7 +863,7 @@ function ConversasInner() {
           </select>
           <textarea value={newMessage} onChange={handleMessageChange} onKeyDown={handleKeyDown} onPaste={handlePaste}
             placeholder={replyingTo ? "Digite sua resposta..." : "Digite uma mensagem..."}
-            rows={1} className="flex-1 resize-none bg-gray-50 text-gray-900 placeholder:text-gray-400 border border-gray-200 rounded-2xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 max-h-28" style={{ minHeight: "42px" }} />
+            ref={textareaRef} rows={1} className="flex-1 resize-none bg-gray-50 text-gray-900 placeholder:text-gray-400 border border-gray-200 rounded-2xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 max-h-60 overflow-y-auto" style={{ minHeight: "42px" }} />
           <button onClick={sendMessage} disabled={!newMessage.trim() || sending} className="p-2.5 bg-brand-600 text-white rounded-2xl hover:bg-brand-700 disabled:opacity-40 transition-colors">
             <Send className="w-4 h-4" />
           </button>
