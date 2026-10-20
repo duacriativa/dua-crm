@@ -393,17 +393,40 @@ function ConversasInner() {
 
   // Baixa documento: usa mediaUrl salvo ou busca na API oficial sob demanda
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  // Busca a mídia na API oficial (o webhook só traz o id) e guarda na mensagem
+  const fetchMediaUrl = async (convId: string, msgId: string): Promise<{ url?: string; error?: string }> => {
+    const res = await authFetch(`${API_URL}/api/v1/conversations/${convId}/messages/${msgId}/remedia`, { method: "POST", headers: authHeaders() });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.mediaUrl) return { error: data.message };
+    setMessages((prev) => prev.map((m) => m.id === msgId ? { ...m, mediaUrl: data.mediaUrl } : m));
+    return { url: data.mediaUrl };
+  };
+
+  // Carrega automaticamente imagens/figurinhas que ainda não têm arquivo
+  const triedMediaRef = useRef(new Set<string>());
+  useEffect(() => {
+    if (!selected) return;
+    messages
+      .filter((m) => m.type === "IMAGE" && !m.mediaUrl && !m.id.startsWith("opt-") && !triedMediaRef.current.has(m.id))
+      .slice(-20)
+      .forEach((m) => { triedMediaRef.current.add(m.id); fetchMediaUrl(selected.id, m.id).catch(() => {}); });
+  }, [messages, selected]);
+
+  // Imagem terminou de carregar: se estava no fim da conversa, continua no fim
+  const handleMediaLoad = () => {
+    const c = messagesContainerRef.current;
+    if (c && c.scrollHeight - c.scrollTop - c.clientHeight < 300) scrollToBottom();
+  };
+
   const downloadDocument = async (msg: Message) => {
     if (!selected || downloadingId) return;
     let url = msg.mediaUrl;
     if (!url) {
       setDownloadingId(msg.id);
       try {
-        const res = await authFetch(`${API_URL}/api/v1/conversations/${selected.id}/messages/${msg.id}/remedia`, { method: "POST", headers: authHeaders() });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok || !data.mediaUrl) { alert(data.message || "Não foi possível baixar o arquivo."); return; }
-        url = data.mediaUrl as string;
-        setMessages((prev) => prev.map((m) => m.id === msg.id ? { ...m, mediaUrl: url } : m));
+        const r = await fetchMediaUrl(selected.id, msg.id);
+        if (!r.url) { alert(r.error || "Não foi possível baixar o arquivo."); return; }
+        url = r.url;
       } finally {
         setDownloadingId(null);
       }
@@ -696,6 +719,7 @@ function ConversasInner() {
                           src={msg.mediaUrl} alt="mídia"
                           className="w-full max-w-[280px] object-cover rounded-t-2xl cursor-pointer hover:opacity-90 transition-opacity"
                           style={{ maxHeight: 200 }}
+                          onLoad={handleMediaLoad}
                           onClick={() => setLightboxUrl(msg.mediaUrl!)}
                         />
                         {msg.type === "VIDEO" && (
@@ -736,7 +760,7 @@ function ConversasInner() {
                     {/* Conteúdo/legenda */}
                     <div className="px-4 py-2.5">
                       {msg.type === "TEXT" && <p className="leading-relaxed whitespace-pre-wrap">{formatWhatsApp(msg.content)}</p>}
-                      {(msg.type === "IMAGE" || msg.type === "VIDEO") && msg.content && msg.content !== "[imagem]" && msg.content !== "[vídeo]" && (
+                      {(msg.type === "IMAGE" || msg.type === "VIDEO") && msg.content && msg.content !== "[imagem]" && msg.content !== "[vídeo]" && !(msg.mediaUrl && msg.content === "[figurinha]") && (
                         <p className="leading-relaxed whitespace-pre-wrap text-xs mt-1 opacity-90">{msg.content}</p>
                       )}
                       <div className={`flex items-center justify-end gap-1 mt-0.5 ${isOut ? "text-white/70" : "text-gray-400"}`}>
