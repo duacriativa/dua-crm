@@ -114,6 +114,7 @@ function ConversasInner() {
   const isInitialLoadRef = useRef(false);
   const forceScrollRef = useRef(false);   // rola até o fim após enviar
   const prevScrollHeightRef = useRef(0);  // altura antes da última atualização
+  const scrollToBottom = () => requestAnimationFrame(() => messagesEndRef.current?.scrollIntoView({ block: "end" }));
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const selectedRef = useRef<Conversation | null>(null);
   selectedRef.current = selected;
@@ -296,7 +297,8 @@ function ConversasInner() {
       // Mantém mensagens otimistas até o servidor devolvê-las (evita a "piscada")
       setMessages((prev) => [
         ...list,
-        ...prev.filter((m) => m.id.startsWith("opt-") && !list.some((d) => d.direction === "OUTBOUND" && d.content === m.content)),
+        ...prev.filter((m) => m.id.startsWith("opt-") && (m.errorCode || (Date.now() - new Date(m.sentAt).getTime() < 15000
+          && !list.some((d) => d.direction === "OUTBOUND" && d.content === m.content)))),
       ]);
     } finally {
       setLoadingMsgs(false);
@@ -343,7 +345,7 @@ function ConversasInner() {
     const wasNearBottom = prevScrollHeightRef.current - container.scrollTop - container.clientHeight < 200;
     if (forceScrollRef.current || wasNearBottom) {
       forceScrollRef.current = false;
-      container.scrollTop = container.scrollHeight;
+      scrollToBottom();
     }
     prevScrollHeightRef.current = container.scrollHeight;
   }, [messages]);
@@ -367,11 +369,6 @@ function ConversasInner() {
     };
     forceScrollRef.current = true;
     setMessages((prev) => [...prev, optimistic]);
-    setTimeout(() => {
-      const container = messagesContainerRef.current;
-      if (container) container.scrollTop = container.scrollHeight;
-    }, 50);
-
     try {
       const res = await authFetch(`${API_URL}/api/v1/conversations/${selected.id}/messages`, {
         method: "POST",
@@ -441,9 +438,24 @@ function ConversasInner() {
     '👋','🤝','💪','🙌','👏','🫶','❤️‍🔥','💔','💬','📸',
   ];
 
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file || !selected || sendingMedia) return;
+    if (file) sendFile(file);
+  };
+
+  // Ctrl+V com imagem (print) no campo de mensagem envia a imagem
+  const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const item = Array.from(e.clipboardData.items).find((i) => i.type.startsWith("image/"));
+    const blob = item?.getAsFile();
+    if (!blob || !selected) return;
+    e.preventDefault();
+    if (!window.confirm(`Enviar a imagem colada para ${selected.contact.name}?`)) return;
+    const ext = blob.type.split("/")[1] || "png";
+    sendFile(new File([blob], `print-${Date.now()}.${ext}`, { type: blob.type }));
+  };
+
+  const sendFile = async (file: File) => {
+    if (!selected || sendingMedia) return;
     setSendingMedia(true);
 
     const reader = new FileReader();
@@ -463,11 +475,8 @@ function ConversasInner() {
         sentAt: new Date().toISOString(),
         mediaUrl: mediatype === 'image' ? `data:${file.type};base64,${base64}` : null,
       };
+      forceScrollRef.current = true;
       setMessages(prev => [...prev, optimistic]);
-      setTimeout(() => {
-        const container = messagesContainerRef.current;
-        if (container) container.scrollTop = container.scrollHeight;
-      }, 50);
 
       try {
         await authFetch(`${API_URL}/api/v1/conversations/${selected.id}/media`, {
@@ -639,7 +648,7 @@ function ConversasInner() {
         </div>
       </div>
 
-      <div ref={messagesContainerRef} className="flex-1 overflow-y-auto px-4 py-4 space-y-2">
+      <div ref={messagesContainerRef} className="flex-1 min-h-0 overflow-y-auto px-4 py-4 space-y-2">
         {loadingMsgs && messages.length === 0 ? (
           <div className="flex justify-center py-10"><RefreshCw className="w-5 h-5 animate-spin text-gray-300" /></div>
         ) : messages.length === 0 ? (
@@ -813,7 +822,7 @@ function ConversasInner() {
             <option value="__add">+ Novo nome…</option>
             {signature && <option value="__remove">Remover "{signature}"</option>}
           </select>
-          <textarea value={newMessage} onChange={handleMessageChange} onKeyDown={handleKeyDown}
+          <textarea value={newMessage} onChange={handleMessageChange} onKeyDown={handleKeyDown} onPaste={handlePaste}
             placeholder={replyingTo ? "Digite sua resposta..." : "Digite uma mensagem..."}
             rows={1} className="flex-1 resize-none bg-gray-50 text-gray-900 placeholder:text-gray-400 border border-gray-200 rounded-2xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 max-h-28" style={{ minHeight: "42px" }} />
           <button onClick={sendMessage} disabled={!newMessage.trim() || sending} className="p-2.5 bg-brand-600 text-white rounded-2xl hover:bg-brand-700 disabled:opacity-40 transition-colors">
