@@ -3,6 +3,14 @@ import { authFetch } from "@/lib/auth-fetch";
 
 import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
+
+// Converte *negrito* do WhatsApp em <strong>
+function formatWhatsApp(text?: string | null) {
+  if (!text) return text;
+  return text.split(/(\*[^*\n]+\*)/g).map((part, i) =>
+    /^\*[^*\n]+\*$/.test(part) ? <strong key={i}>{part.slice(1, -1)}</strong> : part
+  );
+}
 import {
   Search, Send, Phone, MoreVertical, Clock, CheckCheck, Check,
   Smile, Paperclip, Archive, MessageCircle, Instagram, Circle,
@@ -73,6 +81,32 @@ function ConversasInner() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [loadingMsgs, setLoadingMsgs] = useState(false);
   const [newMessage, setNewMessage] = useState("");
+  // Assinatura: nome que aparece em negrito acima da mensagem (ex: "Financeiro")
+  const [signatures, setSignatures] = useState<string[]>([]);
+  const [signature, setSignature] = useState("");
+  useEffect(() => {
+    try {
+      setSignatures(JSON.parse(localStorage.getItem("crm_signatures") || "[]"));
+      setSignature(localStorage.getItem("crm_signature") || "");
+    } catch {}
+  }, []);
+  const saveSignatures = (list: string[], current: string) => {
+    setSignatures(list); setSignature(current);
+    try {
+      localStorage.setItem("crm_signatures", JSON.stringify(list));
+      localStorage.setItem("crm_signature", current);
+    } catch {}
+  };
+  const handleSignatureChange = (value: string) => {
+    if (value === "__add") {
+      const name = window.prompt("Nome da assinatura (ex: Financeiro, Daniel):")?.trim();
+      if (name) saveSignatures(signatures.includes(name) ? signatures : [...signatures, name], name);
+    } else if (value === "__remove") {
+      if (signature && window.confirm(`Remover a assinatura "${signature}"?`)) saveSignatures(signatures.filter(s => s !== signature), "");
+    } else {
+      saveSignatures(signatures, value);
+    }
+  };
   const [sending, setSending] = useState(false);
   const [mobileView, setMobileView] = useState<MobileView>("list");
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -308,7 +342,7 @@ function ConversasInner() {
   const sendMessage = useCallback(async () => {
     if (!newMessage.trim() || !selected || sending) return;
     setSending(true);
-    const content = newMessage.trim();
+    const content = signature ? `*${signature}:*\n${newMessage.trim()}` : newMessage.trim();
     const quoted = replyingTo;
     setNewMessage("");
     setReplyingTo(null);
@@ -341,9 +375,18 @@ function ConversasInner() {
     } finally {
       setSending(false);
     }
-  }, [newMessage, selected, sending, replyingTo]);
+  }, [newMessage, selected, sending, replyingTo, signature]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+      // Ctrl+Enter quebra a linha na posição do cursor
+      e.preventDefault();
+      const el = e.currentTarget as HTMLTextAreaElement;
+      const { selectionStart: start, selectionEnd: end, value } = el;
+      setNewMessage(value.slice(0, start) + "\n" + value.slice(end));
+      requestAnimationFrame(() => { el.selectionStart = el.selectionEnd = start + 1; });
+      return;
+    }
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); }
   }, [sendMessage]);
 
@@ -437,7 +480,7 @@ function ConversasInner() {
         </div>
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar conversa..." className="w-full pl-9 pr-4 py-2 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500" />
+          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar conversa..." className="w-full pl-9 pr-4 py-2 text-sm text-gray-900 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500" />
         </div>
       </div>
 
@@ -641,7 +684,7 @@ function ConversasInner() {
                     )}
                     {/* Conteúdo/legenda */}
                     <div className="px-4 py-2.5">
-                      {msg.type === "TEXT" && <p className="leading-relaxed whitespace-pre-wrap">{msg.content}</p>}
+                      {msg.type === "TEXT" && <p className="leading-relaxed whitespace-pre-wrap">{formatWhatsApp(msg.content)}</p>}
                       {(msg.type === "IMAGE" || msg.type === "VIDEO") && msg.content && msg.content !== "[imagem]" && msg.content !== "[vídeo]" && (
                         <p className="leading-relaxed whitespace-pre-wrap text-xs mt-1 opacity-90">{msg.content}</p>
                       )}
@@ -721,9 +764,16 @@ function ConversasInner() {
               </div>
             )}
           </div>
+          <select value={signature} onChange={(e) => handleSignatureChange(e.target.value)} title="Assinatura"
+            className="max-w-[130px] h-[42px] bg-gray-50 border border-gray-200 rounded-2xl px-3 text-xs font-semibold text-gray-700 focus:outline-none focus:ring-2 focus:ring-brand-500">
+            <option value="">Sem assinatura</option>
+            {signatures.map((s) => <option key={s} value={s}>{s}</option>)}
+            <option value="__add">+ Novo nome…</option>
+            {signature && <option value="__remove">Remover "{signature}"</option>}
+          </select>
           <textarea value={newMessage} onChange={handleMessageChange} onKeyDown={handleKeyDown}
             placeholder={replyingTo ? "Digite sua resposta..." : "Digite uma mensagem..."}
-            rows={1} className="flex-1 resize-none bg-gray-50 border border-gray-200 rounded-2xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 max-h-28" style={{ minHeight: "42px" }} />
+            rows={1} className="flex-1 resize-none bg-gray-50 text-gray-900 placeholder:text-gray-400 border border-gray-200 rounded-2xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 max-h-28" style={{ minHeight: "42px" }} />
           <button onClick={sendMessage} disabled={!newMessage.trim() || sending} className="p-2.5 bg-brand-600 text-white rounded-2xl hover:bg-brand-700 disabled:opacity-40 transition-colors">
             <Send className="w-4 h-4" />
           </button>

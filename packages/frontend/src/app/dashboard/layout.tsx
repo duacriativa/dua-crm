@@ -30,7 +30,7 @@ function GlobalSearch() {
       ]);
       const items: any[] = [];
       (contacts.contacts ?? []).forEach((c: any) => items.push({ type: c.type === "CLIENT" ? "cliente" : "lead", id: c.id, name: c.name, sub: c.phone || c.email || "", href: `/dashboard/contatos/${c.id}` }));
-      (convs.conversations ?? convs ?? []).forEach((c: any) => items.push({ type: "conversa", id: c.id, name: c.contactName, sub: c.lastMessage || "WhatsApp", href: `/dashboard/whatsapp` }));
+      (convs.conversations ?? convs ?? []).forEach((c: any) => items.push({ type: "conversa", id: c.id, name: c.contactName, sub: c.lastMessage || "WhatsApp", href: `/dashboard/conversas` }));
       setResults(items);
     } finally { setLoading(false); }
   }, []);
