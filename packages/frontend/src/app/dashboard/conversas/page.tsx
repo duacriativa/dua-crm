@@ -14,8 +14,9 @@ function formatWhatsApp(text?: string | null) {
 import {
   Search, Send, Phone, MoreVertical, Clock, CheckCheck, Check,
   Smile, Paperclip, Archive, MessageCircle, Instagram, Circle,
-  ArrowLeft, RefreshCw, Plus, X, Trash2, AlertCircle, Sparkles,
+  ArrowLeft, RefreshCw, Plus, X, Trash2, AlertCircle, Sparkles, FileText,
 } from "lucide-react";
+import { SendTemplateModal } from "@/components/whatsapp/templates";
 
 const API_URL = "";
 
@@ -452,6 +453,15 @@ function ConversasInner() {
   };
 
   // ── Sugestão de resposta (IA) ─────────────────────────────────────────────
+  // Janela de 24h da Meta: sem mensagem do contato nesse período, só template aprovado
+  const [showTemplate, setShowTemplate] = useState(false);
+  const [writeAnyway, setWriteAnyway] = useState(false);
+  const windowClosed = useMemo(() => {
+    const last = messages.reduce((max, m) => (m.direction === "INBOUND" ? Math.max(max, new Date(m.sentAt).getTime()) : max), 0);
+    return Date.now() - last > 24 * 60 * 60 * 1000;
+  }, [messages]);
+  useEffect(() => { setWriteAnyway(false); setShowTemplate(false); }, [selected?.id]);
+
   const [suggestion, setSuggestion] = useState<string | null>(null);
   const [suggesting, setSuggesting] = useState(false);
   const [suggestError, setSuggestError] = useState("");
@@ -868,8 +878,25 @@ function ConversasInner() {
             </div>
           </div>
         )}
+        {windowClosed && !writeAnyway && (messages.length > 0 || !loadingMsgs) ? (
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 flex flex-wrap items-center gap-2">
+            <Clock className="w-4 h-4 text-amber-600 shrink-0" />
+            <p className="flex-1 min-w-[180px] text-sm text-amber-900">
+              Fora da janela de 24h: o contato não falou com você nesse período. O WhatsApp só permite enviar um template aprovado.
+            </p>
+            <button onClick={() => setShowTemplate(true)}
+              className="flex items-center gap-1.5 px-3 py-2 text-sm font-semibold text-white bg-brand-600 rounded-xl hover:bg-brand-700">
+              <FileText className="w-4 h-4" />Enviar template
+            </button>
+            <button onClick={() => setWriteAnyway(true)} className="text-xs text-amber-800 underline">Escrever mesmo assim</button>
+          </div>
+        ) : (<>
         {suggestion === null && (
-          <div className="flex justify-end mb-1.5">
+          <div className="flex justify-end gap-1.5 mb-1.5">
+            <button onClick={() => setShowTemplate(true)} title="Enviar um template aprovado pela Meta"
+              className="flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-gray-600 bg-gray-50 border border-gray-200 rounded-full hover:bg-gray-100">
+              <FileText className="w-3.5 h-3.5" />Template
+            </button>
             <button onClick={() => requestSuggestion()} title="A IA lê a conversa e sugere uma resposta (usa o que você já digitou)"
               className="flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-brand-700 bg-brand-50 border border-brand-200 rounded-full hover:bg-brand-100">
               <Sparkles className="w-3.5 h-3.5" />Sugerir resposta
@@ -928,7 +955,13 @@ function ConversasInner() {
             <Send className="w-4 h-4" />
           </button>
         </div>
+        </>)}
       </div>
+      {showTemplate && (
+        <SendTemplateModal conversationId={selected.id} contactName={selected.contact?.name}
+          onClose={() => setShowTemplate(false)}
+          onSent={(msg) => { forceScrollRef.current = true; setMessages((prev) => [...prev, msg]); }} />
+      )}
     </div>
   ) : (
     <div className="flex-1 hidden lg:flex flex-col items-center justify-center bg-gray-50 text-gray-400">

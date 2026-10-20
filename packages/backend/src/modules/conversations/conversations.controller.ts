@@ -75,6 +75,18 @@ export class ConversationsController {
     );
   }
 
+  /** POST /conversations/:id/template — envia template aprovado (funciona fora da janela de 24h) */
+  @Post(':id/template')
+  sendTemplate(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body() body: { name: string; language: string; components?: any[]; preview?: string },
+  ) {
+    return this.conversationsService.sendTemplate(
+      req.user.tenantId, id, body.name, body.language, body.components ?? [], body.preview,
+    );
+  }
+
   /** POST /conversations/:id/suggest-reply — IA sugere uma resposta (não envia nada) */
   @Post(':id/suggest-reply')
   suggestReply(

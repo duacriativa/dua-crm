@@ -317,6 +317,75 @@ export class WhatsAppCloudService {
     return { externalId: data?.messages?.[0]?.id ?? null, mediaId };
   }
 
+  /**
+   * Envia um template aprovado. `components` segue o formato da Cloud API
+   * (header/body/button com `parameters`); o front monta a partir das variáveis.
+   */
+  async sendTemplate(tenantId: string, to: string, name: string, language: string, components: any[] = []) {
+    const template: any = { name, language: { code: language } };
+    if (components.length) template.components = components;
+    const data = await this.post(tenantId, 'messages', {
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
+      to: this.toWaId(to),
+      type: 'template',
+      template,
+    });
+    return { externalId: data?.messages?.[0]?.id ?? null };
+  }
+
+  // ── Templates (ficam na WABA: os criados no Kommo também aparecem) ─────────
+
+  private async wabaRequest(tenantId: string, method: 'get' | 'post' | 'delete', path: string, opts: { params?: any; body?: any } = {}) {
+    const cred = await this.getCredential(tenantId);
+    if (!cred) throw new NotFoundException('WhatsApp oficial não conectado.');
+    try {
+      const res = await axios.request({
+        method,
+        url: `${this.graphUrl}/${cred.wabaId}/${path}`,
+        params: opts.params,
+        data: opts.body,
+        headers: { Authorization: `Bearer ${cred.accessToken}` },
+        timeout: 30000,
+      });
+      return res.data;
+    } catch (err: any) {
+      const e = err?.response?.data?.error;
+      throw new BadRequestException(e?.error_user_msg || e?.message || err.message);
+    }
+  }
+
+  async listTemplates(tenantId: string) {
+    const fields = 'id,name,status,category,language,components,parameter_format,rejected_reason,quality_score';
+    const all: any[] = [];
+    let after: string | undefined;
+    // Pagina até o fim (limite de segurança de 10 páginas)
+    for (let i = 0; i < 10; i++) {
+      const data = await this.wabaRequest(tenantId, 'get', 'message_templates', { params: { fields, limit: 100, after } });
+      all.push(...(data?.data ?? []));
+      after = data?.paging?.next ? data?.paging?.cursors?.after : undefined;
+      if (!after) break;
+    }
+    return all;
+  }
+
+  async createTemplate(tenantId: string, body: { name: string; language: string; category: string; components: any[] }) {
+    const name = (body.name || '').trim().toLowerCase().replace(/[^a-z0-9_]+/g, '_').replace(/^_+|_+$/g, '');
+    if (!name) throw new BadRequestException('Nome do template é obrigatório.');
+    if (!body.components?.some((c) => c.type === 'BODY' && c.text?.trim())) {
+      throw new BadRequestException('O texto da mensagem é obrigatório.');
+    }
+    return this.wabaRequest(tenantId, 'post', 'message_templates', {
+      body: { name, language: body.language || 'pt_BR', category: body.category || 'UTILITY', components: body.components },
+    });
+  }
+
+  async deleteTemplate(tenantId: string, name: string, id?: string) {
+    if (!name) throw new BadRequestException('Nome do template é obrigatório.');
+    // Com hsm_id apaga só aquele idioma; sem ele, todos os idiomas com esse nome
+    return this.wabaRequest(tenantId, 'delete', 'message_templates', { params: { name, ...(id ? { hsm_id: id } : {}) } });
+  }
+
   /** Baixa uma mídia da Cloud API e devolve como data URI. */
   async downloadMedia(tenantId: string, mediaId: string) {
     const cred = await this.getCredential(tenantId);

@@ -182,6 +182,38 @@ export class ConversationsService {
     return message;
   }
 
+  async sendTemplate(
+    tenantId: string,
+    conversationId: string,
+    name: string,
+    language: string,
+    components: any[],
+    preview?: string,
+  ) {
+    const conv = await this.prisma.conversation.findFirst({
+      where: { id: conversationId, tenantId },
+      include: { contact: true },
+    });
+    if (!conv) throw new NotFoundException('Conversa não encontrada.');
+    if (!name) throw new BadRequestException('Escolha um template.');
+
+    await this.ensureCloudConnected(tenantId);
+    const { externalId } = await this.cloud.sendTemplate(tenantId, this.cloudRecipient(conv), name, language || 'pt_BR', components);
+    const message = await this.prisma.message.create({
+      data: {
+        conversationId,
+        direction: 'OUTBOUND',
+        type: 'TEMPLATE',
+        // Texto já com as variáveis preenchidas (montado no front), para exibir no balão
+        content: preview?.trim() || `[template: ${name}]`,
+        sentAt: new Date(),
+        externalId,
+      },
+    });
+    await this.prisma.conversation.update({ where: { id: conversationId }, data: { updatedAt: new Date() } });
+    return message;
+  }
+
   async sendMedia(
     tenantId: string,
     conversationId: string,

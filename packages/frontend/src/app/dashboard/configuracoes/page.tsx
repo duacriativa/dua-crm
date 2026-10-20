@@ -9,6 +9,7 @@ import {
   MapPin, Mail, AlertCircle, Upload, MessageCircle,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { TemplatesManager } from "@/components/whatsapp/templates";
 
 const API_URL = "";
 function getToken() { return typeof window !== "undefined" ? localStorage.getItem("access_token") : ""; }
@@ -19,6 +20,7 @@ const tabs = [
   { key: "Aparência",    icon: Palette },
   { key: "Notificações", icon: Bell },
   { key: "Integrações",  icon: Puzzle },
+  { key: "Templates",    icon: FileText },
 ];
 
 /* ── PERFIL ── */
@@ -684,6 +686,7 @@ export default function ConfiguracoesPage() {
         {activeTab === "Aparência" && <TabAparencia />}
         {activeTab === "Notificações" && <TabNotificacoes />}
         {activeTab === "Integrações" && <TabIntegracoes />}
+        {activeTab === "Templates" && <TemplatesManager />}
       </div>
     </div>
   );

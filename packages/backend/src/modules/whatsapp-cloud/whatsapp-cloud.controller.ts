@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Query, Req, Res, UseGuards, HttpCode, Headers, ForbiddenException } from '@nestjs/common';
+import { Controller, Get, Post, Delete, Body, Query, Req, Res, UseGuards, HttpCode, Headers, ForbiddenException } from '@nestjs/common';
 import { SkipThrottle } from '@nestjs/throttler';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { WhatsAppCloudService } from './whatsapp-cloud.service';
@@ -38,6 +38,27 @@ export class WhatsAppCloudController {
   @UseGuards(JwtAuthGuard)
   disconnect(@Req() req: any) {
     return this.cloud.disconnect(req.user.tenantId);
+  }
+
+  /** GET /whatsapp-cloud/templates — templates da WABA (inclusive os criados no Kommo) */
+  @Get('templates')
+  @UseGuards(JwtAuthGuard)
+  listTemplates(@Req() req: any) {
+    return this.cloud.listTemplates(req.user.tenantId);
+  }
+
+  /** POST /whatsapp-cloud/templates — cria template e envia para aprovação da Meta */
+  @Post('templates')
+  @UseGuards(JwtAuthGuard)
+  createTemplate(@Req() req: any, @Body() body: { name: string; language: string; category: string; components: any[] }) {
+    return this.cloud.createTemplate(req.user.tenantId, body);
+  }
+
+  /** DELETE /whatsapp-cloud/templates?name=...&id=... */
+  @Delete('templates')
+  @UseGuards(JwtAuthGuard)
+  deleteTemplate(@Req() req: any, @Query('name') name: string, @Query('id') id?: string) {
+    return this.cloud.deleteTemplate(req.user.tenantId, name, id);
   }
 
   /** GET /whatsapp-cloud/webhook — verificação do webhook pela Meta */

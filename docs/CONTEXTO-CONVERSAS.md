@@ -5,7 +5,9 @@ ou no módulo `packages/backend/src/modules/whatsapp-cloud`.
 
 ## Como o projeto roda
 - Monorepo: `packages/frontend` (Next.js) e `packages/backend` (NestJS + Prisma).
-- Deploy: Railway, serviço `dua-crm`, a cada push na `main` (crm.duacriativa.com.br).
+- Deploy: Railway, a cada push na `main`. Serviço `dua-crm` = **frontend** (crm.duacriativa.com.br,
+  repassa `/api/v1/*` para `BACKEND_URL`). O **backend** é o serviço `renewed-youth` — variáveis do
+  servidor (ex.: `ANTHROPIC_API_KEY`) vão nele.
   Durante o deploy o envio de mensagens pode falhar por alguns minutos → combine o push com o usuário.
 - Banco: Supabase, projeto `ugvmbtufwtpfqmvfmsde` (tabela `Message`, `Conversation`, `MetaCredential`).
 - WhatsApp: **API oficial da Meta (Cloud API)**. Credenciais em `MetaCredential` (phoneNumberId, wabaId, accessToken).
@@ -27,6 +29,11 @@ ou no módulo `packages/backend/src/modules/whatsapp-cloud`.
 - Respostas citadas: backend grava `quotedContent/quotedType`; front mostra "Você"/nome no estilo WhatsApp.
 - Sugestão de resposta com IA: `POST /conversations/:id/suggest-reply` (Claude via API Anthropic).
   Precisa de `ANTHROPIC_API_KEY` nas Variables do Railway. Opcionais: `ANTHROPIC_MODEL`, `AI_REPLY_CONTEXT`.
+
+- Templates: Configurações → Templates lista/cria/exclui (`/whatsapp-cloud/templates`, direto na WABA).
+  Na conversa, sem mensagem do contato em 24h, o campo vira "Enviar template"
+  (`POST /conversations/:id/template`, grava `type: TEMPLATE` com o texto preenchido).
+  Cabeçalho com mídia: no envio pede o link; na criação só cabeçalho de texto por enquanto.
 
 ## Limitação conhecida
 Mensagens enviadas pelo **Kommo** (outro app na mesma WABA) não chegam ao CRM — a Meta só
