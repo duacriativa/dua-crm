@@ -75,6 +75,16 @@ export class ConversationsController {
     );
   }
 
+  /** POST /conversations/:id/suggest-reply — IA sugere uma resposta (não envia nada) */
+  @Post(':id/suggest-reply')
+  suggestReply(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body() body: { previous?: string; draft?: string },
+  ) {
+    return this.conversationsService.suggestReply(req.user.tenantId, id, body?.previous, body?.draft);
+  }
+
   /** POST /conversations/:id/media — envia mídia (imagem/vídeo/documento) */
   @Post(':id/media')
   sendMedia(

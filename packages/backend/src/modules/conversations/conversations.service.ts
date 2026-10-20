@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { WhatsAppCloudService } from '../whatsapp-cloud/whatsapp-cloud.service';
+import axios from 'axios';
 
 @Injectable()
 export class ConversationsService {
@@ -307,6 +308,68 @@ export class ConversationsService {
       where: { id: conversationId },
       data: { status: status as any },
     });
+  }
+
+  /** Sugere uma resposta com IA (Claude) a partir das últimas mensagens. Não envia nada. */
+  async suggestReply(tenantId: string, conversationId: string, previous?: string, draft?: string) {
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) throw new BadRequestException('IA não configurada: defina ANTHROPIC_API_KEY no servidor.');
+
+    const conv = await this.prisma.conversation.findFirst({
+      where: { id: conversationId, tenantId },
+      include: { contact: true },
+    });
+    if (!conv) throw new NotFoundException('Conversa não encontrada.');
+
+    const recent = await this.prisma.message.findMany({
+      where: { conversationId },
+      orderBy: { sentAt: 'desc' },
+      take: 30,
+      select: { direction: true, type: true, content: true, sentAt: true },
+    });
+    if (recent.length === 0) throw new BadRequestException('Conversa sem mensagens para analisar.');
+
+    const name = conv.contact?.name || 'Cliente';
+    const transcript = recent.reverse().map((m) => {
+      const who = m.direction === 'OUTBOUND' ? 'Dua' : name;
+      const text = m.type === 'TEXT' ? m.content : `[${m.type.toLowerCase()}] ${m.content ?? ''}`;
+      return `${who}: ${text}`;
+    }).join('
+');
+
+    const system = [
+      'Você é atendente da Dua Criativa, agência de marketing (tráfego pago Meta/Google/TikTok, social media, produção de conteúdo e shootings).',
+      process.env.AI_REPLY_CONTEXT || '',
+      'Escreva UMA resposta curta para o WhatsApp, em português do Brasil, tom próximo e profissional, como uma pessoa real escreveria.',
+      'Não invente preços, prazos, links ou informações que não estejam na conversa. Se faltar informação, faça uma pergunta ou diga que vai verificar.',
+      'Não use assinatura nem saudação repetida. Responda só com o texto da mensagem, sem aspas.',
+    ].filter(Boolean).join('
+');
+
+    let user = `Conversa com ${name}:
+${transcript}
+
+Sugira a próxima mensagem da Dua.`;
+    if (draft?.trim()) user += `
+O atendente começou a escrever isto, melhore e complete mantendo a intenção: "${draft.trim()}"`;
+    if (previous?.trim()) user += `
+Dê uma opção diferente desta: "${previous.trim()}"`;
+
+    try {
+      const res = await axios.post('https://api.anthropic.com/v1/messages', {
+        model: process.env.ANTHROPIC_MODEL || 'claude-sonnet-5-5',
+        max_tokens: 400,
+        system,
+        messages: [{ role: 'user', content: user }],
+      }, {
+        headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+        timeout: 30000,
+      });
+      const suggestion = (res.data?.content ?? []).filter((c: any) => c.type === 'text').map((c: any) => c.text).join('').trim();
+      return { suggestion };
+    } catch (err: any) {
+      throw new BadRequestException(`Falha na IA: ${err?.response?.data?.error?.message ?? err.message}`);
+    }
   }
 
   async redownloadMedia(tenantId: string, conversationId: string, messageId: string) {

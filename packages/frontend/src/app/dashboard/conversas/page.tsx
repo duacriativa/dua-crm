@@ -14,7 +14,7 @@ function formatWhatsApp(text?: string | null) {
 import {
   Search, Send, Phone, MoreVertical, Clock, CheckCheck, Check,
   Smile, Paperclip, Archive, MessageCircle, Instagram, Circle,
-  ArrowLeft, RefreshCw, Plus, X, Trash2, AlertCircle,
+  ArrowLeft, RefreshCw, Plus, X, Trash2, AlertCircle, Sparkles,
 } from "lucide-react";
 
 const API_URL = "";
@@ -451,6 +451,35 @@ function ConversasInner() {
     a.click();
   };
 
+  // ── Sugestão de resposta (IA) ─────────────────────────────────────────────
+  const [suggestion, setSuggestion] = useState<string | null>(null);
+  const [suggesting, setSuggesting] = useState(false);
+  const [suggestError, setSuggestError] = useState("");
+  const requestSuggestion = async (previous?: string) => {
+    if (!selected || suggesting) return;
+    setSuggesting(true); setSuggestError("");
+    if (suggestion === null) setSuggestion("");
+    try {
+      const res = await authFetch(`${API_URL}/api/v1/conversations/${selected.id}/suggest-reply`, {
+        method: "POST", headers: authHeaders(),
+        body: JSON.stringify({ previous, draft: previous ? undefined : newMessage }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) setSuggestError([].concat(data.message ?? "Não foi possível gerar a sugestão.").join(" "));
+      else setSuggestion(data.suggestion || "");
+    } catch {
+      setSuggestError("Sem conexão com o servidor.");
+    } finally {
+      setSuggesting(false);
+    }
+  };
+  const applySuggestion = () => {
+    if (!suggestion) return;
+    setNewMessage(suggestion);
+    setSuggestion(null);
+    requestAnimationFrame(() => textareaRef.current?.focus());
+  };
+
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
       // Ctrl+Enter quebra a linha na posição do cursor
@@ -813,6 +842,37 @@ function ConversasInner() {
             </div>
             <button onClick={() => setReplyingTo(null)} className="shrink-0 p-0.5 text-gray-400 hover:text-gray-600">
               <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
+        {suggestion !== null && (
+          <div className="mb-2 rounded-2xl border border-brand-200 bg-brand-50/60 p-3">
+            <div className="flex items-center justify-between mb-1">
+              <p className="flex items-center gap-1.5 text-sm font-semibold text-gray-800"><Sparkles className="w-4 h-4 text-brand-600" />Sugestão de resposta</p>
+              <button onClick={() => { setSuggestion(null); setSuggestError(""); }} className="p-1 text-gray-400 hover:text-gray-600"><X className="w-4 h-4" /></button>
+            </div>
+            <p className="text-[11px] text-gray-500 mb-2">Revise e clique em "Usar esta resposta". Nada é enviado sem você.</p>
+            {suggesting ? (
+              <div className="flex items-center gap-2 text-sm text-gray-500 py-3"><RefreshCw className="w-4 h-4 animate-spin" />Pensando…</div>
+            ) : suggestError ? (
+              <p className="text-sm text-red-600 py-2">{suggestError}</p>
+            ) : (
+              <textarea value={suggestion} onChange={(e) => setSuggestion(e.target.value)} rows={3}
+                className="w-full resize-none bg-white text-gray-900 border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
+            )}
+            <div className="flex gap-2 mt-2">
+              <button onClick={applySuggestion} disabled={suggesting || !suggestion}
+                className="px-3 py-1.5 text-xs font-semibold text-white bg-brand-600 rounded-xl hover:bg-brand-700 disabled:opacity-40">Usar esta resposta</button>
+              <button onClick={() => requestSuggestion(suggestion || undefined)} disabled={suggesting}
+                className="px-3 py-1.5 text-xs font-semibold text-brand-700 bg-white border border-brand-200 rounded-xl hover:bg-brand-50 disabled:opacity-40">Outra opção</button>
+            </div>
+          </div>
+        )}
+        {suggestion === null && (
+          <div className="flex justify-end mb-1.5">
+            <button onClick={() => requestSuggestion()} title="A IA lê a conversa e sugere uma resposta (usa o que você já digitou)"
+              className="flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-brand-700 bg-brand-50 border border-brand-200 rounded-full hover:bg-brand-100">
+              <Sparkles className="w-3.5 h-3.5" />Sugerir resposta
             </button>
           </div>
         )}
