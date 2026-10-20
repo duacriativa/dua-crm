@@ -112,6 +112,8 @@ function ConversasInner() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const isInitialLoadRef = useRef(false);
+  const forceScrollRef = useRef(false);   // rola até o fim após enviar
+  const prevScrollHeightRef = useRef(0);  // altura antes da última atualização
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const selectedRef = useRef<Conversation | null>(null);
   selectedRef.current = selected;
@@ -330,17 +332,20 @@ function ConversasInner() {
       // setTimeout garante que o browser terminou o layout antes de scrollar
       setTimeout(() => {
         const container = messagesContainerRef.current;
-        if (container) container.scrollTop = container.scrollHeight;
+        if (container) { container.scrollTop = container.scrollHeight; prevScrollHeightRef.current = container.scrollHeight; }
       }, 50);
       return;
     }
 
     const container = messagesContainerRef.current;
     if (!container) return;
-    const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
-    if (distanceFromBottom < 200) {
+    // Mede pela altura anterior: a mensagem nova já está no DOM e não deve contar
+    const wasNearBottom = prevScrollHeightRef.current - container.scrollTop - container.clientHeight < 200;
+    if (forceScrollRef.current || wasNearBottom) {
+      forceScrollRef.current = false;
       container.scrollTop = container.scrollHeight;
     }
+    prevScrollHeightRef.current = container.scrollHeight;
   }, [messages]);
 
   // ── Enviar mensagem ───────────────────────────────────────────────────────
@@ -360,6 +365,7 @@ function ConversasInner() {
       quotedExternalId: quoted?.externalId ?? null,
       quotedType: quoted?.type ?? null,
     };
+    forceScrollRef.current = true;
     setMessages((prev) => [...prev, optimistic]);
     setTimeout(() => {
       const container = messagesContainerRef.current;
