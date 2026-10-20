@@ -31,7 +31,7 @@ interface Message {
   id: string; externalId?: string | null; content: string; direction: "INBOUND" | "OUTBOUND";
   type: string; sentAt: string; mediaUrl?: string | null;
   quotedContent?: string | null; quotedExternalId?: string | null; quotedType?: string | null;
-  deliveredAt?: string | null; readAt?: string | null; errorCode?: string | null;
+  deliveredAt?: string | null; readAt?: string | null; errorCode?: string | null; errorMessage?: string;
 }
 interface Conversation {
   id: string; channel: Channel; status: ConversationStatus;
@@ -383,11 +383,12 @@ function ConversasInner() {
           quotedType: quoted?.type ?? undefined,
         }),
       });
-      const saved = res.ok ? await res.json().catch(() => null) : null;
+      const saved = await res.json().catch(() => null);
       setMessages((prev) => prev.map((m) => m.id !== optimistic.id ? m
-        : saved?.id ? saved : { ...m, errorCode: "send_failed" }));
+        : res.ok && saved?.id ? saved
+        : { ...m, errorCode: "send_failed", errorMessage: [].concat(saved?.message ?? `Erro ${res.status}`).join(" ") }));
     } catch {
-      setMessages((prev) => prev.map((m) => m.id === optimistic.id ? { ...m, errorCode: "send_failed" } : m));
+      setMessages((prev) => prev.map((m) => m.id === optimistic.id ? { ...m, errorCode: "send_failed", errorMessage: "Sem conexão com o servidor." } : m));
     } finally {
       setSending(false);
     }
@@ -731,7 +732,7 @@ function ConversasInner() {
                       )}
                       <div className={`flex items-center justify-end gap-1 mt-0.5 ${isOut ? "text-white/70" : "text-gray-400"}`}>
                         <span className="text-[10px]">{new Date(msg.sentAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</span>
-                        {isOut && (msg.errorCode ? <span className="flex items-center gap-0.5 text-red-200 font-semibold" title={msg.errorCode === "131047" ? "Não entregue: o contato não falou com você nas últimas 24h. A Meta só permite enviar por template." : `Não entregue (erro ${msg.errorCode})`}><AlertCircle className="w-3 h-3" />{msg.errorCode === "131047" ? "Não entregue · fora das 24h" : "Não entregue"}</span> : msg.readAt ? <CheckCheck className="w-3 h-3 text-blue-300" /> : msg.deliveredAt ? <CheckCheck className="w-3 h-3" /> : <Check className="w-3 h-3" />)}
+                        {isOut && (msg.errorCode ? <span className="flex items-center gap-0.5 text-red-200 font-semibold" title={msg.errorCode === "131047" ? "Não entregue: o contato não falou com você nas últimas 24h. A Meta só permite enviar por template." : msg.errorMessage ? `Não entregue: ${msg.errorMessage}` : `Não entregue (erro ${msg.errorCode})`}><AlertCircle className="w-3 h-3" />{msg.errorCode === "131047" ? "Não entregue · fora das 24h" : "Não entregue"}</span> : msg.readAt ? <CheckCheck className="w-3 h-3 text-blue-300" /> : msg.deliveredAt ? <CheckCheck className="w-3 h-3" /> : <Check className="w-3 h-3" />)}
                       </div>
                     </div>
                   </div>
