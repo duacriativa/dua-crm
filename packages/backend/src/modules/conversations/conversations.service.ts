@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { WhatsAppCloudService } from '../whatsapp-cloud/whatsapp-cloud.service';
+import { PushService } from '../notifications/push.service';
 import axios from 'axios';
 
 @Injectable()
@@ -8,6 +9,7 @@ export class ConversationsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly cloud: WhatsAppCloudService,
+    private readonly push: PushService,
   ) {}
 
   /** Número do contato para a Cloud API (sem LID/grupo). */
@@ -334,7 +336,7 @@ export class ConversationsService {
 
   private readonly activitySelect = {
     id: true, type: true, content: true, conversationId: true,
-    authorId: true, authorName: true, createdAt: true,
+    authorId: true, authorName: true, recipientName: true, createdAt: true,
     author: { select: { name: true } },
   } as const;
 
@@ -355,17 +357,21 @@ export class ConversationsService {
     return activities.reverse();
   }
 
-  async createNote(tenantId: string, userId: string, conversationId: string, content: string, authorName?: string) {
+  async createNote(
+    tenantId: string, userId: string, conversationId: string, content: string,
+    authorName?: string, recipientName?: string,
+  ) {
     const text = content?.trim();
     if (!text) throw new BadRequestException('A nota está vazia.');
 
     const conv = await this.prisma.conversation.findFirst({
       where: { id: conversationId, tenantId },
-      select: { contactId: true },
+      select: { contactId: true, contact: { select: { name: true, phone: true } } },
     });
     if (!conv) throw new NotFoundException('Conversa não encontrada.');
 
-    return this.prisma.activity.create({
+    const recipient = recipientName?.trim() || null;
+    const note = await this.prisma.activity.create({
       data: {
         tenantId,
         contactId: conv.contactId,
@@ -374,9 +380,22 @@ export class ConversationsService {
         content: text,
         authorId: userId,
         authorName: authorName?.trim() || null,
+        recipientName: recipient,
       },
       select: this.activitySelect,
     });
+
+    // Mensagem para um colega: avisa os aparelhos (o login é compartilhado, então vai para todos)
+    if (recipient) {
+      const from = note.authorName || note.author?.name || 'Equipe';
+      this.push.sendToTenant(tenantId, {
+        title: `Para ${recipient} — de ${from}`,
+        body: `${conv.contact.name || conv.contact.phone || 'Contato'}: ${text.slice(0, 120)}`,
+        url: conv.contact.phone ? `/dashboard/conversas?phone=${encodeURIComponent(conv.contact.phone)}` : '/dashboard/conversas',
+        tag: `note-${note.id}`,
+      });
+    }
+    return note;
   }
 
   async removeActivity(tenantId: string, activityId: string) {

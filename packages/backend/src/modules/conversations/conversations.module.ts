@@ -4,9 +4,10 @@ import { ConversationsController } from './conversations.controller';
 import { PrismaModule } from '../../prisma/prisma.module';
 
 import { WhatsAppCloudModule } from '../whatsapp-cloud/whatsapp-cloud.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
-  imports: [PrismaModule, WhatsAppCloudModule],
+  imports: [PrismaModule, WhatsAppCloudModule, NotificationsModule],
   controllers: [ConversationsController],
   providers: [ConversationsService],
   exports: [ConversationsService],

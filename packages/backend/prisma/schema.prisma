@@ -549,6 +549,7 @@ model Activity {
   authorId       String?
   author         User?         @relation(fields: [authorId], references: [id], onDelete: SetNull)
   authorName     String?       // nome exibido (assinatura escolhida ou nome do usuário)
+  recipientName  String?       // destinatário da mensagem interna (assinatura), ex.: "Daniel"
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 

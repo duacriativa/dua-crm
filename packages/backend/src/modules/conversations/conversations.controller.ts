@@ -59,9 +59,9 @@ export class ConversationsController {
   createNote(
     @Request() req: any,
     @Param('id') id: string,
-    @Body() body: { content: string; authorName?: string },
+    @Body() body: { content: string; authorName?: string; recipientName?: string },
   ) {
-    return this.conversationsService.createNote(req.user.tenantId, req.user.id, id, body.content, body.authorName);
+    return this.conversationsService.createNote(req.user.tenantId, req.user.id, id, body.content, body.authorName, body.recipientName);
   }
 
   /** DELETE /conversations/:id/activities/:activityId */

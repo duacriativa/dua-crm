@@ -37,7 +37,7 @@ interface Message {
 // Nota interna da linha do tempo (fica no contato, não vai para o WhatsApp)
 interface Activity {
   id: string; type: "NOTE"; content: string; conversationId?: string | null;
-  authorName?: string | null; author?: { name: string } | null; createdAt: string;
+  authorName?: string | null; recipientName?: string | null; author?: { name: string } | null; createdAt: string;
 }
 type TimelineItem = { kind: "msg"; at: string; msg: Message } | { kind: "note"; at: string; note: Activity };
 interface Conversation {
@@ -151,6 +151,7 @@ function ConversasInner() {
   const [notes, setNotes] = useState<Activity[]>([]);
   const [noteMode, setNoteMode] = useState(false);
   const [savingNote, setSavingNote] = useState(false);
+  const [noteRecipient, setNoteRecipient] = useState(""); // "" = toda a equipe; senão, a assinatura do colega
 
   // Lightbox
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
@@ -543,7 +544,7 @@ function ConversasInner() {
     try {
       const res = await authFetch(`${API_URL}/api/v1/conversations/${selected.id}/notes`, {
         method: "POST", headers: authHeaders(),
-        body: JSON.stringify({ content: newMessage.trim(), authorName: signature || undefined }),
+        body: JSON.stringify({ content: newMessage.trim(), authorName: signature || undefined, recipientName: noteRecipient || undefined }),
       });
       if (!res.ok) { alert("Não foi possível salvar a nota. Tente de novo."); return; }
       const note: Activity = await res.json();
@@ -555,7 +556,7 @@ function ConversasInner() {
     } finally {
       setSavingNote(false);
     }
-  }, [newMessage, selected, savingNote, signature]);
+  }, [newMessage, selected, savingNote, signature, noteRecipient]);
 
   const deleteNote = async (note: Activity) => {
     if (!selected || !window.confirm("Excluir esta nota?")) return;
@@ -817,15 +818,21 @@ function ConversasInner() {
             );
             if (item.kind === "note") {
               const note = item.note;
+              const forMe = !!note.recipientName && note.recipientName === signature;
               return (
                 <div key={`note-${note.id}`}>
                   {dateSeparator}
                   <div className="flex justify-center group">
-                    <div className="w-full max-w-[85%] rounded-2xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-950 shadow-sm">
-                      <div className="flex items-center gap-1.5 mb-1 text-[11px] text-amber-700">
+                    <div className={`w-full max-w-[85%] rounded-2xl border bg-amber-50 px-4 py-2.5 text-sm text-amber-950 shadow-sm ${forMe ? "border-amber-400 ring-2 ring-amber-300" : "border-amber-200"}`}>
+                      <div className="flex flex-wrap items-center gap-1.5 mb-1 text-[11px] text-amber-700">
                         <StickyNote className="w-3.5 h-3.5" />
-                        <span className="font-semibold">Nota interna</span>
-                        <span>· {note.authorName || note.author?.name || "Equipe"}</span>
+                        {note.recipientName ? (<>
+                          <span className="font-semibold">Mensagem interna</span>
+                          <span>· de: <b>{note.authorName || note.author?.name || "Equipe"}</b> para: <b>{forMe ? "você" : note.recipientName}</b></span>
+                        </>) : (<>
+                          <span className="font-semibold">Nota interna</span>
+                          <span>· {note.authorName || note.author?.name || "Equipe"}</span>
+                        </>)}
                         <span>· {new Date(note.createdAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</span>
                         <button onClick={() => deleteNote(note)} title="Excluir nota"
                           className="ml-auto opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded text-amber-600 hover:text-red-600">
@@ -987,6 +994,17 @@ function ConversasInner() {
               className={`flex items-center gap-1 px-3 py-1 rounded-full ${noteMode ? "bg-amber-50 text-amber-800 border border-amber-200" : "text-gray-500 hover:bg-gray-100 border border-transparent"}`}>
               <StickyNote className="w-3.5 h-3.5" />Nota interna
             </button>
+            {noteMode && (
+              <label className="ml-auto flex items-center gap-1 font-normal text-gray-500">
+                Para:
+                <select value={noteRecipient} onChange={(e) => setNoteRecipient(e.target.value)}
+                  title="Escolha um colega para avisar no celular dele. O cliente não vê."
+                  className="bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5 text-xs font-semibold text-amber-800 focus:outline-none focus:ring-2 focus:ring-amber-400">
+                  <option value="">Toda a equipe</option>
+                  {signatures.filter((s) => s !== signature || s === noteRecipient).map((s) => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </label>
+            )}
           </div>
         )}
         {!noteMode && windowClosed && !writeAnyway && (messages.length > 0 || !loadingMsgs) ? (
@@ -1060,12 +1078,12 @@ function ConversasInner() {
             {signature && <option value="__remove">Remover "{signature}"</option>}
           </select>
           <textarea value={newMessage} onChange={handleMessageChange} onKeyDown={handleKeyDown} onPaste={handlePaste}
-            placeholder={noteMode ? "Nota interna: só a equipe vê, não vai para o WhatsApp" : replyingTo ? "Digite sua resposta..." : "Digite uma mensagem..."}
+            placeholder={noteMode ? (noteRecipient ? `Mensagem para ${noteRecipient}: o cliente não vê` : "Nota interna: só a equipe vê, não vai para o WhatsApp") : replyingTo ? "Digite sua resposta..." : "Digite uma mensagem..."}
             ref={textareaRef} rows={1} className={`flex-1 resize-none text-gray-900 placeholder:text-gray-400 border rounded-2xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 max-h-60 overflow-y-auto ${noteMode ? "bg-amber-50 border-amber-200 focus:ring-amber-400" : "bg-gray-50 border-gray-200 focus:ring-brand-500"}`} style={{ minHeight: "42px" }} />
           {noteMode ? (
-            <button onClick={saveNote} disabled={!newMessage.trim() || savingNote} title="Salvar nota"
+            <button onClick={saveNote} disabled={!newMessage.trim() || savingNote} title={noteRecipient ? `Avisar ${noteRecipient}` : "Salvar nota"}
               className="flex items-center gap-1.5 px-3 py-2.5 bg-amber-500 text-white text-xs font-semibold rounded-2xl hover:bg-amber-600 disabled:opacity-40 transition-colors">
-              {savingNote ? <RefreshCw className="w-4 h-4 animate-spin" /> : <StickyNote className="w-4 h-4" />}Salvar nota
+              {savingNote ? <RefreshCw className="w-4 h-4 animate-spin" /> : <StickyNote className="w-4 h-4" />}{noteRecipient ? "Enviar" : "Salvar nota"}
             </button>
           ) : (
             <button onClick={sendMessage} disabled={!newMessage.trim() || sending} className="p-2.5 bg-brand-600 text-white rounded-2xl hover:bg-brand-700 disabled:opacity-40 transition-colors">
