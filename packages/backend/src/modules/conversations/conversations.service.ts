@@ -334,8 +334,7 @@ export class ConversationsService {
       const who = m.direction === 'OUTBOUND' ? 'Dua' : name;
       const text = m.type === 'TEXT' ? m.content : `[${m.type.toLowerCase()}] ${m.content ?? ''}`;
       return `${who}: ${text}`;
-    }).join('
-');
+    }).join('\n');
 
     const system = [
       'Você é atendente da Dua Criativa, agência de marketing (tráfego pago Meta/Google/TikTok, social media, produção de conteúdo e shootings).',
@@ -343,17 +342,11 @@ export class ConversationsService {
       'Escreva UMA resposta curta para o WhatsApp, em português do Brasil, tom próximo e profissional, como uma pessoa real escreveria.',
       'Não invente preços, prazos, links ou informações que não estejam na conversa. Se faltar informação, faça uma pergunta ou diga que vai verificar.',
       'Não use assinatura nem saudação repetida. Responda só com o texto da mensagem, sem aspas.',
-    ].filter(Boolean).join('
-');
+    ].filter(Boolean).join('\n');
 
-    let user = `Conversa com ${name}:
-${transcript}
-
-Sugira a próxima mensagem da Dua.`;
-    if (draft?.trim()) user += `
-O atendente começou a escrever isto, melhore e complete mantendo a intenção: "${draft.trim()}"`;
-    if (previous?.trim()) user += `
-Dê uma opção diferente desta: "${previous.trim()}"`;
+    let user = `Conversa com ${name}:\n${transcript}\n\nSugira a próxima mensagem da Dua.`;
+    if (draft?.trim()) user += `\nO atendente começou a escrever isto, melhore e complete mantendo a intenção: "${draft.trim()}"`;
+    if (previous?.trim()) user += `\nDê uma opção diferente desta: "${previous.trim()}"`;
 
     try {
       const res = await axios.post('https://api.anthropic.com/v1/messages', {
