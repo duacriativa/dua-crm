@@ -135,6 +135,7 @@ export class ConversationsService {
         sentAt: true,
         deliveredAt: true,
         readAt: true,
+        errorCode: true,
       },
     });
 

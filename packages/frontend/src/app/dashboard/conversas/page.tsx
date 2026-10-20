@@ -14,7 +14,7 @@ function formatWhatsApp(text?: string | null) {
 import {
   Search, Send, Phone, MoreVertical, Clock, CheckCheck, Check,
   Smile, Paperclip, Archive, MessageCircle, Instagram, Circle,
-  ArrowLeft, RefreshCw, Plus, X, Trash2,
+  ArrowLeft, RefreshCw, Plus, X, Trash2, AlertCircle,
 } from "lucide-react";
 
 const API_URL = "";
@@ -31,7 +31,7 @@ interface Message {
   id: string; externalId?: string | null; content: string; direction: "INBOUND" | "OUTBOUND";
   type: string; sentAt: string; mediaUrl?: string | null;
   quotedContent?: string | null; quotedExternalId?: string | null; quotedType?: string | null;
-  deliveredAt?: string | null; readAt?: string | null;
+  deliveredAt?: string | null; readAt?: string | null; errorCode?: string | null;
 }
 interface Conversation {
   id: string; channel: Channel; status: ConversationStatus;
@@ -290,7 +290,12 @@ function ConversasInner() {
       const res = await authFetch(`${API_URL}/api/v1/conversations/${convId}/messages`, { headers: authHeaders() });
       if (!res.ok) return;
       const data = await res.json();
-      setMessages(Array.isArray(data) ? data : []);
+      const list: Message[] = Array.isArray(data) ? data : [];
+      // Mantém mensagens otimistas até o servidor devolvê-las (evita a "piscada")
+      setMessages((prev) => [
+        ...list,
+        ...prev.filter((m) => m.id.startsWith("opt-") && !list.some((d) => d.direction === "OUTBOUND" && d.content === m.content)),
+      ]);
     } finally {
       setLoadingMsgs(false);
     }
@@ -362,7 +367,7 @@ function ConversasInner() {
     }, 50);
 
     try {
-      await authFetch(`${API_URL}/api/v1/conversations/${selected.id}/messages`, {
+      const res = await authFetch(`${API_URL}/api/v1/conversations/${selected.id}/messages`, {
         method: "POST",
         headers: authHeaders(),
         body: JSON.stringify({
@@ -372,6 +377,11 @@ function ConversasInner() {
           quotedType: quoted?.type ?? undefined,
         }),
       });
+      const saved = res.ok ? await res.json().catch(() => null) : null;
+      setMessages((prev) => prev.map((m) => m.id !== optimistic.id ? m
+        : saved?.id ? saved : { ...m, errorCode: "send_failed" }));
+    } catch {
+      setMessages((prev) => prev.map((m) => m.id === optimistic.id ? { ...m, errorCode: "send_failed" } : m));
     } finally {
       setSending(false);
     }
@@ -690,7 +700,7 @@ function ConversasInner() {
                       )}
                       <div className={`flex items-center justify-end gap-1 mt-0.5 ${isOut ? "text-white/70" : "text-gray-400"}`}>
                         <span className="text-[10px]">{new Date(msg.sentAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</span>
-                        {isOut && (msg.readAt ? <CheckCheck className="w-3 h-3 text-blue-300" /> : msg.deliveredAt ? <CheckCheck className="w-3 h-3" /> : <Check className="w-3 h-3" />)}
+                        {isOut && (msg.errorCode ? <span className="flex items-center gap-0.5 text-red-200 font-semibold" title={msg.errorCode === "131047" ? "Não entregue: o contato não falou com você nas últimas 24h. A Meta só permite enviar por template." : `Não entregue (erro ${msg.errorCode})`}><AlertCircle className="w-3 h-3" />{msg.errorCode === "131047" ? "Não entregue · fora das 24h" : "Não entregue"}</span> : msg.readAt ? <CheckCheck className="w-3 h-3 text-blue-300" /> : msg.deliveredAt ? <CheckCheck className="w-3 h-3" /> : <Check className="w-3 h-3" />)}
                       </div>
                     </div>
                   </div>
