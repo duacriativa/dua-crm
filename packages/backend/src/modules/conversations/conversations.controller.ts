@@ -48,6 +48,28 @@ export class ConversationsController {
     );
   }
 
+  /** GET /conversations/:id/activities — notas internas do contato */
+  @Get(':id/activities')
+  getActivities(@Request() req: any, @Param('id') id: string) {
+    return this.conversationsService.getActivities(req.user.tenantId, id);
+  }
+
+  /** POST /conversations/:id/notes — nota interna (não vai para o WhatsApp) */
+  @Post(':id/notes')
+  createNote(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body() body: { content: string; authorName?: string },
+  ) {
+    return this.conversationsService.createNote(req.user.tenantId, req.user.id, id, body.content, body.authorName);
+  }
+
+  /** DELETE /conversations/:id/activities/:activityId */
+  @Delete(':id/activities/:activityId')
+  removeActivity(@Request() req: any, @Param('activityId') activityId: string) {
+    return this.conversationsService.removeActivity(req.user.tenantId, activityId);
+  }
+
   /** POST /conversations/start — inicia conversa outbound por telefone */
   @Post('start')
   startConversation(

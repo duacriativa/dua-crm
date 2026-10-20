@@ -14,7 +14,7 @@ function formatWhatsApp(text?: string | null) {
 import {
   Search, Send, Phone, MoreVertical, Clock, CheckCheck, Check,
   Smile, Paperclip, Archive, MessageCircle, Instagram, Circle,
-  ArrowLeft, RefreshCw, Plus, X, Trash2, AlertCircle, Sparkles, FileText,
+  ArrowLeft, RefreshCw, Plus, X, Trash2, AlertCircle, Sparkles, FileText, StickyNote,
 } from "lucide-react";
 import { SendTemplateModal } from "@/components/whatsapp/templates";
 
@@ -34,6 +34,12 @@ interface Message {
   quotedContent?: string | null; quotedExternalId?: string | null; quotedType?: string | null;
   deliveredAt?: string | null; readAt?: string | null; errorCode?: string | null; errorMessage?: string; quotedFromMe?: boolean;
 }
+// Nota interna da linha do tempo (fica no contato, não vai para o WhatsApp)
+interface Activity {
+  id: string; type: "NOTE"; content: string; conversationId?: string | null;
+  authorName?: string | null; author?: { name: string } | null; createdAt: string;
+}
+type TimelineItem = { kind: "msg"; at: string; msg: Message } | { kind: "note"; at: string; note: Activity };
 interface Conversation {
   id: string; channel: Channel; status: ConversationStatus;
   externalId: string; createdAt: string; updatedAt: string;
@@ -53,6 +59,16 @@ function timeAgo(dateStr: string) {
   if (diff < 3600) return `${Math.floor(diff / 60)}min`;
   if (diff < 86400) return `${Math.floor(diff / 3600)}h`;
   return new Date(dateStr).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+}
+// Separador de dia da linha do tempo: "Hoje", "Ontem" ou "20 de outubro"
+function dayLabel(dateStr: string) {
+  const d = new Date(dateStr);
+  const today = new Date();
+  const yesterday = new Date(); yesterday.setDate(today.getDate() - 1);
+  if (d.toDateString() === today.toDateString()) return "Hoje";
+  if (d.toDateString() === yesterday.toDateString()) return "Ontem";
+  return d.toLocaleDateString("pt-BR", d.getFullYear() === today.getFullYear()
+    ? { day: "2-digit", month: "long" } : { day: "2-digit", month: "long", year: "numeric" });
 }
 function channelIcon(channel: Channel) {
   if (channel === "WHATSAPP") return <MessageCircle className="w-3.5 h-3.5 text-green-500" />;
@@ -130,6 +146,11 @@ function ConversasInner() {
 
   // Reply / citação de mensagem
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
+
+  // Notas internas: o campo vira "Nota interna" e salva no CRM em vez de enviar
+  const [notes, setNotes] = useState<Activity[]>([]);
+  const [noteMode, setNoteMode] = useState(false);
+  const [savingNote, setSavingNote] = useState(false);
 
   // Lightbox
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
@@ -320,12 +341,26 @@ function ConversasInner() {
     }
   }, []);
 
+  const fetchActivities = useCallback(async (convId: string) => {
+    try {
+      const res = await authFetch(`${API_URL}/api/v1/conversations/${convId}/activities`, { headers: authHeaders() });
+      if (!res.ok) return;
+      const data = await res.json();
+      // Ignora resposta atrasada de outra conversa
+      if (selectedRef.current?.id === convId) setNotes(Array.isArray(data) ? data : []);
+    } catch {}
+  }, []);
+
   const selectConversation = (conv: Conversation) => {
     isInitialLoadRef.current = true;
     setMessages([]);
+    setNotes([]);
+    setNoteMode(false);
     setSelected(conv);
+    selectedRef.current = conv;
     setMobileView("chat");
     fetchMessages(conv.id);
+    fetchActivities(conv.id);
     // Zero unread localmente
     setConversations((prev) => prev.map((c) => c.id === conv.id ? { ...c, unreadCount: 0 } : c));
   };
@@ -335,14 +370,25 @@ function ConversasInner() {
     if (pollRef.current) clearInterval(pollRef.current);
     if (!selected) return;
     pollRef.current = setInterval(() => {
-      if (selectedRef.current) fetchMessages(selectedRef.current.id);
+      if (selectedRef.current) { fetchMessages(selectedRef.current.id); fetchActivities(selectedRef.current.id); }
     }, 3000);
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
-  }, [selected, fetchMessages]);
+  }, [selected, fetchMessages, fetchActivities]);
+
+  // ── Linha do tempo: mensagens + notas internas, em ordem de horário ──────
+  const timeline = useMemo<TimelineItem[]>(() => {
+    // Só 50 mensagens são carregadas: notas mais antigas que elas ficariam fora de ordem no topo
+    const oldest = messages.length >= 50 ? new Date(messages[0].sentAt).getTime() : -Infinity;
+    const items: TimelineItem[] = [
+      ...messages.map((msg) => ({ kind: "msg" as const, at: msg.sentAt, msg })),
+      ...notes.filter((n) => new Date(n.createdAt).getTime() >= oldest).map((note) => ({ kind: "note" as const, at: note.createdAt, note })),
+    ];
+    return items.sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
+  }, [messages, notes]);
 
   // ── Auto scroll ───────────────────────────────────────────────────────────
   useEffect(() => {
-    if (messages.length === 0) return;
+    if (timeline.length === 0) return;
 
     if (isInitialLoadRef.current) {
       isInitialLoadRef.current = false;
@@ -363,7 +409,7 @@ function ConversasInner() {
       scrollToBottom();
     }
     prevScrollHeightRef.current = container.scrollHeight;
-  }, [messages]);
+  }, [timeline]);
 
   // ── Enviar mensagem ───────────────────────────────────────────────────────
   const sendMessage = useCallback(async () => {
@@ -490,6 +536,33 @@ function ConversasInner() {
     requestAnimationFrame(() => textareaRef.current?.focus());
   };
 
+  // ── Notas internas ────────────────────────────────────────────────────────
+  const saveNote = useCallback(async () => {
+    if (!newMessage.trim() || !selected || savingNote) return;
+    setSavingNote(true);
+    try {
+      const res = await authFetch(`${API_URL}/api/v1/conversations/${selected.id}/notes`, {
+        method: "POST", headers: authHeaders(),
+        body: JSON.stringify({ content: newMessage.trim(), authorName: signature || undefined }),
+      });
+      if (!res.ok) { alert("Não foi possível salvar a nota. Tente de novo."); return; }
+      const note: Activity = await res.json();
+      forceScrollRef.current = true;
+      setNotes((prev) => [...prev.filter((n) => n.id !== note.id), note]);
+      setNewMessage("");
+    } catch {
+      alert("Sem conexão com o servidor. A nota não foi salva.");
+    } finally {
+      setSavingNote(false);
+    }
+  }, [newMessage, selected, savingNote, signature]);
+
+  const deleteNote = async (note: Activity) => {
+    if (!selected || !window.confirm("Excluir esta nota?")) return;
+    const res = await authFetch(`${API_URL}/api/v1/conversations/${selected.id}/activities/${note.id}`, { method: "DELETE", headers: authHeaders() });
+    if (res.ok) setNotes((prev) => prev.filter((n) => n.id !== note.id));
+  };
+
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
       // Ctrl+Enter quebra a linha na posição do cursor
@@ -500,8 +573,8 @@ function ConversasInner() {
       requestAnimationFrame(() => { el.selectionStart = el.selectionEnd = start + 1; });
       return;
     }
-    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); }
-  }, [sendMessage]);
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (noteMode) saveNote(); else sendMessage(); }
+  }, [sendMessage, saveNote, noteMode]);
 
   const handleMessageChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setNewMessage(e.target.value);
@@ -727,24 +800,49 @@ function ConversasInner() {
       <div ref={messagesContainerRef} className="flex-1 min-h-0 overflow-y-auto px-4 py-4 space-y-2">
         {loadingMsgs && messages.length === 0 ? (
           <div className="flex justify-center py-10"><RefreshCw className="w-5 h-5 animate-spin text-gray-300" /></div>
-        ) : messages.length === 0 ? (
+        ) : timeline.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-gray-400">
             <MessageCircle className="w-8 h-8 mb-2 opacity-30" />
             <p className="text-sm">Nenhuma mensagem ainda</p>
           </div>
         ) : (
-          messages.map((msg, i) => {
+          timeline.map((item, i) => {
+            const showDate = i === 0 || new Date(timeline[i - 1].at).toDateString() !== new Date(item.at).toDateString();
+            const dateSeparator = showDate && (
+              <div className="flex justify-center my-3">
+                <span className="text-[11px] text-gray-400 bg-white px-3 py-1 rounded-full border border-gray-200">
+                  {dayLabel(item.at)}
+                </span>
+              </div>
+            );
+            if (item.kind === "note") {
+              const note = item.note;
+              return (
+                <div key={`note-${note.id}`}>
+                  {dateSeparator}
+                  <div className="flex justify-center group">
+                    <div className="w-full max-w-[85%] rounded-2xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-950 shadow-sm">
+                      <div className="flex items-center gap-1.5 mb-1 text-[11px] text-amber-700">
+                        <StickyNote className="w-3.5 h-3.5" />
+                        <span className="font-semibold">Nota interna</span>
+                        <span>· {note.authorName || note.author?.name || "Equipe"}</span>
+                        <span>· {new Date(note.createdAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</span>
+                        <button onClick={() => deleteNote(note)} title="Excluir nota"
+                          className="ml-auto opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded text-amber-600 hover:text-red-600">
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                      <p className="leading-relaxed whitespace-pre-wrap">{note.content}</p>
+                    </div>
+                  </div>
+                </div>
+              );
+            }
+            const msg = item.msg;
             const isOut = msg.direction === "OUTBOUND";
-            const showDate = i === 0 || new Date(messages[i - 1].sentAt).toDateString() !== new Date(msg.sentAt).toDateString();
             return (
               <div key={msg.id}>
-                {showDate && (
-                  <div className="flex justify-center my-3">
-                    <span className="text-[11px] text-gray-400 bg-white px-3 py-1 rounded-full border border-gray-200">
-                      {new Date(msg.sentAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "long" })}
-                    </span>
-                  </div>
-                )}
+                {dateSeparator}
                 <div className={`flex items-end gap-1 group ${isOut ? "justify-end" : "justify-start"}`}>
                   {/* Botão reply — aparece no hover */}
                   {!isOut && (
@@ -878,7 +976,20 @@ function ConversasInner() {
             </div>
           </div>
         )}
-        {windowClosed && !writeAnyway && (messages.length > 0 || !loadingMsgs) ? (
+        {suggestion === null && (
+          <div className="flex items-center gap-1 mb-2 text-xs font-semibold">
+            <button onClick={() => setNoteMode(false)}
+              className={`flex items-center gap-1 px-3 py-1 rounded-full ${!noteMode ? "bg-brand-50 text-brand-700 border border-brand-200" : "text-gray-500 hover:bg-gray-100 border border-transparent"}`}>
+              <MessageCircle className="w-3.5 h-3.5" />Mensagem
+            </button>
+            <button onClick={() => { setNoteMode(true); setReplyingTo(null); textareaRef.current?.focus(); }}
+              title="Só a equipe vê. Não vai para o WhatsApp."
+              className={`flex items-center gap-1 px-3 py-1 rounded-full ${noteMode ? "bg-amber-50 text-amber-800 border border-amber-200" : "text-gray-500 hover:bg-gray-100 border border-transparent"}`}>
+              <StickyNote className="w-3.5 h-3.5" />Nota interna
+            </button>
+          </div>
+        )}
+        {!noteMode && windowClosed && !writeAnyway && (messages.length > 0 || !loadingMsgs) ? (
           <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 flex flex-wrap items-center gap-2">
             <Clock className="w-4 h-4 text-amber-600 shrink-0" />
             <p className="flex-1 min-w-[180px] text-sm text-amber-900">
@@ -891,7 +1002,7 @@ function ConversasInner() {
             <button onClick={() => setWriteAnyway(true)} className="text-xs text-amber-800 underline">Escrever mesmo assim</button>
           </div>
         ) : (<>
-        {suggestion === null && (
+        {suggestion === null && !noteMode && (
           <div className="flex justify-end gap-1.5 mb-1.5">
             <button onClick={() => setShowTemplate(true)} title="Enviar um template aprovado pela Meta"
               className="flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-gray-600 bg-gray-50 border border-gray-200 rounded-full hover:bg-gray-100">
@@ -913,7 +1024,7 @@ function ConversasInner() {
           />
           <button
             onClick={() => fileInputRef.current?.click()}
-            disabled={sendingMedia}
+            disabled={sendingMedia || noteMode}
             className="p-2 text-gray-400 hover:text-gray-600 disabled:opacity-40"
           >
             <Paperclip className="w-5 h-5" />
@@ -949,11 +1060,18 @@ function ConversasInner() {
             {signature && <option value="__remove">Remover "{signature}"</option>}
           </select>
           <textarea value={newMessage} onChange={handleMessageChange} onKeyDown={handleKeyDown} onPaste={handlePaste}
-            placeholder={replyingTo ? "Digite sua resposta..." : "Digite uma mensagem..."}
-            ref={textareaRef} rows={1} className="flex-1 resize-none bg-gray-50 text-gray-900 placeholder:text-gray-400 border border-gray-200 rounded-2xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 max-h-60 overflow-y-auto" style={{ minHeight: "42px" }} />
-          <button onClick={sendMessage} disabled={!newMessage.trim() || sending} className="p-2.5 bg-brand-600 text-white rounded-2xl hover:bg-brand-700 disabled:opacity-40 transition-colors">
-            <Send className="w-4 h-4" />
-          </button>
+            placeholder={noteMode ? "Nota interna: só a equipe vê, não vai para o WhatsApp" : replyingTo ? "Digite sua resposta..." : "Digite uma mensagem..."}
+            ref={textareaRef} rows={1} className={`flex-1 resize-none text-gray-900 placeholder:text-gray-400 border rounded-2xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 max-h-60 overflow-y-auto ${noteMode ? "bg-amber-50 border-amber-200 focus:ring-amber-400" : "bg-gray-50 border-gray-200 focus:ring-brand-500"}`} style={{ minHeight: "42px" }} />
+          {noteMode ? (
+            <button onClick={saveNote} disabled={!newMessage.trim() || savingNote} title="Salvar nota"
+              className="flex items-center gap-1.5 px-3 py-2.5 bg-amber-500 text-white text-xs font-semibold rounded-2xl hover:bg-amber-600 disabled:opacity-40 transition-colors">
+              {savingNote ? <RefreshCw className="w-4 h-4 animate-spin" /> : <StickyNote className="w-4 h-4" />}Salvar nota
+            </button>
+          ) : (
+            <button onClick={sendMessage} disabled={!newMessage.trim() || sending} className="p-2.5 bg-brand-600 text-white rounded-2xl hover:bg-brand-700 disabled:opacity-40 transition-colors">
+              <Send className="w-4 h-4" />
+            </button>
+          )}
         </div>
         </>)}
       </div>

@@ -34,6 +34,10 @@ ou no módulo `packages/backend/src/modules/whatsapp-cloud`.
   Na conversa, sem mensagem do contato em 24h, o campo vira "Enviar template"
   (`POST /conversations/:id/template`, grava `type: TEMPLATE` com o texto preenchido).
   Cabeçalho com mídia: no envio pede o link; na criação só cabeçalho de texto por enquanto.
+- Notas internas: aba "Nota interna" acima do campo; salva em `Activity` (type `NOTE`, ligada ao contato,
+  não vai para o WhatsApp) e aparece na linha do tempo junto das mensagens, com separadores Hoje/Ontem.
+  Rotas: `GET /conversations/:id/activities`, `POST /conversations/:id/notes`, `DELETE /conversations/:id/activities/:activityId`.
+  Migration aplicada à mão no Supabase (o deploy não roda `prisma migrate`). Próximos tipos: tarefas, responsável, eventos do funil.
 
 ## Limitação conhecida
 Mensagens enviadas pelo **Kommo** (outro app na mesma WABA) não chegam ao CRM — a Meta só

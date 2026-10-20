@@ -120,6 +120,11 @@ enum AutomationTrigger {
   CONTACT_AT_RISK        // cliente em risco de churn
 }
 
+// Itens da linha do tempo do contato além das mensagens (tarefas, eventos do funil… virão depois)
+enum ActivityType {
+  NOTE                   // nota interna: só a equipe vê, não vai para o WhatsApp
+}
+
 enum CampaignStatus {
   DRAFT
   SCHEDULED
@@ -148,6 +153,7 @@ model Tenant {
   metaCredential   MetaCredential?
   auditLogs        AuditLog[]
   pipelines        Pipeline[]
+  activities       Activity[]
   contracts        Contract[]
   financialEntries FinancialEntry[]
   services         Service[]
@@ -166,6 +172,7 @@ model User {
   updatedAt    DateTime @updatedAt
 
   refreshTokens RefreshToken[]
+  activities    Activity[]
 
   @@unique([tenantId, email])
   @@index([tenantId])
@@ -217,6 +224,7 @@ model Contact {
   orders         Order[]
   pipelineLeads  PipelineLead[]
   contracts      Contract[]
+  activities     Activity[]
 
   @@unique([tenantId, phone])
   @@unique([tenantId, instagramId])
@@ -238,7 +246,8 @@ model Conversation {
   createdAt     DateTime           @default(now())
   updatedAt     DateTime           @updatedAt
 
-  messages Message[]
+  messages   Message[]
+  activities Activity[]
 
   @@unique([tenantId, externalId])
   @@index([tenantId, status])
@@ -524,4 +533,25 @@ model AppSetting {
   key       String   @id
   value     String
   updatedAt DateTime @updatedAt
+}
+
+// Linha do tempo do contato: notas internas (e, depois, tarefas e eventos)
+model Activity {
+  id             String        @id @default(cuid())
+  tenantId       String
+  tenant         Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  contactId      String
+  contact        Contact       @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  conversationId String?       // conversa onde foi criada (a nota continua no contato se a conversa for excluída)
+  conversation   Conversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  type           ActivityType  @default(NOTE)
+  content        String
+  authorId       String?
+  author         User?         @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  authorName     String?       // nome exibido (assinatura escolhida ou nome do usuário)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@index([tenantId])
+  @@index([contactId, createdAt])
 }

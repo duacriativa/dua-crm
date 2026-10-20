@@ -330,6 +330,61 @@ export class ConversationsService {
     return conv;
   }
 
+  // ── Linha do tempo: notas internas (ficam no contato, não vão para o WhatsApp) ──
+
+  private readonly activitySelect = {
+    id: true, type: true, content: true, conversationId: true,
+    authorId: true, authorName: true, createdAt: true,
+    author: { select: { name: true } },
+  } as const;
+
+  /** Notas do contato desta conversa (de todas as conversas dele), da mais antiga à mais nova */
+  async getActivities(tenantId: string, conversationId: string) {
+    const conv = await this.prisma.conversation.findFirst({
+      where: { id: conversationId, tenantId },
+      select: { contactId: true },
+    });
+    if (!conv) throw new NotFoundException('Conversa não encontrada.');
+
+    const activities = await this.prisma.activity.findMany({
+      where: { tenantId, contactId: conv.contactId },
+      orderBy: { createdAt: 'desc' },
+      take: 200,
+      select: this.activitySelect,
+    });
+    return activities.reverse();
+  }
+
+  async createNote(tenantId: string, userId: string, conversationId: string, content: string, authorName?: string) {
+    const text = content?.trim();
+    if (!text) throw new BadRequestException('A nota está vazia.');
+
+    const conv = await this.prisma.conversation.findFirst({
+      where: { id: conversationId, tenantId },
+      select: { contactId: true },
+    });
+    if (!conv) throw new NotFoundException('Conversa não encontrada.');
+
+    return this.prisma.activity.create({
+      data: {
+        tenantId,
+        contactId: conv.contactId,
+        conversationId,
+        type: 'NOTE',
+        content: text,
+        authorId: userId,
+        authorName: authorName?.trim() || null,
+      },
+      select: this.activitySelect,
+    });
+  }
+
+  async removeActivity(tenantId: string, activityId: string) {
+    const { count } = await this.prisma.activity.deleteMany({ where: { id: activityId, tenantId } });
+    if (!count) throw new NotFoundException('Nota não encontrada.');
+    return { ok: true };
+  }
+
   async updateStatus(tenantId: string, conversationId: string, status: string) {
     const conv = await this.prisma.conversation.findFirst({
       where: { id: conversationId, tenantId },
