@@ -1006,6 +1006,12 @@ function ConversasInner() {
                     {/* Conteúdo/legenda */}
                     <div className="px-4 py-2.5">
                       {msg.type === "TEXT" && <p className="leading-relaxed whitespace-pre-wrap">{formatWhatsApp(msg.content)}</p>}
+                      {msg.type === "TEMPLATE" && (
+                        <>
+                          <p className={`text-[10px] font-semibold uppercase tracking-wide mb-1 ${isOut ? "text-white/70" : "text-gray-400"}`}>Template</p>
+                          <p className="leading-relaxed whitespace-pre-wrap">{formatWhatsApp(msg.content)}</p>
+                        </>
+                      )}
                       {(msg.type === "IMAGE" || msg.type === "VIDEO") && msg.content && msg.content !== "[imagem]" && msg.content !== "[vídeo]" && !(msg.mediaUrl && msg.content === "[figurinha]") && (
                         <p className="leading-relaxed whitespace-pre-wrap text-xs mt-1 opacity-90">{msg.content}</p>
                       )}
