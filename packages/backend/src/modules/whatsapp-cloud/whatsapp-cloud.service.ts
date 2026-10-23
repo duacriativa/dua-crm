@@ -601,7 +601,7 @@ export class WhatsAppCloudService {
     if (!opts.history) {
       await this.prisma.conversation.update({
         where: { id: conv.id },
-        data: { updatedAt: new Date(), ...(direction === 'INBOUND' && conv.status === 'RESOLVED' ? { status: 'OPEN' } : {}) },
+        data: { updatedAt: new Date(), ...(direction === 'INBOUND' && (conv.status === 'RESOLVED' || conv.status === 'IN_PROGRESS') ? { status: 'OPEN' } : {}) },
       });
     }
 

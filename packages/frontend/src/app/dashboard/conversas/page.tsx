@@ -1,7 +1,7 @@
 "use client";
 import { authFetch } from "@/lib/auth-fetch";
 
-import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo, Suspense } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo, Suspense, type ReactNode } from "react";
 import { useSearchParams } from "next/navigation";
 
 // Converte *negrito* do WhatsApp em <strong>
@@ -13,15 +13,17 @@ function formatWhatsApp(text?: string | null) {
 }
 import {
   Search, Send, Phone, MoreVertical, Clock, CheckCheck, Check,
-  Smile, Paperclip, Archive, MessageCircle, Instagram, Circle,
+  Smile, Paperclip, MessageCircle, Instagram, Circle,
   ArrowLeft, RefreshCw, Plus, X, Trash2, AlertCircle, Sparkles, FileText, StickyNote,
+  Mail, BadgeCheck, Megaphone, EyeOff, RotateCcw,
 } from "lucide-react";
+import Link from "next/link";
 import { SendTemplateModal } from "@/components/whatsapp/templates";
 
 const API_URL = "";
 
 type Channel = "WHATSAPP" | "INSTAGRAM" | "WEBCHAT";
-type ConversationStatus = "OPEN" | "PENDING" | "RESOLVED" | "ARCHIVED";
+type ConversationStatus = "OPEN" | "IN_PROGRESS" | "RESOLVED" | "ARCHIVED";
 type MobileView = "list" | "chat" | "info";
 
 interface Contact {
@@ -40,6 +42,22 @@ interface Activity {
   authorName?: string | null; recipientName?: string | null; author?: { name: string } | null; createdAt: string;
 }
 type TimelineItem = { kind: "msg"; at: string; msg: Message } | { kind: "note"; at: string; note: Activity };
+// Ficha completa do contato (GET /contacts/:id) para a lateral
+interface ContactDetails {
+  id: string; type: "LEAD" | "CLIENT"; clientSince?: string | null; tags: string[];
+  email?: string | null; instagramHandle?: string | null;
+  monthlyRevenue?: string | null; saleModel?: string | null;
+  utmSource?: string | null; utmMedium?: string | null; utmCampaign?: string | null;
+  adHeadline?: string | null; adSourceUrl?: string | null;
+  contracts?: { id: string; clientName: string; serviceType: string; monthlyValue: number }[];
+}
+const SERVICE_LABEL: Record<string, string> = {
+  SOCIAL_MEDIA: "Social media", PAID_TRAFFIC: "Tráfego pago", CRM_SETUP: "CRM", CONSULTING: "Consultoria", OTHER: "Outro",
+};
+// "@lsfbrand_", "lsfbrand_" ou a URL do perfil → "lsfbrand_"
+function igHandle(raw: string) {
+  return raw.trim().replace(/^https?:\/\/(www\.)?instagram\.com\//i, "").replace(/^@/, "").replace(/[/?#].*$/, "");
+}
 interface Conversation {
   id: string; channel: Channel; status: ConversationStatus;
   externalId: string; createdAt: string; updatedAt: string;
@@ -75,15 +93,22 @@ function channelIcon(channel: Channel) {
   if (channel === "INSTAGRAM") return <Instagram className="w-3.5 h-3.5 text-pink-500" />;
   return <Circle className="w-3.5 h-3.5 text-gray-400" />;
 }
-const statusDot: Record<ConversationStatus, string> = {
-  OPEN: "bg-green-500", PENDING: "bg-yellow-400",
-  RESOLVED: "bg-gray-400", ARCHIVED: "bg-gray-300",
+// Aberta: precisa de resposta nossa · Aguardando: esperando pagamento/retorno ·
+// Concluída: assunto encerrado · Ignorada: spam/grupo, some da lista.
+// Aguardando e Concluída voltam para Aberta quando o cliente escreve.
+const STATUS_META: Record<ConversationStatus, { label: string; action: string; dot: string; badge: string; item: string }> = {
+  OPEN: { label: "Aberta", action: "Reabrir", dot: "bg-green-500", badge: "bg-green-100 text-green-700", item: "text-blue-700 hover:bg-blue-50" },
+  IN_PROGRESS: { label: "Aguardando", action: "Aguardando", dot: "bg-yellow-400", badge: "bg-yellow-100 text-yellow-700", item: "text-yellow-700 hover:bg-yellow-50" },
+  RESOLVED: { label: "Concluída", action: "Concluir", dot: "bg-gray-400", badge: "bg-gray-100 text-gray-500", item: "text-green-700 hover:bg-green-50" },
+  ARCHIVED: { label: "Ignorada", action: "Ignorar", dot: "bg-gray-300", badge: "bg-gray-100 text-gray-400", item: "text-gray-600 hover:bg-gray-50" },
 };
+const STATUS_ICON: Record<ConversationStatus, typeof Clock> = { OPEN: RotateCcw, IN_PROGRESS: Clock, RESOLVED: CheckCheck, ARCHIVED: EyeOff };
 const tabs: { label: string; value: string }[] = [
   { label: "Todas", value: "ALL" },
   { label: "Abertas", value: "OPEN" },
-  { label: "Pendentes", value: "PENDING" },
-  { label: "Resolvidas", value: "RESOLVED" },
+  { label: "Aguardando", value: "IN_PROGRESS" },
+  { label: "Concluídas", value: "RESOLVED" },
+  { label: "Ignoradas", value: "ARCHIVED" },
 ];
 
 function ConversasInner() {
@@ -183,13 +208,12 @@ function ConversasInner() {
 
   // Menu ⋮ do header do chat
   const [showChatMenu, setShowChatMenu] = useState(false);
-  const chatMenuRef = useRef<HTMLDivElement>(null);
 
+  // O chat é montado duas vezes (desktop e celular), então um ref só apontaria
+  // para uma das cópias e o clique num item do menu fecharia o menu antes de agir
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (chatMenuRef.current && !chatMenuRef.current.contains(e.target as Node)) {
-        setShowChatMenu(false);
-      }
+      if (!(e.target as Element).closest?.("[data-chat-menu]")) setShowChatMenu(false);
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
@@ -254,6 +278,50 @@ function ConversasInner() {
     } finally {
       setSavingContact(false);
     }
+  };
+
+  // ── Ficha do contato na lateral (cliente/lead, dados do formulário, tags) ──
+  const [contactInfo, setContactInfo] = useState<ContactDetails | null>(null);
+  const [newTag, setNewTag] = useState("");
+  const selectedContactId = selected?.contact.id;
+  useEffect(() => {
+    setContactInfo(null);
+    setNewTag("");
+    if (!selectedContactId) return;
+    let alive = true;
+    authFetch(`${API_URL}/api/v1/contacts/${selectedContactId}`, { headers: authHeaders() })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => { if (alive && data) setContactInfo(data); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [selectedContactId]);
+
+  const patchContact = async (data: Partial<Pick<ContactDetails, "type" | "tags">>) => {
+    if (!selected || !contactInfo) return;
+    const prev = contactInfo;
+    const next = { ...contactInfo, ...data };
+    if (data.type === "CLIENT" && !contactInfo.clientSince) next.clientSince = new Date().toISOString();
+    setContactInfo(next);
+    // Tags também aparecem na lista de conversas
+    if (data.tags) {
+      const contactId = selected.contact.id;
+      setConversations((list) => list.map((c) => c.contact.id === contactId ? { ...c, contact: { ...c.contact, tags: data.tags } } : c));
+      setSelected((s) => s ? { ...s, contact: { ...s.contact, tags: data.tags } } : s);
+    }
+    try {
+      const res = await authFetch(`${API_URL}/api/v1/contacts/${contactInfo.id}`, {
+        method: "PATCH", headers: authHeaders(), body: JSON.stringify(data),
+      });
+      if (!res.ok) throw new Error();
+    } catch {
+      setContactInfo(prev);
+    }
+  };
+  const addTag = () => {
+    const tag = newTag.trim();
+    setNewTag("");
+    if (!tag || !contactInfo || contactInfo.tags.includes(tag)) return;
+    patchContact({ tags: [...contactInfo.tags, tag] });
   };
   const phoneParamUsed = useRef(false);
 
@@ -659,13 +727,18 @@ function ConversasInner() {
     reader.readAsDataURL(file);
   };
 
-  const updateStatus = async (status: string) => {
+  const updateStatus = async (status: ConversationStatus) => {
     if (!selected) return;
-    await authFetch(`${API_URL}/api/v1/conversations/${selected.id}/status`, {
+    const res = await authFetch(`${API_URL}/api/v1/conversations/${selected.id}/status`, {
       method: "PATCH", headers: authHeaders(), body: JSON.stringify({ status }),
     });
-    setSelected((prev) => prev ? { ...prev, status: status as ConversationStatus } : prev);
-    setConversations((prev) => prev.map((c) => c.id === selected.id ? { ...c, status: status as ConversationStatus } : c));
+    if (!res.ok) { alert("Não foi possível mudar o status da conversa."); return; }
+    setSelected((prev) => prev ? { ...prev, status } : prev);
+    // Sai da aba atual se não pertence mais a ela ("Todas" não mostra ignoradas)
+    const fits = activeTab === "ALL" ? status !== "ARCHIVED" : activeTab === status;
+    setConversations((prev) => fits
+      ? prev.map((c) => c.id === selected.id ? { ...c, status } : c)
+      : prev.filter((c) => c.id !== selected.id));
   };
 
   const deleteConversation = async () => {
@@ -725,7 +798,7 @@ function ConversasInner() {
             <button key={conv.id} onClick={() => selectConversation(conv)} className={`w-full flex items-start gap-3 px-4 py-3.5 text-left border-b border-gray-50 hover:bg-gray-50 transition-colors ${selected?.id === conv.id ? "bg-brand-50 border-l-2 border-l-brand-500" : ""}`}>
               <div className="relative shrink-0">
                 <div className="w-10 h-10 rounded-full bg-brand-100 text-brand-600 font-bold text-sm flex items-center justify-center">{conv.contact.name.charAt(0).toUpperCase()}</div>
-                <div className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-white ${statusDot[conv.status]}`} />
+                <div className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-white ${STATUS_META[conv.status].dot}`} />
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between gap-1">
@@ -773,37 +846,34 @@ function ConversasInner() {
         </div>
         <div className="flex items-center gap-1.5">
           {/* Status rápido */}
-          {selected.status === "OPEN" && (
-            <button onClick={() => updateStatus("RESOLVED")} className="text-xs px-2.5 py-1.5 rounded-xl bg-green-50 text-green-700 font-medium hover:bg-green-100 hidden sm:flex items-center gap-1">
-              <CheckCheck className="w-3.5 h-3.5" />Resolver
+          {selected.status === "OPEN" ? (
+            <button onClick={() => updateStatus("RESOLVED")} title="Assunto encerrado; volta para Aberta se o cliente escrever"
+              className="text-xs px-2.5 py-1.5 rounded-xl bg-green-50 text-green-700 font-medium hover:bg-green-100 hidden sm:flex items-center gap-1">
+              <CheckCheck className="w-3.5 h-3.5" />Concluir
             </button>
-          )}
-          {selected.status === "RESOLVED" && (
+          ) : (
             <button onClick={() => updateStatus("OPEN")} className="text-xs px-2.5 py-1.5 rounded-xl bg-blue-50 text-blue-700 font-medium hover:bg-blue-100 hidden sm:flex items-center gap-1">
-              Reabrir
+              <RotateCcw className="w-3.5 h-3.5" />Reabrir
             </button>
           )}
-          <span className={`text-xs px-2 py-1 rounded-full font-medium ${selected.status === "OPEN" ? "bg-green-100 text-green-700" : selected.status === "PENDING" ? "bg-yellow-100 text-yellow-700" : "bg-gray-100 text-gray-500"}`}>
-            {selected.status === "OPEN" ? "Aberta" : selected.status === "PENDING" ? "Pendente" : "Resolvida"}
+          <span className={`text-xs px-2 py-1 rounded-full font-medium ${STATUS_META[selected.status]?.badge ?? ""}`}>
+            {STATUS_META[selected.status]?.label ?? selected.status}
           </span>
-          <div className="relative" ref={chatMenuRef}>
+          <div className="relative" data-chat-menu>
             <button onClick={() => setShowChatMenu((v) => !v)} className="p-2 rounded-xl hover:bg-gray-100 text-gray-400">
               <MoreVertical className="w-4 h-4" />
             </button>
             {showChatMenu && (
               <div className="absolute right-0 top-9 bg-white rounded-xl shadow-lg border border-gray-100 z-30 w-44 py-1">
-                <button onClick={() => { updateStatus("OPEN"); setShowChatMenu(false); }}
-                  className="w-full text-left px-4 py-2.5 text-sm text-green-700 hover:bg-green-50 flex items-center gap-2">
-                  <CheckCheck className="w-3.5 h-3.5" />Resolver
-                </button>
-                <button onClick={() => { updateStatus("PENDING"); setShowChatMenu(false); }}
-                  className="w-full text-left px-4 py-2.5 text-sm text-yellow-700 hover:bg-yellow-50 flex items-center gap-2">
-                  <Clock className="w-3.5 h-3.5" />Pendente
-                </button>
-                <button onClick={() => { updateStatus("ARCHIVED"); setShowChatMenu(false); }}
-                  className="w-full text-left px-4 py-2.5 text-sm text-gray-600 hover:bg-gray-50 flex items-center gap-2">
-                  <Archive className="w-3.5 h-3.5" />Arquivar
-                </button>
+                {(["OPEN", "IN_PROGRESS", "RESOLVED", "ARCHIVED"] as ConversationStatus[]).filter((st) => st !== selected.status).map((st) => {
+                  const Icon = STATUS_ICON[st];
+                  return (
+                    <button key={st} onClick={() => { updateStatus(st); setShowChatMenu(false); }}
+                      className={`w-full text-left px-4 py-2.5 text-sm flex items-center gap-2 ${STATUS_META[st].item}`}>
+                      <Icon className="w-3.5 h-3.5" />{STATUS_META[st].action}
+                    </button>
+                  );
+                })}
                 <div className="border-t border-gray-100 my-1" />
                 <button onClick={() => { deleteConversation(); setShowChatMenu(false); }}
                   className="w-full text-left px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2">
@@ -1135,33 +1205,89 @@ function ConversasInner() {
         <div className="w-12 h-12 rounded-full bg-brand-100 text-brand-600 font-bold text-lg flex items-center justify-center mx-auto mb-2">{selected.contact.name.charAt(0)}</div>
         <h2 className="font-bold text-gray-900 text-sm">{selected.contact.name}</h2>
         {selected.contact.phone && <p className="text-xs text-gray-400 mt-0.5">{displayPhone(selected.contact.phone)}</p>}
+        {contactInfo && (
+          <div className="mt-3">
+            {/* Lead ↔ Cliente: um clique troca o tipo do contato */}
+            <div className="inline-flex rounded-full bg-gray-100 p-0.5 text-xs font-semibold">
+              <button onClick={() => contactInfo.type !== "LEAD" && patchContact({ type: "LEAD" })}
+                className={`px-3 py-1 rounded-full transition-colors ${contactInfo.type === "LEAD" ? "bg-white text-gray-800 shadow-sm" : "text-gray-400 hover:text-gray-600"}`}>Lead</button>
+              <button onClick={() => contactInfo.type !== "CLIENT" && patchContact({ type: "CLIENT" })}
+                className={`px-3 py-1 rounded-full transition-colors flex items-center gap-1 ${contactInfo.type === "CLIENT" ? "bg-green-500 text-white shadow-sm" : "text-gray-400 hover:text-gray-600"}`}>
+                <BadgeCheck className="w-3.5 h-3.5" />Cliente
+              </button>
+            </div>
+            {contactInfo.type === "CLIENT" && (
+              <div className="mt-2 space-y-1">
+                {contactInfo.contracts?.map((ct) => (
+                  <p key={ct.id} className="text-xs text-gray-700"><span className="font-semibold">{ct.clientName}</span> · {SERVICE_LABEL[ct.serviceType] ?? ct.serviceType}</p>
+                ))}
+                {contactInfo.clientSince && <p className="text-[11px] text-gray-400">Cliente desde {new Date(contactInfo.clientSince).toLocaleDateString("pt-BR")}</p>}
+              </div>
+            )}
+          </div>
+        )}
         <div className="flex gap-2 mt-3">
-          <button className="flex-1 py-1.5 text-xs font-semibold text-brand-600 border border-brand-200 rounded-lg hover:bg-brand-50">Ver Perfil</button>
+          <Link href={`/dashboard/contatos/${selected.contact.id}`} className="flex-1 py-1.5 text-xs font-semibold text-brand-600 border border-brand-200 rounded-lg hover:bg-brand-50">Ver Perfil</Link>
           <button
             onClick={() => { setEditName(selected.contact.name); setEditPhone(selected.contact.phone ?? ""); setEditingContact(true); }}
             className="flex-1 py-1.5 text-xs font-semibold text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50"
           >Editar</button>
         </div>
       </div>
-      {(selected.contact.tags?.length ?? 0) > 0 && (
-        <div className="p-4 border-b border-gray-100">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Tags</p>
-          <div className="flex flex-wrap gap-1.5">
-            {selected.contact.tags!.map((tag) => <span key={tag} className="text-xs bg-brand-50 text-brand-700 border border-brand-100 px-2 py-1 rounded-full">{tag}</span>)}
+      {contactInfo && (() => {
+        const ig = contactInfo.instagramHandle ? igHandle(contactInfo.instagramHandle) : "";
+        const utms = [contactInfo.utmSource, contactInfo.utmMedium, contactInfo.utmCampaign].filter((v) => v && v !== "-");
+        const rows: { label: string; value: ReactNode }[] = [];
+        if (ig) rows.push({ label: "Instagram", value: (
+          <a href={`https://instagram.com/${ig}`} target="_blank" rel="noopener noreferrer" className="text-pink-600 hover:underline flex items-center gap-1 min-w-0">
+            <Instagram className="w-3.5 h-3.5 shrink-0" /><span className="truncate">@{ig}</span>
+          </a>) });
+        if (contactInfo.email) rows.push({ label: "E-mail", value: (
+          <a href={`mailto:${contactInfo.email}`} className="text-brand-600 hover:underline flex items-center gap-1 min-w-0">
+            <Mail className="w-3.5 h-3.5 shrink-0" /><span className="truncate">{contactInfo.email}</span>
+          </a>) });
+        if (contactInfo.monthlyRevenue) rows.push({ label: "Faturamento", value: contactInfo.monthlyRevenue });
+        if (contactInfo.saleModel) rows.push({ label: "Modelo de venda", value: contactInfo.saleModel });
+        if (utms.length) rows.push({ label: "Origem", value: utms.join(" / ") });
+        if (contactInfo.adHeadline) rows.push({ label: "Anúncio", value: contactInfo.adSourceUrl
+          ? <a href={contactInfo.adSourceUrl} target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:underline flex items-center gap-1 min-w-0"><Megaphone className="w-3.5 h-3.5 shrink-0" /><span className="truncate">{contactInfo.adHeadline}</span></a>
+          : contactInfo.adHeadline });
+        return rows.length > 0 && (
+          <div className="p-4 border-b border-gray-100 space-y-2.5">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Dados do lead</p>
+            {rows.map((r) => (
+              <div key={r.label} className="min-w-0">
+                <p className="text-[11px] text-gray-400">{r.label}</p>
+                <div className="text-xs font-medium text-gray-700 break-words">{r.value}</div>
+              </div>
+            ))}
           </div>
+        );
+      })()}
+      <div className="p-4 border-b border-gray-100">
+        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Tags</p>
+        <div className="flex flex-wrap gap-1.5">
+          {(contactInfo?.tags ?? selected.contact.tags ?? []).map((tag) => (
+            <span key={tag} className="group text-xs bg-brand-50 text-brand-700 border border-brand-100 pl-2 pr-1 py-1 rounded-full flex items-center gap-0.5">
+              {tag}
+              {contactInfo && (
+                <button onClick={() => patchContact({ tags: contactInfo.tags.filter((t) => t !== tag) })} title="Remover tag"
+                  className="p-0.5 rounded-full text-brand-300 hover:text-brand-700 hover:bg-brand-100"><X className="w-3 h-3" /></button>
+              )}
+            </span>
+          ))}
+          {contactInfo && (
+            <input value={newTag} onChange={(e) => setNewTag(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addTag(); } if (e.key === "Escape") setNewTag(""); }}
+              onBlur={addTag} placeholder="+ tag"
+              className="text-xs w-20 focus:w-full px-2 py-1 rounded-full border border-dashed border-gray-200 focus:border-brand-300 focus:outline-none bg-transparent transition-all" />
+          )}
         </div>
-      )}
-      <div className="p-4 border-b border-gray-100 space-y-2.5">
+      </div>
+      <div className="p-4 space-y-2.5">
         <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Conversa</p>
         <div className="flex justify-between"><span className="text-xs text-gray-400">Canal</span><div className="flex items-center gap-1">{channelIcon(selected.channel)}<span className="text-xs font-medium text-gray-700">{selected.channel}</span></div></div>
         <div className="flex justify-between"><span className="text-xs text-gray-400">Iniciada</span><span className="text-xs font-medium text-gray-700">{new Date(selected.createdAt).toLocaleDateString("pt-BR")}</span></div>
-      </div>
-      <div className="p-4 space-y-2">
-        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Ações</p>
-        <button onClick={() => updateStatus("RESOLVED")} className="w-full text-left text-sm px-3 py-2.5 rounded-xl bg-green-50 text-green-700 font-medium hover:bg-green-100 flex items-center gap-2"><CheckCheck className="w-4 h-4" />Resolver</button>
-        <button onClick={() => updateStatus("PENDING")} className="w-full text-left text-sm px-3 py-2.5 rounded-xl bg-yellow-50 text-yellow-700 font-medium hover:bg-yellow-100 flex items-center gap-2"><Clock className="w-4 h-4" />Pendente</button>
-        <button onClick={() => updateStatus("ARCHIVED")} className="w-full text-left text-sm px-3 py-2.5 rounded-xl bg-gray-50 text-gray-600 font-medium hover:bg-gray-100 flex items-center gap-2"><Archive className="w-4 h-4" />Arquivar</button>
-        <button onClick={deleteConversation} className="w-full text-left text-sm px-3 py-2.5 rounded-xl bg-red-50 text-red-600 font-medium hover:bg-red-100 flex items-center gap-2 mt-1"><Trash2 className="w-4 h-4" />Excluir conversa</button>
       </div>
     </aside>
   ) : null;

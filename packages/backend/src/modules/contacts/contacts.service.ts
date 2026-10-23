@@ -79,6 +79,12 @@ export class ContactsService {
           take: 1,
           select: { id: true, channel: true, status: true, updatedAt: true },
         },
+        // Contratos ativos: mostram a marca/serviço de quem já é cliente
+        contracts: {
+          where: { status: 'ACTIVE' },
+          orderBy: { startsAt: 'desc' },
+          select: { id: true, clientName: true, serviceType: true, monthlyValue: true },
+        },
       },
     });
 

@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { ConversationStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { WhatsAppCloudService } from '../whatsapp-cloud/whatsapp-cloud.service';
 import { PushService } from '../notifications/push.service';
@@ -37,9 +38,9 @@ export class ConversationsService {
 
     const where: any = { tenantId };
 
-    if (filters?.status && filters.status !== 'ALL') {
-      where.status = filters.status;
-    }
+    // "Todas" não mostra as ignoradas (ARCHIVED); elas têm aba própria
+    const status = this.normalizeStatus(filters?.status);
+    where.status = status ?? { not: 'ARCHIVED' };
 
     if (filters?.search) {
       where.contact = {
@@ -409,11 +410,22 @@ export class ConversationsService {
       where: { id: conversationId, tenantId },
     });
     if (!conv) throw new NotFoundException('Conversa não encontrada.');
+    const next = this.normalizeStatus(status);
+    if (!next) throw new BadRequestException('Status inválido.');
 
     return this.prisma.conversation.update({
       where: { id: conversationId },
-      data: { status: status as any },
+      data: { status: next },
     });
+  }
+
+  /**
+   * Aberta (OPEN), Aguardando (IN_PROGRESS), Concluída (RESOLVED), Ignorada (ARCHIVED).
+   * "PENDING" é o nome antigo de Aguardando, ainda usado por telas em cache.
+   */
+  private normalizeStatus(status?: string): ConversationStatus | null {
+    if (status === 'PENDING') return 'IN_PROGRESS';
+    return status && (Object.values(ConversationStatus) as string[]).includes(status) ? (status as ConversationStatus) : null;
   }
 
   /** Sugere uma resposta com IA (Claude) a partir das últimas mensagens. Não envia nada. */
