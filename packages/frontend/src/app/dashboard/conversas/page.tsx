@@ -109,18 +109,35 @@ function ConversasInner() {
   // Assinatura: nome que aparece em negrito acima da mensagem (ex: "Financeiro")
   const [signatures, setSignatures] = useState<string[]>([]);
   const [signature, setSignature] = useState("");
+  // Ficam salvas no usuário (servidor), para aparecerem em qualquer aparelho
+  const persistSignatures = (list: string[], current: string) =>
+    authFetch(`${API_URL}/api/v1/users/me/signatures`, {
+      method: "PUT", headers: authHeaders(),
+      body: JSON.stringify({ signatures: list, signature: current }),
+    }).catch(() => {});
   useEffect(() => {
-    try {
-      setSignatures(JSON.parse(localStorage.getItem("crm_signatures") || "[]"));
-      setSignature(localStorage.getItem("crm_signature") || "");
-    } catch {}
+    (async () => {
+      try {
+        const res = await authFetch(`${API_URL}/api/v1/users/me/signatures`, { headers: authHeaders() });
+        if (!res.ok) return;
+        const data: { signatures: string[]; signature: string } = await res.json();
+        // Assinaturas antigas, salvas só neste navegador: sobem para o servidor uma vez
+        let local: string[] = [];
+        try { local = JSON.parse(localStorage.getItem("crm_signatures") || "[]"); } catch {}
+        if (!data.signatures.length && local.length) {
+          const current = localStorage.getItem("crm_signature") || "";
+          setSignatures(local); setSignature(local.includes(current) ? current : "");
+          await persistSignatures(local, current);
+        } else {
+          setSignatures(data.signatures); setSignature(data.signature || "");
+        }
+        try { localStorage.removeItem("crm_signatures"); localStorage.removeItem("crm_signature"); } catch {}
+      } catch {}
+    })();
   }, []);
   const saveSignatures = (list: string[], current: string) => {
     setSignatures(list); setSignature(current);
-    try {
-      localStorage.setItem("crm_signatures", JSON.stringify(list));
-      localStorage.setItem("crm_signature", current);
-    } catch {}
+    persistSignatures(list, current);
   };
   const handleSignatureChange = (value: string) => {
     if (value === "__add") {

@@ -168,6 +168,8 @@ model User {
   name         String
   role         Role     @default(AGENT)
   active       Boolean  @default(true)
+  signatures   String[] @default([]) // assinaturas das mensagens (ex: "Financeiro")
+  signature    String?  // assinatura selecionada no momento
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 

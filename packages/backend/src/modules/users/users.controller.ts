@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Body, UseGuards, Req } from '@nestjs/common';
+import { Controller, Post, Get, Put, Body, UseGuards, Req } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -14,6 +14,18 @@ export class UsersController {
   @Roles('OWNER', 'ADMIN')
   findAll(@Req() req: any) {
     return this.usersService.findAll(req.user.tenantId);
+  }
+
+  /** GET /users/me/signatures — assinaturas do usuário logado */
+  @Get('me/signatures')
+  getSignatures(@Req() req: any) {
+    return this.usersService.getSignatures(req.user.id);
+  }
+
+  /** PUT /users/me/signatures — salva a lista e a assinatura selecionada */
+  @Put('me/signatures')
+  saveSignatures(@Req() req: any, @Body() body: { signatures: string[]; signature?: string }) {
+    return this.usersService.saveSignatures(req.user.id, body.signatures, body.signature);
   }
 
   @Post()

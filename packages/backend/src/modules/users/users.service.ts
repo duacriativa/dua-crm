@@ -36,4 +36,26 @@ export class UsersService {
 
     return user;
   }
+
+  async getSignatures(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { signatures: true, signature: true },
+    });
+    return { signatures: user?.signatures ?? [], signature: user?.signature ?? '' };
+  }
+
+  async saveSignatures(userId: string, signatures: string[], signature?: string) {
+    const list = [...new Set((Array.isArray(signatures) ? signatures : [])
+      .filter((s) => typeof s === 'string')
+      .map((s) => s.trim())
+      .filter(Boolean))].slice(0, 50);
+    const current = signature && list.includes(signature) ? signature : null;
+    const user = await this.prisma.user.update({
+      where: { id: userId },
+      data: { signatures: list, signature: current },
+      select: { signatures: true, signature: true },
+    });
+    return { signatures: user.signatures, signature: user.signature ?? '' };
+  }
 }

@@ -91,6 +91,9 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
       `ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "adSourceUrl" TEXT`,
       `ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "adCtwaClid" TEXT`,
       `ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "adReferredAt" TIMESTAMP(3)`,
+      // 20261023000002_add_user_signatures
+      `ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "signatures" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[]`,
+      `ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "signature" TEXT`,
     ];
     for (const sql of statements) {
       try {
