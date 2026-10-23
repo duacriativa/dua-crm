@@ -1,26 +1,185 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, type ComponentType } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard, MessageCircle, Users,
   Settings, ChevronLeft, ChevronRight, LogOut, Kanban,
   Menu, X, DollarSign, FileText, Plus,
-  Bell, Trophy, Calendar, Briefcase, ClipboardList,
-  ChevronUp, User, CreditCard,
+  Bell, Calendar, Bot, Megaphone, Workflow,
+  ChevronUp, ChevronDown, User, CreditCard,
 } from "lucide-react";
 
-const navItems = [
+type Icon = ComponentType<{ className?: string }>;
+type SubItem = { label: string; href?: string; soon?: boolean };
+type GroupItem = { icon: Icon; label: string; href?: string; children?: SubItem[] };
+type NavItem = { icon: Icon; label: string; href?: string; badge?: number; group?: GroupItem[] };
+
+/* Automações no estilo do Kommo: Bots, Modelos (chat/email) e Transmissão */
+const automationItems: GroupItem[] = [
+  { icon: Bot,       label: "Bots",        href: "/dashboard/bots" },
+  { icon: FileText,  label: "Modelos",     children: [
+    { label: "Modelos de chat",  href: "/dashboard/modelos/chat" },
+    { label: "Modelos de email", soon: true },
+  ] },
+  { icon: Megaphone, label: "Transmissão", href: "/dashboard/campanhas" },
+];
+
+const navItems: NavItem[] = [
   { icon: LayoutDashboard, label: "Dashboard",     href: "/dashboard" },
   { icon: Users,           label: "Clientes",      href: "/dashboard/contatos" },
   { icon: Kanban,          label: "Funil",         href: "/dashboard/funil" },
   { icon: MessageCircle,   label: "WhatsApp",      href: "/dashboard/conversas", badge: 12 },
   { icon: Calendar,        label: "Agenda",        href: "/dashboard/agenda" },
+  { icon: Workflow,        label: "Automações",    group: automationItems },
   { icon: DollarSign,      label: "Financeiro",    href: "/dashboard/financeiro" },
-  { icon: Briefcase,       label: "Serviços",      href: "/dashboard/servicos" },
-  { icon: ClipboardList,   label: "Briefings",     href: "/dashboard/briefings" },
   { icon: Settings,        label: "Configurações", href: "/dashboard/configuracoes" },
 ];
+
+const isPathActive = (pathname: string, href?: string) =>
+  !href ? false : href === "/dashboard" ? pathname === href : pathname.startsWith(href);
+
+const groupActive = (pathname: string, group: GroupItem[]) =>
+  group.some(g => isPathActive(pathname, g.href) || g.children?.some(c => isPathActive(pathname, c.href)));
+
+const itemCls = (active: boolean) =>
+  `w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${active ? "bg-sidebar-accent text-foreground font-semibold" : "text-sidebar-foreground hover:bg-sidebar-accent/60 hover:text-foreground"}`;
+
+const flyoutItemCls = (active: boolean) =>
+  `w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm whitespace-nowrap transition-colors text-left ${active ? "bg-primary/15 text-primary font-semibold" : "text-sidebar-foreground hover:bg-sidebar-accent/60 hover:text-foreground"}`;
+
+const SoonTag = () => (
+  <span className="ml-auto text-[10px] font-semibold uppercase tracking-wide text-muted-foreground bg-muted/60 rounded-full px-1.5 py-0.5">em breve</span>
+);
+
+/* Item com seta que abre um flyout ao lado (e um segundo nível para "Modelos").
+   Usa posição fixa para não ser cortado pelo overflow da nav. */
+function FlyoutGroup({ item, collapsed }: { item: NavItem; collapsed: boolean }) {
+  const pathname = usePathname();
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [sub, setSub] = useState<string | null>(null);
+  const [top, setTop] = useState(0);
+  const [left, setLeft] = useState(0);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const group = item.group!;
+  const active = groupActive(pathname, group);
+
+  useEffect(() => { setOpen(false); setSub(null); }, [pathname]);
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (!btnRef.current?.contains(t) && !panelRef.current?.contains(t)) { setOpen(false); setSub(null); }
+    };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { setOpen(false); setSub(null); } };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => { document.removeEventListener("mousedown", onDown); document.removeEventListener("keydown", onKey); };
+  }, [open]);
+
+  const toggle = () => {
+    const r = btnRef.current?.getBoundingClientRect();
+    const aside = btnRef.current?.closest("aside")?.getBoundingClientRect();
+    if (r) { setTop(r.top); setLeft((aside?.right ?? r.right) + 8); }
+    setOpen(o => !o);
+    setSub(null);
+  };
+
+  const go = (href: string) => { router.push(href); setOpen(false); setSub(null); };
+  const subGroup = group.find(g => g.label === sub);
+
+  return (
+    <>
+      <button ref={btnRef} onClick={toggle} title={collapsed ? item.label : undefined}
+        aria-haspopup="menu" aria-expanded={open}
+        className={itemCls(active || open)}>
+        <item.icon className="w-4 h-4 shrink-0" />
+        {!collapsed && <span className="flex-1 text-left">{item.label}</span>}
+        {!collapsed && <ChevronRight className={`w-4 h-4 text-muted-foreground transition-transform ${open ? "translate-x-0.5" : ""}`} />}
+      </button>
+
+      {open && (
+        <div ref={panelRef} role="menu" className="fixed z-50 flex items-start gap-2" style={{ top, left }}>
+          <div className="w-56 bg-sidebar border border-sidebar-border rounded-xl shadow-2xl p-1.5">
+            <p className="px-3 pt-1.5 pb-2 text-xs font-medium text-muted-foreground border-b border-sidebar-border mb-1">{item.label}</p>
+            {group.map(g => {
+              const gActive = isPathActive(pathname, g.href) || !!g.children?.some(c => isPathActive(pathname, c.href));
+              return (
+                <button key={g.label} role="menuitem"
+                  onClick={() => g.children ? setSub(g.label) : g.href && go(g.href)}
+                  onMouseEnter={() => setSub(g.children ? g.label : null)}
+                  className={flyoutItemCls(gActive || sub === g.label)}>
+                  <g.icon className="w-4 h-4 shrink-0" />
+                  <span className="flex-1">{g.label}</span>
+                  {g.children && <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />}
+                </button>
+              );
+            })}
+          </div>
+          {subGroup?.children && (
+            <div className="w-56 bg-sidebar border border-sidebar-border rounded-xl shadow-2xl p-1.5" style={{ marginTop: 44 }}>
+              <p className="px-3 pt-1.5 pb-2 text-xs font-medium text-muted-foreground border-b border-sidebar-border mb-1">{subGroup.label}</p>
+              {subGroup.children.map(c => (
+                <button key={c.label} role="menuitem" disabled={c.soon}
+                  onClick={() => c.href && go(c.href)}
+                  className={c.soon ? `${flyoutItemCls(false)} opacity-60 cursor-not-allowed hover:bg-transparent hover:text-sidebar-foreground` : flyoutItemCls(isPathActive(pathname, c.href))}>
+                  <span className="flex-1">{c.label}</span>
+                  {c.soon && <SoonTag />}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </>
+  );
+}
+
+/* No celular o grupo abre em lista, dentro da gaveta */
+function MobileGroup({ item }: { item: NavItem }) {
+  const pathname = usePathname();
+  const router = useRouter();
+  const group = item.group!;
+  const [open, setOpen] = useState(() => groupActive(pathname, group));
+  const active = groupActive(pathname, group);
+
+  return (
+    <div>
+      <button onClick={() => setOpen(o => !o)}
+        className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all text-left ${active ? "text-foreground font-semibold" : "text-sidebar-foreground hover:bg-sidebar-accent/60 hover:text-foreground"}`}>
+        <item.icon className="w-5 h-5 shrink-0" />
+        <span className="flex-1">{item.label}</span>
+        <ChevronDown className={`w-4 h-4 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+      {open && (
+        <div className="ml-6 pl-3 border-l border-sidebar-border space-y-0.5 py-1">
+          {group.map(g => g.children ? (
+            <div key={g.label}>
+              <p className="flex items-center gap-3 px-3 pt-2 pb-1 text-xs font-medium text-muted-foreground">
+                <g.icon className="w-4 h-4 shrink-0" />{g.label}
+              </p>
+              {g.children.map(c => (
+                <button key={c.label} disabled={c.soon} onClick={() => c.href && router.push(c.href)}
+                  className={`${flyoutItemCls(isPathActive(pathname, c.href))} pl-10 ${c.soon ? "opacity-60 cursor-not-allowed" : ""}`}>
+                  <span className="flex-1">{c.label}</span>
+                  {c.soon && <SoonTag />}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <button key={g.label} onClick={() => g.href && router.push(g.href)}
+              className={flyoutItemCls(isPathActive(pathname, g.href))}>
+              <g.icon className="w-4 h-4 shrink-0" />
+              <span className="flex-1">{g.label}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function UserFooter({ collapsed, onLogout }: { collapsed: boolean; onLogout: () => void }) {
   const [open, setOpen] = useState(false);
@@ -81,8 +240,7 @@ function DesktopSidebar() {
     router.push("/login");
   };
 
-  const isActive = (href: string) =>
-    href === "/dashboard" ? pathname === href : pathname.startsWith(href);
+  const isActive = (href?: string) => isPathActive(pathname, href);
 
   return (
     <aside className={`relative hidden lg:flex flex-col h-screen bg-sidebar text-sidebar-foreground border-r border-sidebar-border transition-all duration-300 shrink-0 ${collapsed ? "w-16" : "w-60"}`}>
@@ -106,10 +264,11 @@ function DesktopSidebar() {
       {/* Nav */}
       <nav className="flex-1 py-2 px-2 space-y-0.5 overflow-y-auto scrollbar-none">
         {navItems.map((item) => {
+          if (item.group) return <FlyoutGroup key={item.label} item={item} collapsed={collapsed} />;
           const active = isActive(item.href);
           return (
-            <button key={item.href} onClick={() => router.push(item.href)}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${active ? "bg-sidebar-accent text-foreground font-semibold" : "text-sidebar-foreground hover:bg-sidebar-accent/60 hover:text-foreground"}`}>
+            <button key={item.href} onClick={() => item.href && router.push(item.href)} title={collapsed ? item.label : undefined}
+              className={itemCls(active)}>
               <item.icon className="w-4 h-4 shrink-0" />
               {!collapsed && <span className="flex-1 text-left">{item.label}</span>}
               {!collapsed && item.badge && (
@@ -151,10 +310,7 @@ function MobileNav() {
     router.push("/login");
   };
 
-  const isActive = (href: string) =>
-    href === "/dashboard" ? pathname === href : pathname.startsWith(href);
-
-  const currentLabel = navItems.find((i) => isActive(i.href))?.label ?? "Dashboard";
+  const isActive = (href?: string) => isPathActive(pathname, href);
 
   return (
     <>
@@ -187,9 +343,10 @@ function MobileNav() {
 
         <nav className="flex-1 py-4 px-3 space-y-0.5 overflow-y-auto scrollbar-none">
           {navItems.map((item) => {
+            if (item.group) return <MobileGroup key={item.label} item={item} />;
             const active = isActive(item.href);
             return (
-              <button key={item.href} onClick={() => router.push(item.href)}
+              <button key={item.href} onClick={() => item.href && router.push(item.href)}
                 className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all text-left ${active ? "bg-sidebar-accent text-foreground font-semibold" : "text-sidebar-foreground hover:bg-sidebar-accent/60 hover:text-foreground"}`}>
                 <item.icon className="w-5 h-5 shrink-0" />
                 <span className="flex-1">{item.label}</span>
@@ -216,7 +373,7 @@ function MobileNav() {
         {navItems.slice(0, 4).map((item) => {
           const active = isActive(item.href);
           return (
-            <button key={item.href} onClick={() => router.push(item.href)}
+            <button key={item.href} onClick={() => item.href && router.push(item.href)}
               className={`flex-1 flex flex-col items-center gap-1 py-2.5 relative transition-colors ${active ? "text-primary" : "text-muted-foreground hover:text-foreground"}`}>
               <item.icon className="w-5 h-5" />
               <span className="text-[10px] font-medium">{item.label}</span>
