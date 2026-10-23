@@ -118,6 +118,8 @@ enum AutomationTrigger {
   NEW_FOLLOWER           // novo seguidor no Instagram
   CONTACT_DORMANT        // cliente sem compra há N dias
   CONTACT_AT_RISK        // cliente em risco de churn
+  LEAD_FORM_SUBMITTED    // lead preencheu o formulário do site (POST /webhooks/lead)
+  LEAD_STAGE_ENTERED     // card criado/movido para uma etapa do funil (conditions.stageId)
 }
 
 // Itens da linha do tempo do contato além das mensagens (tarefas, eventos do funil… virão depois)
@@ -335,16 +337,44 @@ model Automation {
   id         String            @id @default(cuid())
   tenantId   String
   tenant     Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  name       String
-  trigger    AutomationTrigger
-  conditions Json
-  actions    Json
-  active     Boolean           @default(true)
-  runCount   Int               @default(0)
-  createdAt  DateTime          @default(now())
-  updatedAt  DateTime          @updatedAt
+  name        String
+  description String?
+  trigger     AutomationTrigger
+  conditions  Json              // ex.: { onlyPhones: ["+5585..."] } para testar só com alguns números
+  actions     Json              // passos do bot, executados em ordem (ver automations/automation-steps.ts)
+  active      Boolean           @default(true)
+  runCount    Int               @default(0)
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  runs AutomationRun[]
 
   @@index([tenantId, trigger, active])
+}
+
+// Uma "sessão" do bot com um contato: em que passo está e quando continua.
+// Fica no banco para sobreviver a reinício/deploy no meio de uma espera.
+model AutomationRun {
+  id             String     @id @default(cuid())
+  tenantId       String
+  automationId   String
+  automation     Automation @relation(fields: [automationId], references: [id], onDelete: Cascade)
+  contactId      String
+  conversationId String?
+  status         String     @default("RUNNING") // RUNNING | WAITING_REPLY | COMPLETED | FAILED | CANCELLED
+  stepIndex      Int        @default(0)
+  nextRunAt      DateTime?  // quando o executor retoma (espera de tempo / limite da espera por resposta)
+  sentCount      Int        @default(0)
+  isTest         Boolean    @default(false) // disparado pelo "Testar" da tela (roda mesmo com o bot pausado)
+  repliedAt      DateTime?  // o contato respondeu durante o bot (conta como conversão)
+  lastError      String?
+  startedAt      DateTime   @default(now())
+  finishedAt     DateTime?
+  updatedAt      DateTime   @updatedAt
+
+  @@index([status, nextRunAt])
+  @@index([automationId])
+  @@index([contactId, status])
 }
 
 model Campaign {

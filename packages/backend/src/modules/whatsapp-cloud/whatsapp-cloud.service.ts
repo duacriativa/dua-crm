@@ -5,6 +5,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { EncryptionService } from '../../common/services/encryption.service';
 import { FunnelService } from '../pipelines/funnel.service';
 import { PushService } from '../notifications/push.service';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { phoneVariants, toBrDigits } from '../../common/phone.util';
 
 type MsgType = 'TEXT' | 'IMAGE' | 'VIDEO' | 'AUDIO' | 'DOCUMENT' | 'INTERACTIVE';
@@ -34,6 +35,7 @@ export class WhatsAppCloudService {
     private readonly encryption: EncryptionService,
     private readonly funnel: FunnelService,
     private readonly push: PushService,
+    private readonly events: EventEmitter2,
   ) {}
 
   // Lê sempre do process.env em cada chamada (evita problema de inicialização)
@@ -609,6 +611,8 @@ export class WhatsAppCloudService {
       // Alimenta o funil: lead novo que chamou agora cai na 1ª etapa
       const origin = referral ? `Origem: Anúncio${contact.adHeadline ? ` — ${contact.adHeadline}` : ''}` : 'Origem: WhatsApp';
       await this.funnel.ensureLead(tenantId, contact.id, isNewContact || referral ? origin : undefined);
+      // Bots esperando a resposta desse contato seguem o fluxo
+      this.events.emit('whatsapp.inbound', { tenantId, contactId: contact.id, conversationId: conv.id });
       // Notifica os aparelhos com o PWA instalado
       this.push.sendToTenant(tenantId, {
         title: contact.name || phone,

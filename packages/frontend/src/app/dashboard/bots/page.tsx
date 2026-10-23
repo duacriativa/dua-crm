@@ -1,7 +1,6 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useState } from "react";
 import {
   Plus,
   Bot,
@@ -16,74 +15,19 @@ import {
   Copy,
   Trash2,
   ArrowRight,
+  FlaskConical,
+  Loader2,
 } from "lucide-react";
+import { fetchTemplates } from "@/components/whatsapp/templates";
+import { Bot as BotFlow, botsApi, findFormTemplate, formBotPreset } from "@/components/bots/bot-api";
+import { BotConfigModal } from "@/components/bots/bot-config";
 
-interface BotFlow {
-  id: string;
-  name: string;
-  trigger: string;
-  status: "active" | "paused" | "draft";
-  sessions: number;
-  conversions: number;
-  totalSent: number;
-  createdAt: string;
-  description?: string;
-}
-
-const MOCK_BOTS: BotFlow[] = [
-  {
-    id: "1",
-    name: "Boas-vindas Novos Clientes",
-    trigger: "Primeira mensagem recebida",
-    status: "active",
-    sessions: 142,
-    conversions: 38,
-    totalSent: 142,
-    createdAt: "2024-02-10",
-    description: "Envia mensagem de boas-vindas e apresenta o catálogo",
-  },
-  {
-    id: "2",
-    name: "Recuperação de Carrinho",
-    trigger: "Tag: carrinho_abandonado",
-    status: "active",
-    sessions: 67,
-    conversions: 21,
-    totalSent: 67,
-    createdAt: "2024-02-20",
-    description: "Lembra o cliente do carrinho abandonado após 1h",
-  },
-  {
-    id: "3",
-    name: "Pós-venda e NPS",
-    trigger: "Status: Fechado (ganho)",
-    status: "paused",
-    sessions: 89,
-    conversions: 74,
-    totalSent: 89,
-    createdAt: "2024-03-01",
-    description: "Envia pesquisa de satisfação 3 dias após a compra",
-  },
-  {
-    id: "4",
-    name: "Qualificação Automática",
-    trigger: "Palavra-chave: preço, valor, quanto",
-    status: "draft",
-    sessions: 0,
-    conversions: 0,
-    totalSent: 0,
-    createdAt: "2024-04-07",
-    description: "Qualifica leads que perguntam sobre preços",
-  },
-];
-
+// Só o primeiro já funciona; os outros entram conforme forem migrados do Kommo
 const TEMPLATES = [
-  { id: "t1", name: "Boas-vindas", description: "Receba novos contatos com uma mensagem automática", icon: "👋", color: "bg-blue-50 border-blue-200" },
-  { id: "t2", name: "Qualificação de Leads", description: "Perguntas automáticas para qualificar prospects", icon: "🎯", color: "bg-purple-50 border-purple-200" },
-  { id: "t3", name: "Suporte / FAQ", description: "Responde dúvidas frequentes automaticamente", icon: "💬", color: "bg-green-50 border-green-200" },
-  { id: "t4", name: "Pós-venda", description: "Acompanhamento e NPS após compra finalizada", icon: "⭐", color: "bg-yellow-50 border-yellow-200" },
-  { id: "t5", name: "Recuperação", description: "Reengaja leads que sumiram ou abandonaram carrinho", icon: "🔄", color: "bg-red-50 border-red-200" },
-  { id: "t6", name: "Do zero", description: "Crie seu fluxo personalizado do início", icon: "✨", color: "bg-gray-50 border-gray-200" },
+  { id: "form", name: "Cadastro no site", description: "1ª mensagem no WhatsApp para quem preencheu o formulário (igual ao Kommo)", icon: "📝", color: "bg-blue-50 border-blue-200", ready: true },
+  { id: "t2", name: "Qualificação de Leads", description: "Perguntas automáticas para qualificar prospects", icon: "🎯", color: "bg-purple-50 border-purple-200", ready: false },
+  { id: "t3", name: "Follow-up", description: "Reengaja leads que pararam de responder", icon: "🔄", color: "bg-red-50 border-red-200", ready: false },
+  { id: "t4", name: "Pós-venda / NPS", description: "Acompanhamento e NPS após a venda fechada", icon: "⭐", color: "bg-yellow-50 border-yellow-200", ready: false },
 ];
 
 const statusConfig = {
@@ -92,29 +36,76 @@ const statusConfig = {
   draft: { label: "Rascunho", color: "bg-gray-100 text-gray-500", dot: "bg-gray-400" },
 };
 
+const statusOf = (b: BotFlow) => (b.active ? "active" : "paused") as keyof typeof statusConfig;
+
 export default function BotsPage() {
-  const router = useRouter();
-  const [bots, setBots] = useState<BotFlow[]>(MOCK_BOTS);
+  const [bots, setBots] = useState<BotFlow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const [showNew, setShowNew] = useState(false);
+  const [creating, setCreating] = useState(false);
   const [openMenu, setOpenMenu] = useState<string | null>(null);
+  const [editing, setEditing] = useState<BotFlow | null>(null);
 
-  const toggleStatus = (id: string) => {
-    setBots((prev) =>
-      prev.map((b) => b.id === id ? { ...b, status: b.status === "active" ? "paused" : "active" } : b)
-    );
+  const load = useCallback(() => {
+    botsApi.list()
+      .then((data) => { setBots(data); setError(""); })
+      .catch((e) => setError(e.message))
+      .finally(() => setLoading(false));
+  }, []);
+
+  // Contadores mudam sozinhos enquanto os bots rodam
+  useEffect(() => {
+    load();
+    const t = setInterval(load, 20000);
+    return () => clearInterval(t);
+  }, [load]);
+
+  const toggleStatus = async (bot: BotFlow) => {
+    if (bot.active && bot.stats.active > 0 && !confirm(`Pausar encerra ${bot.stats.active} sessão(ões) em andamento. Continuar?`)) return;
+    try {
+      await botsApi.update(bot.id, { active: !bot.active });
+      load();
+    } catch (e: any) {
+      alert(e.message);
+    }
   };
 
-  const deleteBot = (id: string) => {
-    setBots((prev) => prev.filter((b) => b.id !== id));
+  const deleteBot = async (bot: BotFlow) => {
     setOpenMenu(null);
+    if (!confirm(`Excluir o bot "${bot.name}" e o histórico de sessões?`)) return;
+    await botsApi.remove(bot.id).catch((e) => alert(e.message));
+    load();
   };
 
-  const totalActive = bots.filter((b) => b.status === "active").length;
-  const totalSessions = bots.reduce((a, b) => a + b.sessions, 0);
-  const avgConversion =
-    bots.filter((b) => b.totalSent > 0).length > 0
-      ? Math.round((bots.reduce((a, b) => a + b.conversions, 0) / bots.reduce((a, b) => a + b.totalSent, 0)) * 100)
-      : 0;
+  const duplicateBot = async (bot: BotFlow) => {
+    setOpenMenu(null);
+    await botsApi.create({ name: `${bot.name} (cópia)`, description: bot.description, trigger: bot.trigger, conditions: bot.conditions, actions: bot.actions, active: false })
+      .catch((e) => alert(e.message));
+    load();
+  };
+
+  const createFromTemplate = async (id: string) => {
+    if (id !== "form") return;
+    setCreating(true);
+    try {
+      const template = await fetchTemplates().then(findFormTemplate).catch(() => undefined);
+      const bot = await botsApi.create(formBotPreset(template));
+      setShowNew(false);
+      const all = await botsApi.list();
+      setBots(all);
+      setEditing(all.find((b) => b.id === bot.id) ?? null);
+    } catch (e: any) {
+      alert(e.message);
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const totalActive = bots.filter((b) => b.active).length;
+  const totalSessions = bots.reduce((a, b) => a + b.stats.sessions, 0);
+  const totalReplied = bots.reduce((a, b) => a + b.stats.replied, 0);
+  const avgConversion = totalSessions > 0 ? Math.round((totalReplied / totalSessions) * 100) : 0;
 
   return (
     <div className="h-full bg-gray-50 overflow-y-auto">
@@ -139,7 +130,7 @@ export default function BotsPage() {
           {[
             { label: "Bots Ativos", value: totalActive, icon: <Zap className="w-4 h-4" />, color: "text-green-600 bg-green-50" },
             { label: "Sessões Totais", value: totalSessions, icon: <Users className="w-4 h-4" />, color: "text-blue-600 bg-blue-50" },
-            { label: "Taxa de Conversão", value: `${avgConversion}%`, icon: <TrendingUp className="w-4 h-4" />, color: "text-brand-600 bg-brand-50" },
+            { label: "Taxa de Resposta", value: `${avgConversion}%`, icon: <TrendingUp className="w-4 h-4" />, color: "text-brand-600 bg-brand-50" },
           ].map((stat) => (
             <div key={stat.label} className="bg-white rounded-2xl p-4 border border-gray-100 flex items-center gap-4">
               <div className={`p-2.5 rounded-xl ${stat.color}`}>{stat.icon}</div>
@@ -154,8 +145,9 @@ export default function BotsPage() {
         {/* Bots list */}
         <div className="space-y-3">
           {bots.map((bot) => {
-            const st = statusConfig[bot.status];
-            const convRate = bot.totalSent > 0 ? Math.round((bot.conversions / bot.totalSent) * 100) : 0;
+            const st = statusConfig[statusOf(bot)];
+            const convRate = bot.stats.sessions > 0 ? Math.round((bot.stats.replied / bot.stats.sessions) * 100) : 0;
+            const testOnly = (bot.conditions?.onlyPhones ?? []).length > 0;
 
             return (
               <div key={bot.id} className="bg-white rounded-2xl border border-gray-100 p-5 hover:border-gray-200 hover:shadow-sm transition-all">
@@ -171,11 +163,22 @@ export default function BotsPage() {
                           <span className={`w-1.5 h-1.5 rounded-full ${st.dot}`} />
                           {st.label}
                         </span>
+                        {testOnly && (
+                          <span className="text-[11px] font-medium px-2 py-0.5 rounded-full flex items-center gap-1 bg-amber-50 text-amber-700" title={bot.conditions.onlyPhones!.join(", ")}>
+                            <FlaskConical className="w-3 h-3" /> Só números de teste
+                          </span>
+                        )}
+                        {bot.stats.active > 0 && (
+                          <span className="text-[11px] text-blue-600">{bot.stats.active} em andamento</span>
+                        )}
+                        {bot.stats.failed > 0 && (
+                          <span className="text-[11px] text-red-600">{bot.stats.failed} com falha</span>
+                        )}
                       </div>
                       {bot.description && <p className="text-xs text-gray-400 mt-0.5">{bot.description}</p>}
                       <div className="flex items-center gap-1.5 mt-2">
                         <Zap className="w-3 h-3 text-gray-400" />
-                        <span className="text-xs text-gray-400">{bot.trigger}</span>
+                        <span className="text-xs text-gray-400">{bot.triggerLabel}</span>
                       </div>
                     </div>
                   </div>
@@ -183,33 +186,33 @@ export default function BotsPage() {
                   <div className="flex items-center gap-6 shrink-0">
                     <div className="text-center">
                       <p className="text-xs text-gray-400 mb-0.5">Sessões</p>
-                      <p className="text-sm font-bold text-gray-800">{bot.sessions}</p>
+                      <p className="text-sm font-bold text-gray-800">{bot.stats.sessions}</p>
                     </div>
                     <div className="text-center">
-                      <p className="text-xs text-gray-400 mb-0.5">Conversão</p>
+                      <p className="text-xs text-gray-400 mb-0.5" title="Contatos que responderam durante o bot">Resposta</p>
                       <p className="text-sm font-bold text-gray-800">{convRate}%</p>
                     </div>
                     <div className="text-center">
                       <p className="text-xs text-gray-400 mb-0.5">Enviados</p>
-                      <p className="text-sm font-bold text-gray-800">{bot.totalSent}</p>
+                      <p className="text-sm font-bold text-gray-800">{bot.stats.sent}</p>
                     </div>
 
                     <div className="flex items-center gap-1.5 ml-2">
                       <button
-                        onClick={() => toggleStatus(bot.id)}
+                        onClick={() => toggleStatus(bot)}
                         className={`p-2 rounded-xl transition-colors ${
-                          bot.status === "active"
+                          bot.active
                             ? "bg-yellow-50 text-yellow-600 hover:bg-yellow-100"
                             : "bg-green-50 text-green-600 hover:bg-green-100"
                         }`}
-                        title={bot.status === "active" ? "Pausar" : "Ativar"}
+                        title={bot.active ? "Pausar" : "Ativar"}
                       >
-                        {bot.status === "active" ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+                        {bot.active ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
                       </button>
                       <button
-                        onClick={() => router.push(`/dashboard/bots/editor?id=${bot.id}&name=${encodeURIComponent(bot.name)}`)}
+                        onClick={() => setEditing(bot)}
                         className="p-2 rounded-xl bg-gray-50 text-gray-500 hover:bg-gray-100 transition-colors"
-                        title="Editar fluxo"
+                        title="Configurar"
                       >
                         <Settings className="w-4 h-4" />
                       </button>
@@ -222,11 +225,11 @@ export default function BotsPage() {
                         </button>
                         {openMenu === bot.id && (
                           <div className="absolute right-0 top-9 z-20 bg-white border border-gray-200 rounded-xl shadow-lg py-1 min-w-[140px]">
-                            <button className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-600 hover:bg-gray-50">
+                            <button onClick={() => duplicateBot(bot)} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-600 hover:bg-gray-50">
                               <Copy className="w-3.5 h-3.5" /> Duplicar
                             </button>
                             <button
-                              onClick={() => deleteBot(bot.id)}
+                              onClick={() => deleteBot(bot)}
                               className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50"
                             >
                               <Trash2 className="w-3.5 h-3.5" /> Excluir
@@ -242,13 +245,18 @@ export default function BotsPage() {
           })}
         </div>
 
-        {bots.length === 0 && (
+        {error && <p className="text-sm text-red-600 mb-3">{error}</p>}
+        {loading && (
+          <div className="flex justify-center py-20 text-gray-400"><Loader2 className="w-5 h-5 animate-spin" /></div>
+        )}
+
+        {!loading && bots.length === 0 && (
           <div className="flex flex-col items-center justify-center py-20 text-gray-400">
             <Bot className="w-10 h-10 mb-3 opacity-30" />
             <p className="text-sm font-medium">Nenhum bot criado ainda</p>
             <p className="text-xs mt-1 opacity-70">Crie seu primeiro fluxo automático</p>
             <button
-              onClick={() => router.push("/dashboard/bots/editor?name=Novo+Bot")}
+              onClick={() => setShowNew(true)}
               className="mt-4 flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-brand-600 rounded-xl hover:bg-brand-700 transition-colors"
             >
               <Plus className="w-4 h-4" />
@@ -258,6 +266,8 @@ export default function BotsPage() {
         )}
       </div>
 
+      {editing && <BotConfigModal bot={editing} onClose={() => setEditing(null)} onSaved={load} />}
+
       {/* New bot modal */}
       {showNew && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -265,7 +275,7 @@ export default function BotsPage() {
             <div className="flex items-center justify-between mb-6">
               <div>
                 <h2 className="text-lg font-bold text-gray-900">Criar Bot</h2>
-                <p className="text-sm text-gray-400">Escolha um template para começar</p>
+                <p className="text-sm text-gray-400">Escolha um modelo para começar (o bot nasce pausado)</p>
               </div>
               <button onClick={() => setShowNew(false)} className="p-2 rounded-xl hover:bg-gray-100">
                 <X className="w-4 h-4 text-gray-400" />
@@ -275,18 +285,19 @@ export default function BotsPage() {
               {TEMPLATES.map((tpl) => (
                 <button
                   key={tpl.id}
-                  onClick={() => {
-                    setShowNew(false);
-                    router.push(`/dashboard/bots/editor?name=${encodeURIComponent(tpl.name)}`);
-                  }}
-                  className={`flex items-start gap-3 p-4 rounded-2xl border text-left hover:shadow-md transition-all group ${tpl.color}`}
+                  disabled={!tpl.ready || creating}
+                  onClick={() => createFromTemplate(tpl.id)}
+                  className={`flex items-start gap-3 p-4 rounded-2xl border text-left transition-all group ${tpl.color} ${tpl.ready ? "hover:shadow-md" : "opacity-50 cursor-not-allowed"}`}
                 >
                   <span className="text-2xl">{tpl.icon}</span>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-semibold text-gray-800">{tpl.name}</p>
                     <p className="text-xs text-gray-500 mt-0.5 leading-relaxed">{tpl.description}</p>
+                    {!tpl.ready && <p className="text-[11px] text-gray-400 mt-1">Em breve</p>}
                   </div>
-                  <ArrowRight className="w-4 h-4 text-gray-300 group-hover:text-gray-600 transition-colors shrink-0 mt-0.5" />
+                  {tpl.ready && (creating
+                    ? <Loader2 className="w-4 h-4 text-gray-400 animate-spin shrink-0 mt-0.5" />
+                    : <ArrowRight className="w-4 h-4 text-gray-300 group-hover:text-gray-600 transition-colors shrink-0 mt-0.5" />)}
                 </button>
               ))}
             </div>

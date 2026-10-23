@@ -198,6 +198,9 @@ export class WebhooksController {
         await this.funnel.ensureLead(tenant.id, contact.id, leadNotes);
       }
 
+      // Bots com gatilho "formulário do site" (ex.: primeira mensagem no WhatsApp)
+      if (phone) this.events.emit('lead.form_submitted', { tenantId: tenant.id, contactId: contact.id });
+
       return { ok: true, contactId: contact.id };
     } catch (err: any) {
       this.logger.error('Webhook lead error: ' + err.message);
