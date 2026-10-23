@@ -230,7 +230,7 @@ function ConfigPanel({
             <select
               value={node.data.trigger || ""}
               onChange={(e) => onUpdate(node.id, { trigger: e.target.value })}
-              className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-500"
+              className="w-full text-sm text-gray-900 bg-white placeholder:text-gray-400 border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-500"
             >
               <option value="">Selecione...</option>
               <option value="Primeira mensagem recebida">Primeira mensagem recebida</option>
@@ -249,7 +249,7 @@ function ConfigPanel({
               onChange={(e) => onUpdate(node.id, { text: e.target.value })}
               placeholder={"Olá, {{lead.name}}! Como posso ajudar?"}
               rows={5}
-              className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-500 resize-none"
+              className="w-full text-sm text-gray-900 bg-white placeholder:text-gray-400 border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-500 resize-none"
             />
             <p className="text-[10px] text-gray-400 mt-1">Use {"{{"} lead.name {"}}"}  para o nome do contato</p>
           </div>
@@ -277,7 +277,7 @@ function ConfigPanel({
                     waitSeconds: unit === "h" ? val * 3600 : unit === "m" ? val * 60 : val,
                   });
                 }}
-                className="flex-1 text-sm border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-500"
+                className="flex-1 text-sm text-gray-900 bg-white placeholder:text-gray-400 border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-500"
               />
               <select
                 value={(() => {
@@ -294,7 +294,7 @@ function ConfigPanel({
                     waitSeconds: e.target.value === "h" ? cur * 3600 : e.target.value === "m" ? cur * 60 : cur,
                   });
                 }}
-                className="text-sm border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-500"
+                className="text-sm text-gray-900 bg-white placeholder:text-gray-400 border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-500"
               >
                 <option value="s">segundos</option>
                 <option value="m">minutos</option>
@@ -317,7 +317,7 @@ function ConfigPanel({
               <select
                 value={node.data.conditionField || ""}
                 onChange={(e) => onUpdate(node.id, { conditionField: e.target.value })}
-                className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-500"
+                className="w-full text-sm text-gray-900 bg-white placeholder:text-gray-400 border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-500"
               >
                 <option value="">Selecione...</option>
                 <option value="Mensagem recebida">Mensagem recebida</option>
@@ -331,7 +331,7 @@ function ConfigPanel({
               <select
                 value={node.data.conditionOp || "contém"}
                 onChange={(e) => onUpdate(node.id, { conditionOp: e.target.value })}
-                className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-500"
+                className="w-full text-sm text-gray-900 bg-white placeholder:text-gray-400 border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-500"
               >
                 <option value="contém">contém</option>
                 <option value="não contém">não contém</option>
@@ -346,7 +346,7 @@ function ConfigPanel({
                 value={node.data.conditionValue || ""}
                 onChange={(e) => onUpdate(node.id, { conditionValue: e.target.value })}
                 placeholder="ex: sim, preço, oi..."
-                className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-500"
+                className="w-full text-sm text-gray-900 bg-white placeholder:text-gray-400 border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-500"
               />
             </div>
             <div className="flex gap-3 text-xs">
@@ -363,7 +363,7 @@ function ConfigPanel({
               <select
                 value={node.data.actionType || ""}
                 onChange={(e) => onUpdate(node.id, { actionType: e.target.value, actionValue: "" })}
-                className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-500"
+                className="w-full text-sm text-gray-900 bg-white placeholder:text-gray-400 border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-500"
               >
                 <option value="">Selecione...</option>
                 <option value="change_status">Mudar status da conversa</option>
@@ -387,7 +387,7 @@ function ConfigPanel({
                   <select
                     value={node.data.actionValue || ""}
                     onChange={(e) => onUpdate(node.id, { actionValue: e.target.value })}
-                    className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-500"
+                    className="w-full text-sm text-gray-900 bg-white placeholder:text-gray-400 border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-500"
                   >
                     <option value="">Selecione...</option>
                     <option value="Novo">Novo</option>
@@ -402,7 +402,7 @@ function ConfigPanel({
                     value={node.data.actionValue || ""}
                     onChange={(e) => onUpdate(node.id, { actionValue: e.target.value })}
                     placeholder={node.data.actionType === "add_tag" ? "ex: lead_qualificado" : "ex: Ana Silva"}
-                    className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-500"
+                    className="w-full text-sm text-gray-900 bg-white placeholder:text-gray-400 border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-500"
                   />
                 )}
               </div>
