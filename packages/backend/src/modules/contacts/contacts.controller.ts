@@ -201,9 +201,13 @@ export class ContactsController {
       qualification?: 'ULTRA' | 'QUALIFIED' | 'COLD' | 'UNQUALIFIED';
       type?: 'LEAD' | 'CLIENT';
       segment?: 'NEW' | 'ACTIVE' | 'VIP' | 'AT_RISK' | 'DORMANT';
+      leadOrigin?: 'ADS' | 'ORGANIC' | 'REFERRAL' | 'OTHER' | null;
     },
   ) {
     const tenantId = req.user.tenantId;
+    if (body.leadOrigin !== undefined && body.leadOrigin !== null && !['ADS', 'ORGANIC', 'REFERRAL', 'OTHER'].includes(body.leadOrigin)) {
+      throw new BadRequestException('Origem inválida');
+    }
 
     if (body.phone) {
       const existing = await this.prisma.contact.findFirst({ where: { id, tenantId } });
@@ -235,6 +239,7 @@ export class ContactsController {
         ...(body.qualification !== undefined && { qualification: body.qualification }),
         ...(body.type !== undefined && { type: body.type }),
         ...(body.segment !== undefined && { segment: body.segment }),
+        ...(body.leadOrigin !== undefined && { leadOrigin: body.leadOrigin }),
         ...(promotingToClient && { clientSince: new Date() }),
       },
     });

@@ -547,6 +547,24 @@ export class WhatsAppCloudService {
       contact = await this.prisma.contact.update({ where: { id: contact.id }, data: { name: profileName } });
     }
 
+    // Veio de anúncio de clique para WhatsApp: a Meta manda o "referral" junto da 1ª mensagem
+    const referral = direction === 'INBOUND' && !opts.history ? m.referral : null;
+    if (referral && (referral.source_id || referral.ctwa_clid)) {
+      contact = await this.prisma.contact.update({
+        where: { id: contact.id },
+        data: {
+          adId: referral.source_id ?? null,
+          adHeadline: referral.headline || referral.body?.slice(0, 120) || null,
+          adSourceUrl: referral.source_url ?? null,
+          adCtwaClid: referral.ctwa_clid ?? null,
+          adReferredAt: new Date(),
+          ...(!contact.leadOrigin && { leadOrigin: 'ADS' }),
+          ...(!contact.utmSource && { utmSource: 'meta_ads', utmMedium: 'ctwa' }),
+        },
+      });
+      this.logger.log(`[Cloud] Contato ${contact.id} veio do anúncio ${referral.source_id ?? '?'} (${referral.source_type ?? '-'})`);
+    }
+
     let conv = await this.prisma.conversation.findFirst({
       where: { tenantId, channel: 'WHATSAPP', contactId: contact.id },
       orderBy: { updatedAt: 'desc' },
@@ -589,7 +607,8 @@ export class WhatsAppCloudService {
 
     if (direction === 'INBOUND' && !opts.history) {
       // Alimenta o funil: lead novo que chamou agora cai na 1ª etapa
-      await this.funnel.ensureLead(tenantId, contact.id, isNewContact ? 'Origem: WhatsApp' : undefined);
+      const origin = referral ? `Origem: Anúncio${contact.adHeadline ? ` — ${contact.adHeadline}` : ''}` : 'Origem: WhatsApp';
+      await this.funnel.ensureLead(tenantId, contact.id, isNewContact || referral ? origin : undefined);
       // Notifica os aparelhos com o PWA instalado
       this.push.sendToTenant(tenantId, {
         title: contact.name || phone,

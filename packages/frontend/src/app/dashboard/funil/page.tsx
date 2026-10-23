@@ -6,7 +6,8 @@ import { useRouter } from "next/navigation";
 import {
   Plus, MoreVertical, ChevronRight, Kanban, DollarSign, Users,
   GripVertical, X, RefreshCw, Check, Phone, Mail, Instagram,
-  MessageCircle, Tag, FileText, ExternalLink, TrendingUp, Trash2, Clock, ArrowRight
+  MessageCircle, Tag, FileText, ExternalLink, TrendingUp, Trash2, Clock, ArrowRight,
+  Trophy, XCircle, Megaphone
 } from "lucide-react";
 
 const API_URL = "";
@@ -15,9 +16,31 @@ function authHeaders() { return { "Content-Type": "application/json", Authorizat
 
 const COLORS = ["#6366F1", "#E8501F", "#10B981", "#F59E0B", "#3B82F6", "#8B5CF6", "#EF4444", "#EC4899", "#14B8A6"];
 
-interface Contact { id: string; name: string; phone?: string | null; email?: string | null; tags?: string[]; notes?: string | null; instagramHandle?: string | null; createdAt?: string; }
-interface Lead { id: string; contactId: string; contact: Contact; value?: number; notes?: string | null; position: number; stageId: string; createdAt?: string; }
-interface Stage { id: string; name: string; color: string; position: number; leads: Lead[]; }
+interface Contact {
+  id: string; name: string; phone?: string | null; email?: string | null; tags?: string[]; notes?: string | null; instagramHandle?: string | null; createdAt?: string;
+  leadOrigin?: LeadOrigin | null; adId?: string | null; adHeadline?: string | null; adSourceUrl?: string | null;
+  utmSource?: string | null; utmMedium?: string | null; utmCampaign?: string | null;
+}
+interface Lead { id: string; contactId: string; contact: Contact; value?: number | null; notes?: string | null; position: number; stageId: string; createdAt?: string; wonAt?: string | null; lostAt?: string | null; lostReason?: string | null; }
+type StageKind = "OPEN" | "WON" | "LOST";
+interface Stage { id: string; name: string; color: string; position: number; kind?: StageKind; leads: Lead[]; }
+type LeadOrigin = "ADS" | "ORGANIC" | "REFERRAL" | "OTHER";
+
+const ORIGIN_LABELS: Record<LeadOrigin, string> = { ADS: "Anúncio", ORGANIC: "Orgânico", REFERRAL: "Indicação", OTHER: "Outro" };
+
+function brl(v: number) { return `R$ ${v.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}`; }
+function brlShort(v: number) { return v >= 1000 ? `R$ ${(v / 1000).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}k` : brl(v); }
+function sumValue(leads: Lead[]) { return leads.reduce((a, l) => a + (l.value || 0), 0); }
+function isFromAd(c: Contact) { return !!c.adId || c.leadOrigin === "ADS"; }
+
+/** Aceita "3000", "3.000", "3.000,50" e "3000.50". */
+function parseMoney(input: string): number | null {
+  const t = input.replace(/[R$\s]/g, "");
+  if (!t) return null;
+  const normalized = t.includes(",") ? t.replace(/\./g, "").replace(",", ".") : /^\d{1,3}(\.\d{3})+$/.test(t) ? t.replace(/\./g, "") : t;
+  const n = Number(normalized);
+  return Number.isFinite(n) && n >= 0 ? n : null;
+}
 interface Pipeline { id: string; name: string; stages: Stage[]; }
 
 // Parse tags e notes para campos legíveis
@@ -58,6 +81,10 @@ export default function FunilPage() {
   const [draggingStageId, setDraggingStageId] = useState<string | null>(null);
   const [dragOverStageId, setDragOverStageId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  // Fechar/perder venda: soltar numa etapa de ganho/perda pede o valor (ou o motivo) antes de mover
+  const [outcomeModal, setOutcomeModal] = useState<{ lead: Lead; fromStageId: string; toStage: Stage } | null>(null);
+  const [outcomeValue, setOutcomeValue] = useState("");
+  const [outcomeReason, setOutcomeReason] = useState("");
   const [editingValue, setEditingValue] = useState(false);
   const [editValueInput, setEditValueInput] = useState("");
 
@@ -278,10 +305,96 @@ export default function FunilPage() {
     } finally { setSaving(false); }
   };
 
-  const moveLead = async (leadId: string, toStageId: string) => {
-    await authFetch(`${API_URL}/api/v1/pipelines/leads/${leadId}/move`, {
-      method: "PATCH", headers: authHeaders(), body: JSON.stringify({ stageId: toStageId }),
+  /** Move o card (otimista) e persiste; numa etapa de ganho/perda manda junto valor ou motivo. */
+  const commitMove = async (lead: Lead, fromStageId: string, toStageId: string, extra: { value?: number; lostReason?: string } = {}) => {
+    if (!activePipeline) return;
+    const before = activePipeline;
+    const toKind = before.stages.find((s) => s.id === toStageId)?.kind ?? "OPEN";
+    const now = new Date().toISOString();
+    const moved: Lead = {
+      ...lead,
+      stageId: toStageId,
+      ...(extra.value !== undefined && { value: extra.value }),
+      wonAt: toKind === "WON" ? lead.wonAt ?? now : null,
+      lostAt: toKind === "LOST" ? lead.lostAt ?? now : null,
+      lostReason: toKind === "LOST" ? extra.lostReason ?? lead.lostReason ?? null : null,
+    };
+    const updated = { ...before, stages: before.stages.map((s) => {
+      if (s.id === fromStageId) return { ...s, leads: s.leads.filter((l) => l.id !== lead.id) };
+      if (s.id === toStageId) return { ...s, leads: [...s.leads, moved] };
+      return s;
+    })};
+    setActivePipeline(updated);
+    setPipelines((prev) => prev.map((p) => p.id === updated.id ? updated : p));
+    if (selectedLead?.id === lead.id) setSelectedLead(moved);
+
+    try {
+      const res = await authFetch(`${API_URL}/api/v1/pipelines/leads/${lead.id}/move`, {
+        method: "PATCH", headers: authHeaders(), body: JSON.stringify({ stageId: toStageId, ...extra }),
+      });
+      if (!res.ok) throw new Error("Falha ao mover lead");
+    } catch {
+      setActivePipeline(before);
+      setPipelines((prev) => prev.map((p) => p.id === before.id ? before : p));
+      alert("Não foi possível mover o card. Tente de novo.");
+    }
+  };
+
+  const requestMove = (lead: Lead, fromStageId: string, toStageId: string) => {
+    if (!activePipeline || fromStageId === toStageId) return;
+    const toStage = activePipeline.stages.find((s) => s.id === toStageId);
+    if (toStage?.kind === "WON" || toStage?.kind === "LOST") {
+      setOutcomeValue(lead.value ? String(lead.value).replace(".", ",") : "");
+      setOutcomeReason(lead.lostReason || "");
+      setOutcomeModal({ lead, fromStageId, toStage });
+      return;
+    }
+    commitMove(lead, fromStageId, toStageId);
+  };
+
+  const confirmOutcome = () => {
+    if (!outcomeModal) return;
+    const { lead, fromStageId, toStage } = outcomeModal;
+    if (toStage.kind === "WON") {
+      const value = parseMoney(outcomeValue);
+      if (value === null) return;
+      setOutcomeModal(null);
+      commitMove(lead, fromStageId, toStage.id, { value });
+    } else {
+      setOutcomeModal(null);
+      commitMove(lead, fromStageId, toStage.id, { lostReason: outcomeReason.trim() || undefined });
+    }
+  };
+
+  const setStageKind = async (stageId: string, kind: StageKind) => {
+    if (!activePipeline) return;
+    setStageMenuId(null);
+    const res = await authFetch(`${API_URL}/api/v1/pipelines/stages/${stageId}`, {
+      method: "PATCH", headers: authHeaders(), body: JSON.stringify({ kind }),
     });
+    if (!res.ok) { alert("Não foi possível alterar a etapa."); return; }
+    const now = new Date().toISOString();
+    const updated = { ...activePipeline, stages: activePipeline.stages.map((s) => s.id !== stageId ? s : {
+      ...s, kind, leads: s.leads.map((l) => ({
+        ...l,
+        wonAt: kind === "WON" ? l.wonAt ?? now : null,
+        lostAt: kind === "LOST" ? l.lostAt ?? now : null,
+        lostReason: kind === "LOST" ? l.lostReason ?? null : null,
+      })),
+    })};
+    setActivePipeline(updated);
+    setPipelines((prev) => prev.map((p) => p.id === updated.id ? updated : p));
+  };
+
+  const setLeadOrigin = async (contactId: string, leadOrigin: LeadOrigin | null) => {
+    const res = await authFetch(`${API_URL}/api/v1/contacts/${contactId}`, {
+      method: "PATCH", headers: authHeaders(), body: JSON.stringify({ leadOrigin }),
+    });
+    if (!res.ok) { alert("Não foi possível salvar a origem."); return; }
+    const patch = (c: Contact) => c.id === contactId ? { ...c, leadOrigin } : c;
+    setFullContact((c) => c ? patch(c) : c);
+    setSelectedLead((l) => l ? { ...l, contact: patch(l.contact) } : l);
+    setActivePipeline((prev) => prev ? { ...prev, stages: prev.stages.map((s) => ({ ...s, leads: s.leads.map((l) => ({ ...l, contact: patch(l.contact) })) })) } : prev);
   };
 
   const onDragStart = (lead: Lead, fromStageId: string) => {
@@ -289,35 +402,11 @@ export default function FunilPage() {
     setDraggingStageId(null);
   };
 
-  const onDropLead = async (toStageId: string) => {
-    if (!draggingLead || !activePipeline || draggingLead.fromStageId === toStageId) {
-      setDraggingLead(null); setDragOverStageId(null); return;
-    }
-    // Guarda referência antes de limpar o estado
-    const leadToMove = draggingLead;
+  const onDropLead = (toStageId: string) => {
+    const dragged = draggingLead;
     setDraggingLead(null);
     setDragOverStageId(null);
-
-    // 1. Atualiza UI imediatamente (otimista)
-    const updated = { ...activePipeline, stages: activePipeline.stages.map((s) => {
-      if (s.id === leadToMove.fromStageId) return { ...s, leads: s.leads.filter((l) => l.id !== leadToMove.lead.id) };
-      if (s.id === toStageId) return { ...s, leads: [...s.leads, { ...leadToMove.lead, stageId: toStageId }] };
-      return s;
-    })};
-    setActivePipeline(updated);
-    setPipelines((prev) => prev.map((p) => p.id === updated.id ? updated : p));
-
-    // 2. Persiste no backend — se falhar, reverte
-    try {
-      const res = await authFetch(`${API_URL}/api/v1/pipelines/leads/${leadToMove.lead.id}/move`, {
-        method: "PATCH", headers: authHeaders(), body: JSON.stringify({ stageId: toStageId }),
-      });
-      if (!res.ok) throw new Error("Falha ao mover lead");
-    } catch {
-      // Reverte para o estado original se der erro
-      setActivePipeline(activePipeline);
-      setPipelines((prev) => prev.map((p) => p.id === activePipeline.id ? activePipeline : p));
-    }
+    if (dragged) requestMove(dragged.lead, dragged.fromStageId, toStageId);
   };
 
   // ── Pipeline list ──
@@ -411,8 +500,10 @@ export default function FunilPage() {
   }
 
   // ── Kanban ──
-  const totalValue = activePipeline.stages.reduce((sum, s) => sum + s.leads.reduce((a, l) => a + (l.value || 0), 0), 0);
   const totalLeads = activePipeline.stages.reduce((sum, s) => sum + s.leads.length, 0);
+  const wonStages = activePipeline.stages.filter((s) => s.kind === "WON");
+  const wonLeads = wonStages.flatMap((s) => s.leads);
+  const openValue = activePipeline.stages.filter((s) => (s.kind ?? "OPEN") === "OPEN").reduce((sum, s) => sum + sumValue(s.leads), 0);
 
   const contact = fullContact || selectedLead?.contact;
   const parsed = contact ? parseContactFields(contact, selectedLead?.notes) : null;
@@ -428,8 +519,15 @@ export default function FunilPage() {
             <h1 className="text-sm font-bold text-foreground truncate">{activePipeline.name}</h1>
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            <span className="hidden sm:flex items-center gap-1 text-xs text-muted-foreground"><Users className="w-3.5 h-3.5" />{totalLeads}</span>
-            <span className="hidden sm:flex items-center gap-1 text-xs text-muted-foreground"><DollarSign className="w-3.5 h-3.5" />R$ {(totalValue / 1000).toFixed(1)}k</span>
+            <span className="hidden sm:flex items-center gap-1 text-xs text-muted-foreground" title="Leads no funil"><Users className="w-3.5 h-3.5" />{totalLeads}</span>
+            <span className="hidden sm:flex items-center gap-1 text-xs text-muted-foreground" title="Valor em negociação (etapas abertas)"><DollarSign className="w-3.5 h-3.5" />{brlShort(openValue)} em aberto</span>
+            {wonStages.length > 0 ? (
+              <span className="flex items-center gap-1 text-xs font-semibold text-green-600 bg-green-500/10 border border-green-500/20 rounded-full px-2 py-0.5" title="Vendas nas etapas de ganho">
+                <Trophy className="w-3.5 h-3.5" />{wonLeads.length} {wonLeads.length === 1 ? "venda" : "vendas"} · {brlShort(sumValue(wonLeads))}
+              </span>
+            ) : (
+              <span className="hidden sm:inline text-[11px] text-muted-foreground">Marque uma etapa como ganho no menu ⋮ para somar as vendas</span>
+            )}
           </div>
         </div>
       </div>
@@ -437,7 +535,8 @@ export default function FunilPage() {
       <div className="flex-1 overflow-x-auto overflow-y-hidden" style={{ WebkitOverflowScrolling: "touch" } as React.CSSProperties}>
         <div className="flex gap-3 p-4 h-full items-stretch" style={{ minWidth: `${(activePipeline.stages.length + 1) * 240 + 32}px` }}>
           {activePipeline.stages.map((stage) => {
-            const stageValue = stage.leads.reduce((a, l) => a + (l.value || 0), 0);
+            const stageValue = sumValue(stage.leads);
+            const kind = stage.kind ?? "OPEN";
             const isEditing = editingStageId === stage.id;
             const isDragOver = dragOverStageId === stage.id && draggingStageId && draggingStageId !== stage.id;
             return (
@@ -490,6 +589,8 @@ export default function FunilPage() {
                         <GripVertical className="w-3 h-3 text-gray-300 shrink-0" />
                         <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: stage.color }} />
                         <span className="text-sm font-semibold text-foreground/80 truncate">{stage.name}</span>
+                        {kind === "WON" && <span title="Etapa de ganho"><Trophy className="w-3.5 h-3.5 text-green-500 shrink-0" /></span>}
+                        {kind === "LOST" && <span title="Etapa de perda"><XCircle className="w-3.5 h-3.5 text-red-500 shrink-0" /></span>}
                         <span className="text-xs text-muted-foreground bg-muted/40 rounded-full px-1.5 py-0.5 shrink-0">{stage.leads.length}</span>
                       </div>
                       <div className="relative shrink-0" ref={stageMenuId === stage.id ? stageMenuRef : null}>
@@ -498,11 +599,24 @@ export default function FunilPage() {
                           <MoreVertical className="w-3.5 h-3.5 text-muted-foreground" />
                         </button>
                         {stageMenuId === stage.id && (
-                          <div className="absolute right-0 top-7 bg-card rounded-xl shadow-lg border border-border z-20 w-40 py-1">
+                          <div className="absolute right-0 top-7 bg-card rounded-xl shadow-lg border border-border z-20 w-52 py-1">
                             <button onClick={() => { setEditingStageId(stage.id); setEditingStageName(stage.name); setEditingStageColor(stage.color); setStageMenuId(null); }}
                               className="w-full text-left px-3 py-2 text-sm text-foreground/80 hover:bg-muted/20">
                               Renomear etapa
                             </button>
+                            <div className="border-t border-border/50 my-1" />
+                            <p className="px-3 pt-1 pb-0.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Tipo da etapa</p>
+                            {([
+                              { k: "OPEN" as StageKind, label: "Em andamento", icon: <ArrowRight className="w-3.5 h-3.5 text-muted-foreground" /> },
+                              { k: "WON" as StageKind, label: "Ganho (venda fechada)", icon: <Trophy className="w-3.5 h-3.5 text-green-500" /> },
+                              { k: "LOST" as StageKind, label: "Perdido", icon: <XCircle className="w-3.5 h-3.5 text-red-500" /> },
+                            ]).map(({ k, label, icon }) => (
+                              <button key={k} onClick={() => kind !== k && setStageKind(stage.id, k)}
+                                className="w-full text-left px-3 py-2 text-sm text-foreground/80 hover:bg-muted/20 flex items-center gap-2">
+                                {icon}<span className="flex-1">{label}</span>{kind === k && <Check className="w-3.5 h-3.5 text-primary" />}
+                              </button>
+                            ))}
+                            <div className="border-t border-border/50 my-1" />
                             <button onClick={() => deleteStage(stage.id)}
                               className="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50">
                               Deletar etapa
@@ -514,7 +628,9 @@ export default function FunilPage() {
                   )}
                 </div>
 
-                {stageValue > 0 && <p className="text-xs text-muted-foreground mb-2">R$ {stageValue.toLocaleString("pt-BR")}</p>}
+                <p className={`text-xs mb-2 -mt-1 ${kind === "WON" && stageValue > 0 ? "text-green-600 font-semibold" : "text-muted-foreground"}`}>
+                  {stage.leads.length} {stage.leads.length === 1 ? "lead" : "leads"}: {brl(stageValue)}
+                </p>
 
                 <div className="flex-1 flex flex-col gap-2 overflow-y-auto pr-1" style={{ minHeight: 0 }}>
                   {stage.leads.map((lead) => {
@@ -570,7 +686,14 @@ export default function FunilPage() {
                         </div>
                       )}
                       {cardParsed.faturamento && <p className="text-[10px] text-muted-foreground ml-9 mt-1 truncate">{cardParsed.faturamento}</p>}
-                      {lead.value && <div className="ml-9 mt-1"><span className="text-xs font-semibold text-green-600">R$ {lead.value.toLocaleString("pt-BR")}</span></div>}
+                      {isFromAd(lead.contact) && (
+                        <div className="flex items-center gap-1.5 ml-9 mt-1 min-w-0" title={lead.contact.adHeadline || "Veio de anúncio"}>
+                          <Megaphone className="w-3 h-3 text-amber-500 shrink-0" />
+                          <span className="text-[11px] text-amber-600 truncate">Anúncio{lead.contact.adHeadline ? ` · ${lead.contact.adHeadline}` : ""}</span>
+                        </div>
+                      )}
+                      {lead.value ? <div className="ml-9 mt-1"><span className="text-xs font-semibold text-green-600">{brl(lead.value)}</span></div> : null}
+                      {kind === "LOST" && lead.lostReason && <p className="text-[11px] text-red-500/80 ml-9 mt-1 truncate" title={lead.lostReason}>{lead.lostReason}</p>}
                       {/* Mover etapa — só mobile, barra inferior no card */}
                       <button
                         onClick={(e) => { e.stopPropagation(); setMoveLeadModal({ lead, fromStageId: stage.id }); }}
@@ -777,7 +900,7 @@ export default function FunilPage() {
 
                   {/* Valor no funil — editável */}
                   <div>
-                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Oportunidade</p>
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">{selectedLead.wonAt ? "Valor fechado" : "Oportunidade"}</p>
                     {editingValue ? (
                       <div className="flex items-center gap-2">
                         <span className="text-sm text-muted-foreground">R$</span>
@@ -840,13 +963,53 @@ export default function FunilPage() {
                     )}
                   </div>
 
-                  {/* UTM */}
-                  {parsed?.utm && parsed.utm !== "-/-/-" && (
+                  {/* Resultado da venda */}
+                  {(selectedLead.wonAt || selectedLead.lostAt) && (
+                    <div className={`rounded-xl p-3 border text-xs ${selectedLead.wonAt ? "bg-green-500/10 border-green-500/20 text-green-700" : "bg-red-500/10 border-red-500/20 text-red-600"}`}>
+                      {selectedLead.wonAt
+                        ? <>Venda fechada em {new Date(selectedLead.wonAt).toLocaleDateString("pt-BR")}</>
+                        : <>Perdido em {new Date(selectedLead.lostAt!).toLocaleDateString("pt-BR")}{selectedLead.lostReason ? ` — ${selectedLead.lostReason}` : ""}</>}
+                    </div>
+                  )}
+
+                  {/* Origem: anúncio / UTM e classificação manual */}
+                  {contact && (
                     <div>
                       <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Origem</p>
-                      <div className="bg-muted/30 border border-border rounded-xl p-3">
-                        <p className="text-xs text-muted-foreground font-mono">{parsed.utm}</p>
+                      <div className="flex flex-wrap gap-1.5 mb-2">
+                        {(Object.keys(ORIGIN_LABELS) as LeadOrigin[]).map((o) => {
+                          const active = (contact.leadOrigin ?? (contact.adId ? "ADS" : null)) === o;
+                          return (
+                            <button key={o} onClick={() => setLeadOrigin(contact.id, active ? null : o)}
+                              className={`px-2.5 py-1 text-xs rounded-full border transition-colors ${active ? "bg-primary/15 border-primary/40 text-primary font-semibold" : "border-border text-muted-foreground hover:bg-muted/40"}`}>
+                              {ORIGIN_LABELS[o]}
+                            </button>
+                          );
+                        })}
                       </div>
+                      {contact.adId && (
+                        <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-3 space-y-1 mb-2">
+                          <div className="flex items-center gap-1.5">
+                            <Megaphone className="w-3.5 h-3.5 text-amber-500" />
+                            <span className="text-xs font-semibold text-amber-700">Anúncio de clique para WhatsApp</span>
+                          </div>
+                          {contact.adHeadline && <p className="text-xs text-foreground/80">{contact.adHeadline}</p>}
+                          <p className="text-[10px] text-muted-foreground font-mono">ID do anúncio: {contact.adId}</p>
+                          {contact.adSourceUrl && (
+                            <a href={contact.adSourceUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs text-primary hover:underline">
+                              Ver anúncio <ExternalLink className="w-3 h-3" />
+                            </a>
+                          )}
+                        </div>
+                      )}
+                      {(() => {
+                        const utm = [contact.utmSource, contact.utmMedium, contact.utmCampaign].filter(Boolean).join("/") || parsed?.utm;
+                        return utm && utm !== "-/-/-" ? (
+                          <div className="bg-muted/30 border border-border rounded-xl p-3">
+                            <p className="text-xs text-muted-foreground font-mono">UTM: {utm}</p>
+                          </div>
+                        ) : null;
+                      })()}
                     </div>
                   )}
 
@@ -897,6 +1060,58 @@ export default function FunilPage() {
       )}
     </div>
 
+      {/* ── Modal de fechamento: valor (ganho) ou motivo (perda) ── */}
+      {outcomeModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
+          onClick={() => setOutcomeModal(null)}>
+          <div className="bg-card border border-border rounded-t-3xl sm:rounded-3xl w-full sm:max-w-sm p-6" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-start justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${outcomeModal.toStage.kind === "WON" ? "bg-green-500/10" : "bg-red-500/10"}`}>
+                  {outcomeModal.toStage.kind === "WON" ? <Trophy className="w-5 h-5 text-green-500" /> : <XCircle className="w-5 h-5 text-red-500" />}
+                </div>
+                <div>
+                  <p className="font-bold text-foreground">{outcomeModal.toStage.kind === "WON" ? "Venda fechada" : "Lead perdido"}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">{outcomeModal.lead.contact.name} → {outcomeModal.toStage.name}</p>
+                </div>
+              </div>
+              <button onClick={() => setOutcomeModal(null)} className="p-1.5 rounded-xl hover:bg-muted/60 text-muted-foreground"><X className="w-4 h-4" /></button>
+            </div>
+
+            {outcomeModal.toStage.kind === "WON" ? (
+              <>
+                <label className="text-sm font-medium text-foreground/80 block mb-1.5">Valor negociado *</label>
+                <div className="flex items-center gap-2 border border-border rounded-xl px-3 focus-within:ring-2 focus-within:ring-brand-500 bg-background">
+                  <span className="text-sm text-muted-foreground">R$</span>
+                  <input autoFocus inputMode="decimal" value={outcomeValue} onChange={(e) => setOutcomeValue(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") confirmOutcome(); if (e.key === "Escape") setOutcomeModal(null); }}
+                    placeholder="0,00" className="flex-1 py-2.5 text-sm bg-transparent text-foreground focus:outline-none" />
+                </div>
+                {outcomeValue && parseMoney(outcomeValue) === null && <p className="text-xs text-red-500 mt-1">Valor inválido</p>}
+                <p className="text-xs text-muted-foreground mt-2">Entra no total da etapa, no topo do funil e nas vendas do mês no Dashboard.</p>
+              </>
+            ) : (
+              <>
+                <label className="text-sm font-medium text-foreground/80 block mb-1.5">Motivo da perda</label>
+                <input autoFocus value={outcomeReason} onChange={(e) => setOutcomeReason(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") confirmOutcome(); if (e.key === "Escape") setOutcomeModal(null); }}
+                  placeholder="Ex.: preço, sem resposta, fechou com outro..."
+                  className="w-full px-3 py-2.5 text-sm border border-border rounded-xl bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-brand-500" />
+              </>
+            )}
+
+            <div className="flex gap-3 mt-5">
+              <button onClick={() => setOutcomeModal(null)} className="flex-1 py-2.5 text-sm font-medium text-muted-foreground border border-border rounded-xl hover:bg-muted/20">Cancelar</button>
+              <button onClick={confirmOutcome}
+                disabled={outcomeModal.toStage.kind === "WON" && parseMoney(outcomeValue) === null}
+                className={`flex-1 py-2.5 text-sm font-semibold text-white rounded-xl hover:opacity-90 disabled:opacity-50 ${outcomeModal.toStage.kind === "WON" ? "bg-green-600" : "bg-red-600"}`}>
+                {outcomeModal.toStage.kind === "WON" ? "Confirmar venda" : "Marcar como perdido"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Modal mover lead de etapa (mobile) ── */}
       {moveLeadModal && activePipeline && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
@@ -915,22 +1130,10 @@ export default function FunilPage() {
             <div className="space-y-2">
               {activePipeline.stages.map(st => (
                 <button key={st.id}
-                  onClick={async () => {
-                    if (st.id === moveLeadModal.fromStageId) { setMoveLeadModal(null); return; }
-                    const leadToMove = moveLeadModal;
+                  onClick={() => {
+                    const m = moveLeadModal;
                     setMoveLeadModal(null);
-                    const updated = { ...activePipeline, stages: activePipeline.stages.map(s => {
-                      if (s.id === leadToMove.fromStageId) return { ...s, leads: s.leads.filter(l => l.id !== leadToMove.lead.id) };
-                      if (s.id === st.id) return { ...s, leads: [...s.leads, { ...leadToMove.lead, stageId: st.id }] };
-                      return s;
-                    })};
-                    setActivePipeline(updated);
-                    setPipelines(prev => prev.map(p => p.id === updated.id ? updated : p));
-                    try {
-                      await authFetch(`${API_URL}/api/v1/pipelines/leads/${leadToMove.lead.id}/move`, {
-                        method: "PATCH", headers: authHeaders(), body: JSON.stringify({ stageId: st.id }),
-                      });
-                    } catch { setActivePipeline(activePipeline); }
+                    requestMove(m.lead, m.fromStageId, st.id);
                   }}
                   className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl border transition-colors text-left ${
                     st.id === moveLeadModal.fromStageId

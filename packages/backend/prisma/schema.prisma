@@ -214,6 +214,14 @@ model Contact {
   utmSource           String?
   utmMedium           String?
   utmCampaign         String?
+  // Origem do lead para relatórios: ADS | ORGANIC | REFERRAL | OTHER (null = não informado)
+  leadOrigin          String?
+  // Anúncio de clique para WhatsApp (bloco "referral" da Meta na 1ª mensagem)
+  adId                String?
+  adHeadline          String?
+  adSourceUrl         String?
+  adCtwaClid          String?
+  adReferredAt        DateTime?
   type                ContactType    @default(LEAD)
   profilePicUrl       String?
   clientSince         DateTime?
@@ -376,6 +384,7 @@ model PipelineStage {
   name       String
   color      String   @default("#6366F1")
   position   Int      @default(0)
+  kind       String   @default("OPEN") // OPEN | WON (ganho) | LOST (perdido)
 
   leads PipelineLead[]
 
@@ -391,6 +400,9 @@ model PipelineLead {
   value     Float?
   notes     String?
   position  Int           @default(0)
+  wonAt      DateTime?     // entrou numa etapa de ganho (value = valor fechado)
+  lostAt     DateTime?
+  lostReason String?
   createdAt DateTime      @default(now())
   updatedAt DateTime      @updatedAt
 

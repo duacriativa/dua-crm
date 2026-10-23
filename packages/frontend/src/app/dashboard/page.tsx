@@ -1,7 +1,7 @@
 "use client";
 import { authFetch } from "@/lib/auth-fetch";
 
-import { TrendingUp, Users, DollarSign, Activity, ArrowUpRight, ArrowDownRight, MessageSquare, Sparkles, Eye, EyeOff, RefreshCw } from "lucide-react";
+import { TrendingUp, Users, DollarSign, Activity, ArrowUpRight, ArrowDownRight, MessageSquare, Sparkles, Eye, EyeOff, RefreshCw, Trophy, Target, Megaphone } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 
@@ -40,6 +40,8 @@ function MetricCard({ label, value, hint, badge, trend, icon: Icon, accent, hide
   );
 }
 
+const ORIGIN_LABELS: Record<string, string> = { ADS: "Anúncio", ORGANIC: "Orgânico", REFERRAL: "Indicação", OTHER: "Outro", UNKNOWN: "Não informado" };
+
 function SectionTitle({ children }: { children: string }) {
   return <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-4">{children}</h2>;
 }
@@ -52,15 +54,18 @@ export default function DashboardPage() {
   const [fin, setFin] = useState<any>(null);
   const [contacts, setContacts] = useState<any>(null);
   const [convos, setConvos] = useState<any[]>([]);
+  const [sales, setSales] = useState<any>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [finRes, contactsRes, convosRes] = await Promise.all([
+      const [finRes, contactsRes, convosRes, salesRes] = await Promise.all([
         authFetch(`${API_URL}/api/v1/financial/dashboard`, { headers: authHeaders() }),
         authFetch(`${API_URL}/api/v1/contacts/stats`, { headers: authHeaders() }),
         authFetch(`${API_URL}/api/v1/conversations?limit=4&status=OPEN`, { headers: authHeaders() }),
+        authFetch(`${API_URL}/api/v1/pipelines/sales-stats`, { headers: authHeaders() }),
       ]);
+      if (salesRes.ok) setSales(await salesRes.json());
       if (finRes.ok) setFin(await finRes.json());
       if (contactsRes.ok) setContacts(await contactsRes.json());
       if (convosRes.ok) {
@@ -95,7 +100,24 @@ export default function DashboardPage() {
     { label: "CAC",                      value: cac > 0 ? fmt(cac) : "—",    hint: "custo de aquisição",    badge: "ads ÷ novos clientes",  icon: TrendingUp,   trend: "neutral" as const },
   ];
 
-  const sales = [
+  const wonCount = sales?.won?.count ?? 0;
+  const wonValue = sales?.won?.value ?? 0;
+  const prevWonValue = sales?.prevWon?.value ?? 0;
+  const wonDelta = prevWonValue > 0 ? Math.round(((wonValue - prevWonValue) / prevWonValue) * 100) : null;
+  const byOrigin: { origin: string; count: number; value: number }[] = sales?.byOrigin ?? [];
+  const funnel = [
+    { label: "Vendas no mês",       value: fmt(wonValue), hint: `${wonCount} ${wonCount === 1 ? "venda fechada" : "vendas fechadas"} no funil`,
+      badge: wonDelta === null ? `mês passado ${fmt(prevWonValue)}` : `${wonDelta >= 0 ? "+" : ""}${wonDelta}% vs mês passado`, icon: Trophy,
+      trend: wonDelta === null ? "neutral" as const : wonDelta >= 0 ? "up" as const : "down" as const, accent: true },
+    { label: "Conversão",           value: `${(sales?.conversionRate ?? 0).toLocaleString("pt-BR")}%`, hint: "vendas ÷ leads que entraram no mês",
+      badge: `${sales?.newLeads ?? 0} leads novos · ${sales?.lost?.count ?? 0} perdidos`, icon: Target, trend: "neutral" as const },
+    { label: "Ticket médio (funil)", value: (sales?.ticketMedio ?? 0) > 0 ? fmt(sales.ticketMedio) : "—", hint: "valor médio por venda fechada",
+      badge: "vendas do mês", icon: TrendingUp, trend: "up" as const },
+    { label: "Em negociação",       value: fmt(sales?.open?.value ?? 0), hint: `${sales?.open?.count ?? 0} leads em etapas abertas`,
+      badge: "potencial do funil", icon: Activity, trend: "neutral" as const },
+  ];
+
+  const salesCards = [
     { label: "Faturamento do mês",  value: fmt(total),      hint: "contratado + pendente",   badge: `${fmt(received)} recebido`,      icon: DollarSign,    trend: "up" as const    },
     { label: "Já recebido",         value: fmt(received),   hint: `${fin?.receivedCount ?? 0} pagamentos`, badge: `${receivedPct}% do total`, icon: ArrowUpRight, trend: "up" as const },
     { label: "Ticket médio",        value: ticketMedio > 0 ? fmt(ticketMedio) : "—", hint: "por cliente/mês", badge: `${activeContracts} contratos ativos`, icon: TrendingUp, trend: "up" as const },
@@ -150,9 +172,47 @@ export default function DashboardPage() {
             </section>
 
             <section className="mb-10">
-              <SectionTitle>Vendas e conversão</SectionTitle>
+              <div className="flex items-baseline justify-between">
+                <SectionTitle>Funil de vendas — mês atual</SectionTitle>
+                <button onClick={() => router.push("/dashboard/funil")} className="text-xs text-primary hover:underline mb-4">Abrir funil →</button>
+              </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-                {sales.map((m) => <MetricCard key={m.label} {...m} hide={hideValues} />)}
+                {funnel.map((m) => <MetricCard key={m.label} {...m} hide={hideValues} />)}
+              </div>
+              <div className="surface-card p-5 mt-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <Megaphone className="h-4 w-4 text-primary" />
+                  <h3 className="text-sm font-semibold text-foreground">Vendas por origem</h3>
+                </div>
+                {byOrigin.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">Nenhuma venda fechada este mês. Ao arrastar um card para a etapa de ganho, ela aparece aqui.</p>
+                ) : (
+                  <div className="space-y-2.5">
+                    {byOrigin.map((o) => {
+                      const pct = wonValue > 0 ? Math.round((o.value / wonValue) * 100) : 0;
+                      return (
+                        <div key={o.origin}>
+                          <div className="flex items-center justify-between text-sm mb-1">
+                            <span className="text-foreground">{ORIGIN_LABELS[o.origin] ?? o.origin}</span>
+                            <span className="text-muted-foreground">
+                              {o.count} {o.count === 1 ? "venda" : "vendas"} · <span className="text-foreground font-medium">{hideValues ? "•••" : fmt(o.value)}</span> · {pct}%
+                            </span>
+                          </div>
+                          <div className="h-2 rounded-full bg-muted overflow-hidden">
+                            <div className="h-full rounded-full bg-gradient-primary" style={{ width: `${Math.max(pct, 2)}%` }} />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </section>
+
+            <section className="mb-10">
+              <SectionTitle>Financeiro — contratos e cobranças</SectionTitle>
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+                {salesCards.map((m) => <MetricCard key={m.label} {...m} hide={hideValues} />)}
               </div>
             </section>
 

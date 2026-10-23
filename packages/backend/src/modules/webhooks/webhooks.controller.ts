@@ -138,6 +138,8 @@ export class WebhooksController {
       const utmSource = utm('utm_source', 'utmSource');
       const utmMedium = utm('utm_medium', 'utmMedium');
       const utmCampaign = utm('utm_campaign', 'utmCampaign');
+      // UTM de mídia paga (ex.: utm_medium=cpc/paid_social) conta como lead de anúncio
+      const fromAds = !!utmMedium && /^(cpc|ppc|paid|paid_social|paidsocial|ads|ctwa)$/i.test(utmMedium);
       const faturamento = body.faturamento_mensal || body.faturamento || null;
       const modelo = body.modelo_venda || body.modelo || null;
 
@@ -161,6 +163,7 @@ export class WebhooksController {
               utmSource: utmSource ?? undefined,
               utmMedium: utmMedium ?? undefined,
               utmCampaign: utmCampaign ?? undefined,
+              leadOrigin: fromAds && !existing.leadOrigin ? 'ADS' : undefined,
               tags: [...new Set([...(existing.tags ?? []), faturamento, modelo].filter(Boolean) as string[])],
             },
           })
@@ -177,6 +180,7 @@ export class WebhooksController {
               utmSource,
               utmMedium,
               utmCampaign,
+              leadOrigin: fromAds ? 'ADS' : null,
               tags: [faturamento, modelo].filter(Boolean) as string[],
             },
           });

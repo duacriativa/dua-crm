@@ -33,7 +33,7 @@ export class FunnelService {
           create: [
             { name: 'Novo Lead', color: '#6366F1', position: 0 },
             { name: 'Em Andamento', color: '#F59E0B', position: 1 },
-            { name: 'Fechado', color: '#10B981', position: 2 },
+            { name: 'Fechado', color: '#10B981', position: 2, kind: 'WON' },
           ],
         },
       },
