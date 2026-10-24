@@ -6,8 +6,8 @@
 /** Destino de um desvio: vazio = próximo passo, "end" = encerra o bot, senão o id de um passo. */
 export type StepTarget = string | undefined;
 
-/** Espera que termina no próximo dia útil (seg–sex) nesse horário de Brasília, ex.: "10:00". */
-type Align = { alignTo?: string };
+/** Espera que termina no próximo dia útil (seg–sex) nesse horário de Brasília, ex.: "10:00"; com alignWeekends, em qualquer dia. */
+type Align = { alignTo?: string; alignWeekends?: boolean };
 
 /** Posição do cartão no editor visual (não afeta a execução). */
 export type StepPos = { x: number; y: number };
@@ -101,10 +101,11 @@ export function sanitizeSteps(input: any, strict = true): AutomationStep[] {
     if (!Number.isFinite(n) || n < 0 || n > max) throw new Error('Tempo de espera inválido.');
     return n;
   };
-  const align = (v: any) => {
+  const align = (s: any) => {
+    const v = s?.alignTo;
     if (!v) return {};
     if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(String(v))) throw new Error('Horário inválido (use HH:MM).');
-    return { alignTo: String(v) };
+    return { alignTo: String(v), ...(s.alignWeekends === true ? { alignWeekends: true } : {}) };
   };
 
   // Ids primeiro, para validar os desvios
@@ -135,13 +136,13 @@ export function sanitizeSteps(input: any, strict = true): AutomationStep[] {
     if (Number.isFinite(x) && Number.isFinite(y) && Math.abs(x) < 1e6 && Math.abs(y) < 1e6) base.pos = { x: Math.round(x), y: Math.round(y) };
     switch (s?.type) {
       case 'wait':
-        return { ...base, type: 'wait', seconds: secs(s.seconds, 30 * 24 * 3600), ...align(s.alignTo) };
+        return { ...base, type: 'wait', seconds: secs(s.seconds, 30 * 24 * 3600), ...align(s) };
       case 'wait_reply':
         return {
           ...base,
           type: 'wait_reply',
           ...(s.timeoutSeconds ? { timeoutSeconds: secs(s.timeoutSeconds, 90 * 24 * 3600) } : {}),
-          ...align(s.alignTo),
+          ...align(s),
           ...opt('onReply', s.onReply),
           ...opt('onTimeout', s.onTimeout),
         };
@@ -182,7 +183,7 @@ export function sanitizeSteps(input: any, strict = true): AutomationStep[] {
           buttons: buttons.slice(0, 3),
           ...opt('onOther', s.onOther),
           ...(s.timeoutSeconds ? { timeoutSeconds: secs(s.timeoutSeconds, 90 * 24 * 3600) } : {}),
-          ...align(s.alignTo),
+          ...align(s),
           ...opt('onTimeout', s.onTimeout),
         };
       }
@@ -253,8 +254,9 @@ export function salesChannelPhrase(model: string | null | undefined) {
 /**
  * Fim de uma espera: `seconds` a partir de `from` e, com `alignTo`, empurrado para o
  * próximo dia útil (seg–sex) nesse horário de Brasília (UTC-3, sem horário de verão).
+ * Com `weekends`, vale qualquer dia (sábado e domingo também).
  */
-export function waitUntil(from: Date, seconds: number, alignTo?: string) {
+export function waitUntil(from: Date, seconds: number, alignTo?: string, weekends = false) {
   const end = new Date(from.getTime() + seconds * 1000);
   if (!alignTo) return end;
   const [h, m] = alignTo.split(':').map(Number);
@@ -262,7 +264,7 @@ export function waitUntil(from: Date, seconds: number, alignTo?: string) {
   const local = new Date(end.getTime() - OFFSET); // relógio de Brasília nos campos UTC
   const at = new Date(Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate(), h, m));
   if (at < local) at.setUTCDate(at.getUTCDate() + 1);
-  while (at.getUTCDay() === 0 || at.getUTCDay() === 6) at.setUTCDate(at.getUTCDate() + 1);
+  while (!weekends && (at.getUTCDay() === 0 || at.getUTCDay() === 6)) at.setUTCDate(at.getUTCDate() + 1);
   return new Date(at.getTime() + OFFSET);
 }
 

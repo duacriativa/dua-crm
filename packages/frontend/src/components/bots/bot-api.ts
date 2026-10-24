@@ -5,8 +5,8 @@ import type { WaTemplate } from "@/components/whatsapp/templates";
    desvios ("ir para") apontam para o `id` do passo. Destino vazio = próximo passo, "end" = encerra. */
 
 export type BotStep = { id?: string; name?: string; pos?: { x: number; y: number } } & (
-  | { type: "wait"; seconds: number; alignTo?: string }
-  | { type: "wait_reply"; timeoutSeconds?: number; alignTo?: string; onReply?: string; onTimeout?: string }
+  | { type: "wait"; seconds: number; alignTo?: string; alignWeekends?: boolean }
+  | { type: "wait_reply"; timeoutSeconds?: number; alignTo?: string; alignWeekends?: boolean; onReply?: string; onTimeout?: string }
   | { type: "send_text"; text: string }
   | {
       type: "send_template";
@@ -23,6 +23,7 @@ export type BotStep = { id?: string; name?: string; pos?: { x: number; y: number
       onOther?: string;
       timeoutSeconds?: number;
       alignTo?: string;
+      alignWeekends?: boolean;
       onTimeout?: string;
     }
   | { type: "move_stage"; stageId?: string; stageName?: string }
@@ -222,7 +223,7 @@ export function formQualifyPreset(first: WaTemplate | undefined, followup: WaTem
   const steps: BotStep[] = [
     { id: "inicio", type: "wait", seconds: 10 },
     { id: "msg1", name: "1ª mensagem", ...tpl(first) } as BotStep,
-    { id: "espera1", type: "wait_reply", timeoutSeconds: 8 * H, alignTo: "10:00", onReply: "respondeu", onTimeout: "followup" },
+    { id: "espera1", type: "wait_reply", timeoutSeconds: 8 * H, alignTo: "10:00", alignWeekends: true, onReply: "respondeu", onTimeout: "followup" },
     { id: "followup", name: "Follow-up", ...tpl(followup) } as BotStep,
     { id: "espera_fu", type: "wait_reply", timeoutSeconds: 3 * 24 * H, onReply: "respondeu", onTimeout: "sem_resposta" },
     { id: "sem_resposta", name: "Não respondeu", type: "add_tag", tag: "sem resposta do bot" },

@@ -353,7 +353,7 @@ export class AutomationRunner implements OnModuleInit, OnModuleDestroy {
         if (step.type === 'wait') {
           await this.prisma.automationRun.update({
             where: { id: run.id },
-            data: { stepIndex: i + 1, nextRunAt: waitUntil(new Date(), step.seconds, step.alignTo) },
+            data: { stepIndex: i + 1, nextRunAt: waitUntil(new Date(), step.seconds, step.alignTo, step.alignWeekends) },
           });
           // Espera curta: acorda na hora certa em vez de esperar o próximo ciclo de 5s
           if (step.seconds <= 300 && !step.alignTo) setTimeout(() => this.kick(), step.seconds * 1000 + 50);
@@ -409,7 +409,7 @@ export class AutomationRunner implements OnModuleInit, OnModuleDestroy {
           const timeout = step.timeoutSeconds || DEFAULT_REPLY_TIMEOUT_S;
           await this.prisma.automationRun.update({
             where: { id: run.id },
-            data: { status: 'WAITING_REPLY', stepIndex: i, nextRunAt: waitUntil(new Date(), timeout, step.alignTo) },
+            data: { status: 'WAITING_REPLY', stepIndex: i, nextRunAt: waitUntil(new Date(), timeout, step.alignTo, step.alignWeekends) },
           });
           // O contato pode ter respondido enquanto o passo rodava
           const answer = await this.replyAfterBot(conversationId);

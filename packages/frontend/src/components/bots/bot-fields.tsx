@@ -67,10 +67,10 @@ export function stepTitle(s: BotStep) {
 
 /** Texto que o cartão mostra (mensagem, template, tempo…). */
 export function stepSummary(s: BotStep): string {
-  const al = (a?: string) => (a ? ` e depois o próximo dia útil às ${a}` : "");
+  const al = (a?: string, w?: boolean) => (a ? ` e depois o próximo ${w ? "dia" : "dia útil"} às ${a}` : "");
   switch (s.type) {
-    case "wait": return `Esperar ${fmtDuration(s.seconds)}${al(s.alignTo)}`;
-    case "wait_reply": return `Esperar a resposta por até ${fmtDuration(s.timeoutSeconds || 7 * 86400)}${al(s.alignTo)}`;
+    case "wait": return `Esperar ${fmtDuration(s.seconds)}${al(s.alignTo, s.alignWeekends)}`;
+    case "wait_reply": return `Esperar a resposta por até ${fmtDuration(s.timeoutSeconds || 7 * 86400)}${al(s.alignTo, s.alignWeekends)}`;
     case "send_text": return s.text;
     case "send_buttons": return s.text;
     case "send_template": {
@@ -110,15 +110,27 @@ export function DurationInput({ seconds, onChange }: { seconds: number; onChange
   );
 }
 
-/** "e depois esperar o próximo dia útil às 10:00" (vazio = sem ajuste de horário). */
-export function AlignInput({ value, onChange }: { value?: string; onChange: (v: string | undefined) => void }) {
+/** "e depois esperar o próximo dia útil às 10:00" (vazio = sem ajuste de horário); `weekends` conta sábado e domingo. */
+export function AlignInput({ value, weekends, onChange }: {
+  value?: string;
+  weekends?: boolean;
+  onChange: (patch: { alignTo?: string; alignWeekends?: boolean }) => void;
+}) {
   return (
-    <label className="flex items-center gap-2 text-xs text-gray-500 flex-wrap">
-      <input type="checkbox" checked={!!value} onChange={(e) => onChange(e.target.checked ? "10:00" : undefined)} />
-      <span>e depois esperar o próximo dia útil às</span>
-      <input type="time" value={value ?? "10:00"} disabled={!value} onChange={(e) => onChange(e.target.value || undefined)}
-        className="px-2 py-1 text-sm text-gray-900 bg-white border border-gray-200 rounded-lg disabled:opacity-40" />
-    </label>
+    <div className="space-y-1">
+      <label className="flex items-center gap-2 text-xs text-gray-500 flex-wrap">
+        <input type="checkbox" checked={!!value} onChange={(e) => onChange(e.target.checked ? { alignTo: "10:00" } : { alignTo: undefined, alignWeekends: undefined })} />
+        <span>e depois esperar o próximo {weekends ? "dia" : "dia útil"} às</span>
+        <input type="time" value={value ?? "10:00"} disabled={!value} onChange={(e) => onChange({ alignTo: e.target.value || undefined })}
+          className="px-2 py-1 text-sm text-gray-900 bg-white border border-gray-200 rounded-lg disabled:opacity-40" />
+      </label>
+      {value && (
+        <label className="flex items-center gap-2 text-xs text-gray-500 pl-5">
+          <input type="checkbox" checked={!!weekends} onChange={(e) => onChange({ alignWeekends: e.target.checked || undefined })} />
+          <span>inclusive sábado e domingo</span>
+        </label>
+      )}
+    </div>
   );
 }
 
@@ -141,7 +153,7 @@ export function StepFields({ step, set, templates, tplError, stages, onAddButton
       {step.type === "wait" && (
         <>
           <DurationInput seconds={step.seconds} onChange={(seconds) => set({ seconds })} />
-          <AlignInput value={step.alignTo} onChange={(alignTo) => set({ alignTo })} />
+          <AlignInput value={step.alignTo} weekends={step.alignWeekends} onChange={(patch) => set(patch)} />
         </>
       )}
 
@@ -151,7 +163,7 @@ export function StepFields({ step, set, templates, tplError, stages, onAddButton
             <span>Esperar até</span>
             <DurationInput seconds={step.timeoutSeconds ?? 7 * 86400} onChange={(timeoutSeconds) => set({ timeoutSeconds })} />
           </div>
-          <AlignInput value={step.alignTo} onChange={(alignTo) => set({ alignTo })} />
+          <AlignInput value={step.alignTo} weekends={step.alignWeekends} onChange={(patch) => set(patch)} />
         </>
       )}
 
@@ -181,7 +193,7 @@ export function StepFields({ step, set, templates, tplError, stages, onAddButton
             <span>Esperar a escolha até</span>
             <DurationInput seconds={step.timeoutSeconds ?? 7 * 86400} onChange={(timeoutSeconds) => set({ timeoutSeconds })} />
           </div>
-          <AlignInput value={step.alignTo} onChange={(alignTo) => set({ alignTo })} />
+          <AlignInput value={step.alignTo} weekends={step.alignWeekends} onChange={(patch) => set(patch)} />
           <p className="text-[11px] text-gray-400">{VARS_HINT}{meeting && ` ${MEETING_VARS_HINT}`} Só chega dentro das 24h depois da última mensagem do contato.</p>
         </>
       )}
