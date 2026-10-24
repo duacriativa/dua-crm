@@ -157,6 +157,7 @@ model Tenant {
   automations      Automation[]
   integrations     Integration[]
   bookingPages     BookingPage[]
+  instagramDiagnoses InstagramDiagnosis[]
   meetings         Meeting[]
   metaCredential   MetaCredential?
   auditLogs        AuditLog[]
@@ -244,6 +245,7 @@ model Contact {
   contracts      Contract[]
   activities     Activity[]
   meetings       Meeting[]
+  instagramDiagnoses InstagramDiagnosis[]
 
   @@unique([tenantId, phone])
   @@unique([tenantId, instagramId])
@@ -667,4 +669,24 @@ model Meeting {
 
   @@index([tenantId, startAt])
   @@index([contactId])
+}
+
+// "Diagnóstico gratuito" do Instagram: página pública /diagnostico/[token] para nutrir leads
+model InstagramDiagnosis {
+  id              String    @id @default(cuid())
+  tenantId        String
+  tenant          Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  contactId       String
+  contact         Contact   @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  token           String    @unique // link público, não adivinhável
+  instagramHandle String
+  score           Int?
+  content         Json      // { resumo, pontos_fortes, oportunidades, proximos_passos[] } já no tom do cliente
+  viewCount       Int       @default(0)
+  firstViewedAt   DateTime?
+  lastViewedAt    DateTime?
+  createdAt       DateTime  @default(now())
+
+  @@index([contactId, createdAt])
+  @@index([tenantId])
 }
