@@ -72,4 +72,45 @@ export class FunnelService {
       this.logger.warn(`[Funnel] Falha ao adicionar contato ${contactId}: ${err.message}`);
     }
   }
+
+  /**
+   * Leva o card do contato para a etapa `stageName` do funil principal, só para frente:
+   * não volta quem já está mais adiante nem mexe em card Ganho/Perdido.
+   * Se a etapa não existir, cai no ensureLead (card na primeira etapa). Nunca lança erro.
+   */
+  async advanceTo(tenantId: string, contactId: string, stageName: string, notes?: string) {
+    try {
+      const contact = await this.prisma.contact.findFirst({
+        where: { id: contactId, tenantId },
+        select: { id: true, type: true },
+      });
+      if (!contact || contact.type === 'CLIENT') return;
+
+      const pipeline = await this.getMainPipeline(tenantId);
+      const wanted = stageName.trim().toLowerCase();
+      const stage = pipeline.stages.find((s) => s.name.trim().toLowerCase() === wanted);
+      if (!stage || stage.kind !== 'OPEN') {
+        this.logger.warn(`[Funnel] Etapa "${stageName}" não encontrada em "${pipeline.name}" — card fica na primeira etapa`);
+        return this.ensureLead(tenantId, contactId, notes);
+      }
+
+      const lead = await this.prisma.pipelineLead.findFirst({
+        where: { contactId, stage: { pipelineId: pipeline.id } },
+        include: { stage: { select: { position: true, kind: true } } },
+      });
+      if (lead && (lead.stage.kind !== 'OPEN' || lead.stage.position >= stage.position)) return;
+
+      const count = await this.prisma.pipelineLead.count({ where: { stageId: stage.id } });
+      if (lead) {
+        await this.prisma.pipelineLead.update({ where: { id: lead.id }, data: { stageId: stage.id, position: count } });
+      } else {
+        await this.prisma.pipelineLead.create({
+          data: { stageId: stage.id, contactId, position: count, notes: notes ?? null },
+        });
+      }
+      this.logger.log(`[Funnel] Contato ${contactId} → "${pipeline.name}" / "${stage.name}"`);
+    } catch (err: any) {
+      this.logger.warn(`[Funnel] Falha ao mover contato ${contactId} para "${stageName}": ${err.message}`);
+    }
+  }
 }

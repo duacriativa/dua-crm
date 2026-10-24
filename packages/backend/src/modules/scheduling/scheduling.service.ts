@@ -274,7 +274,7 @@ export class SchedulingService {
         content: `📅 Reunião agendada pelo link: ${when} (${page.title})${withGoogle.meetLink ? `\nMeet: ${withGoogle.meetLink}` : ''}${notes ? `\nObservações: ${notes}` : ''}`,
       },
     }).catch(() => {});
-    await this.funnel.ensureLead(page.tenantId, contact.id, 'Origem: Agendamento de reunião');
+    await this.funnel.advanceTo(page.tenantId, contact.id, 'Reunião agendada', 'Origem: Agendamento de reunião');
     this.push.sendToTenant(page.tenantId, {
       title: 'Nova reunião agendada',
       body: `${name} — ${when}${withGoogle.meetLink ? '' : ' (sem Meet: confira o Google)'}`,
