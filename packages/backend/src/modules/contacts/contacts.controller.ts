@@ -326,8 +326,9 @@ export class ContactsController {
     const prompt =
       `Você é especialista em marketing digital para moda brasileira da agência Dua Criativa (Fortaleza). ` +
       `Analise o perfil @${instagram} no Instagram.\n\n${dados}\n\n` +
-      `Retorne APENAS um JSON válido (sem markdown, sem explicação extra) com: score (0-100), resumo (2-3 frases), pontos_fortes (array), oportunidades (array), ` +
-      `alertas (array), estrategia_recomendada (parágrafo), mensagem_whatsapp (mensagem casual e personalizada, ` +
+      `Retorne APENAS um JSON válido (sem markdown, sem explicação extra) com: score (0-100), resumo (2-3 frases), ` +
+      `pontos_fortes (array, até 5 itens de 1 frase), oportunidades (array, até 5 itens de 1-2 frases), ` +
+      `alertas (array, até 4 itens de 1 frase), estrategia_recomendada (1 parágrafo), mensagem_whatsapp (mensagem casual e personalizada, ` +
       `máx 4 linhas, assine como Equipe Dua Criativa).`;
 
     let aiRes: any;
@@ -341,7 +342,8 @@ export class ContactsController {
         },
         body: JSON.stringify({
           model: process.env.ANTHROPIC_MODEL || 'claude-sonnet-5-5',
-          max_tokens: 2048,
+          // Com dados reais do perfil a análise fica mais longa; 2048 cortava o JSON no meio
+          max_tokens: 4096,
           system: 'Você é especialista em marketing digital para moda brasileira. Retorne sempre JSON válido, sem markdown.',
           messages: [{ role: 'user', content: prompt }],
         }),
