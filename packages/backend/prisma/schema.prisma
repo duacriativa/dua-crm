@@ -88,6 +88,7 @@ enum IntegrationType {
   NUVEMSHOP
   SHOPIFY
   WOOCOMMERCE
+  GOOGLE      // Google Agenda (agendamento próprio): refresh token na config criptografada
 }
 
 enum ContractStatus {
@@ -153,6 +154,8 @@ model Tenant {
   campaigns        Campaign[]
   automations      Automation[]
   integrations     Integration[]
+  bookingPages     BookingPage[]
+  meetings         Meeting[]
   metaCredential   MetaCredential?
   auditLogs        AuditLog[]
   pipelines        Pipeline[]
@@ -238,6 +241,7 @@ model Contact {
   pipelineLeads  PipelineLead[]
   contracts      Contract[]
   activities     Activity[]
+  meetings       Meeting[]
 
   @@unique([tenantId, phone])
   @@unique([tenantId, instagramId])
@@ -601,4 +605,62 @@ model Activity {
 
   @@index([tenantId])
   @@index([contactId, createdAt])
+}
+
+// ─── Agendamento próprio (substitui o Calendly) ──────────────────────────────
+
+// Tipo de evento com link público /agendar/[slug] e a disponibilidade dele.
+// Horários no fuso `timezone`; ver scheduling/availability.ts.
+model BookingPage {
+  id             String   @id @default(cuid())
+  tenantId       String
+  tenant         Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  slug           String   @unique
+  title          String
+  description    String?
+  durationMin    Int      @default(45)
+  bufferAfterMin Int      @default(15)  // intervalo livre depois de cada reunião
+  slotStepMin    Int      @default(60)  // de quanto em quanto tempo os horários começam
+  minNoticeMin   Int      @default(240) // antecedência mínima para agendar
+  maxDaysAhead   Int      @default(30)  // até quantos dias à frente
+  timezone       String   @default("America/Sao_Paulo")
+  weeklyHours    Json     // { "1": [["09:00","17:00"]], ... } (0 = domingo)
+  dateOverrides  Json     @default("{}") // { "2026-11-02": [] } — dia fechado ou faixas próprias
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  meetings Meeting[]
+
+  @@index([tenantId])
+}
+
+model Meeting {
+  id                String       @id @default(cuid())
+  tenantId          String
+  tenant            Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  bookingPageId     String?
+  bookingPage       BookingPage? @relation(fields: [bookingPageId], references: [id], onDelete: SetNull)
+  contactId         String
+  contact           Contact      @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  title             String
+  startAt           DateTime
+  endAt             DateTime
+  status            String       @default("SCHEDULED") // SCHEDULED | CANCELLED | NO_SHOW | COMPLETED
+  name              String
+  email             String
+  phone             String?
+  notes             String?
+  meetLink          String?
+  googleEventId     String?
+  manageToken       String       @unique // link do cliente para remarcar/cancelar
+  rescheduleCount   Int          @default(0)
+  cancelledAt       DateTime?
+  cancelledBy       String?      // CLIENT | TEAM
+  cancelReason      String?
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  @@index([tenantId, startAt])
+  @@index([contactId])
 }

@@ -23,6 +23,7 @@ import { ContractsModule } from './modules/contracts/contracts.module';
 import { ServicesModule } from './modules/services/services.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { KommoModule } from './modules/kommo/kommo.module';
+import { SchedulingModule } from './modules/scheduling/scheduling.module';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 
 @Module({
@@ -63,6 +64,7 @@ import { EventEmitterModule } from '@nestjs/event-emitter';
     ServicesModule,
     NotificationsModule,
     KommoModule,
+    SchedulingModule,
     EventEmitterModule.forRoot(),
   ],
   providers: [

@@ -6,10 +6,11 @@ import {
   User, Palette, RefreshCw, CreditCard, Smartphone, Bell,
   Zap, Puzzle, FileText, Plus, Trash2, Save, Check,
   ChevronRight, Globe, Building2, Phone, Hash,
-  MapPin, Mail, AlertCircle, Upload, MessageCircle,
+  MapPin, Mail, AlertCircle, Upload, MessageCircle, CalendarClock,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { TemplatesManager } from "@/components/whatsapp/templates";
+import { BookingSettings, GoogleCalendarCard } from "@/components/scheduling/booking-settings";
 
 const API_URL = "";
 function getToken() { return typeof window !== "undefined" ? localStorage.getItem("access_token") : ""; }
@@ -20,6 +21,7 @@ const tabs = [
   { key: "Aparência",    icon: Palette },
   { key: "Notificações", icon: Bell },
   { key: "Integrações",  icon: Puzzle },
+  { key: "Agendamento",  icon: CalendarClock },
   { key: "Templates",    icon: FileText },
 ];
 
@@ -476,7 +478,6 @@ function TabIntegracoes() {
   };
 
   const comingSoon = [
-    { name: "Google Agenda", desc: "Sincronize compromissos", icon: "📅" },
     { name: "Instagram", desc: "Mensagens diretas e comentários", icon: "📸" },
     { name: "OpenAI / IA", desc: "Potencialize bots e análises", icon: "✨" },
     { name: "Google Drive", desc: "Anexe arquivos da nuvem", icon: "📁" },
@@ -538,6 +539,8 @@ function TabIntegracoes() {
               Gerenciar
             </button>
           </div>
+
+          <GoogleCalendarCard />
 
           {/* Card do Kommo */}
           <div className="surface-card p-5 flex flex-col md:col-span-2">
@@ -650,6 +653,12 @@ function TabIntegracoes() {
 export default function ConfiguracoesPage() {
   const [activeTab, setActiveTab] = useState("Perfil");
 
+  // ?tab=Integrações (volta do "Conectar Google")
+  useEffect(() => {
+    const t = new URLSearchParams(window.location.search).get("tab");
+    if (t && tabs.some((x) => x.key === t)) setActiveTab(t);
+  }, []);
+
   // Aplicar tema salvo ao carregar
   useState(() => {
     if (typeof window === "undefined") return;
@@ -686,6 +695,7 @@ export default function ConfiguracoesPage() {
         {activeTab === "Aparência" && <TabAparencia />}
         {activeTab === "Notificações" && <TabNotificacoes />}
         {activeTab === "Integrações" && <TabIntegracoes />}
+        {activeTab === "Agendamento" && <BookingSettings />}
         {activeTab === "Templates" && <TemplatesManager />}
       </div>
     </div>

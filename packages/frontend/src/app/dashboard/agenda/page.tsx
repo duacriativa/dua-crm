@@ -1,7 +1,9 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { ChevronLeft, ChevronRight, Plus, Eye, EyeOff, Calendar } from "lucide-react";
+import { useState, useEffect, useCallback } from "react";
+import { ChevronLeft, ChevronRight, Plus, Eye, EyeOff, Calendar, CalendarClock } from "lucide-react";
+import api from "@/lib/api";
+import { MeetingsPanel, MeetingRow } from "@/components/scheduling/meetings-panel";
 
 const MONTHS = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
 const DAYS_SHORT = ["DOM","SEG","TER","QUA","QUI","SEX","SÁB"];
@@ -26,11 +28,22 @@ const BR_HOLIDAYS_2026: Record<string, string> = {
 type ViewMode = "mes" | "semana" | "dia";
 
 interface Event {
-  id: string; title: string; date: string; time?: string; color: string;
+  id: string; title: string; date: string; time?: string; color: string; meeting?: boolean;
 }
 
 function pad(n: number) { return n.toString().padStart(2, "0"); }
 function dateKey(y: number, m: number, d: number) { return `${y}-${pad(m+1)}-${pad(d)}`; }
+
+// Reuniões do agendamento viram itens do calendário (data/hora de Brasília)
+const BRT = "America/Sao_Paulo";
+function meetingToEvent(m: MeetingRow): Event {
+  const d = new Date(m.startAt);
+  return {
+    id: `m-${m.id}`, title: m.name, color: m.status === "NO_SHOW" ? "#EF4444" : "#7C3AED", meeting: true,
+    date: new Intl.DateTimeFormat("en-CA", { timeZone: BRT }).format(d),
+    time: new Intl.DateTimeFormat("pt-BR", { timeZone: BRT, hour: "2-digit", minute: "2-digit" }).format(d),
+  };
+}
 
 export default function AgendaPage() {
   const today = new Date();
@@ -42,6 +55,8 @@ export default function AgendaPage() {
   const [events, setEvents] = useState<Event[]>([]);
   const [showModal, setShowModal] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
+  const [section, setSection] = useState<"reunioes" | "calendario">("reunioes");
+  const [meetingEvents, setMeetingEvents] = useState<Event[]>([]);
 
   useEffect(() => {
     const saved = localStorage.getItem("agenda_events");
@@ -56,6 +71,18 @@ export default function AgendaPage() {
       localStorage.setItem("agenda_events", JSON.stringify(events));
     }
   }, [events, isLoaded]);
+
+  // Reuniões do mês exibido e da semana atual (as visões Semana/Dia mostram a semana de hoje)
+  const loadMeetings = useCallback(() => {
+    const weekStart = new Date(); weekStart.setDate(weekStart.getDate() - weekStart.getDay() - 1);
+    const from = new Date(Math.min(new Date(year, month, 1).getTime(), weekStart.getTime()));
+    const to = new Date(Math.max(new Date(year, month + 1, 1).getTime(), weekStart.getTime() + 9 * 86400_000));
+    api.get("/scheduling/meetings", { params: { from: from.toISOString(), to: to.toISOString() } })
+      .then((r) => setMeetingEvents((r.data as MeetingRow[]).filter((m) => m.status !== "CANCELLED").map(meetingToEvent)))
+      .catch(() => setMeetingEvents([]));
+  }, [year, month]);
+  useEffect(() => { if (section === "calendario") loadMeetings(); }, [section, loadMeetings]);
+  const allEvents = [...meetingEvents, ...events];
 
   const [newEvent, setNewEvent] = useState({ title: "", date: "", time: "", color: "#8B5CF6" });
 
@@ -88,10 +115,19 @@ export default function AgendaPage() {
       <div className="border-b border-border bg-background/80 backdrop-blur-xl px-6 py-4 shrink-0">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div>
-            <h1 className="text-2xl font-bold text-foreground">Timeline de Projetos</h1>
-            <p className="text-sm text-muted-foreground mt-0.5">Visualização completa de todas as etapas e prazos</p>
+            <h1 className="text-2xl font-bold text-foreground">Agenda</h1>
+            <p className="text-sm text-muted-foreground mt-0.5">Reuniões agendadas pelo link e compromissos da equipe</p>
           </div>
           <div className="flex items-center gap-2">
+            <div className="flex items-center bg-muted/40 border border-border rounded-xl p-1 gap-0.5">
+              {([["reunioes", "Reuniões", CalendarClock], ["calendario", "Calendário", Calendar]] as const).map(([k, label, Icon]) => (
+                <button key={k} onClick={() => setSection(k)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${section === k ? "bg-background shadow text-primary" : "text-muted-foreground hover:text-foreground"}`}>
+                  <Icon className="w-3.5 h-3.5" />{label}
+                </button>
+              ))}
+            </div>
+            {section === "calendario" && <>
             {/* View toggle */}
             <div className="flex items-center bg-muted/40 border border-border rounded-xl p-1 gap-0.5">
               {(["mes","semana","dia"] as const).map(v => (
@@ -105,13 +141,14 @@ export default function AgendaPage() {
             <button onClick={() => setShowModal(true)}
               className="flex items-center gap-2 px-3 py-2 sm:px-4 text-sm font-semibold text-white bg-gradient-primary rounded-xl hover:opacity-90 transition-opacity shadow-elegant">
               <Plus className="w-4 h-4" />
-              <span className="hidden sm:inline">Novo Compromisso</span>
+              <span className="hidden sm:inline whitespace-nowrap">Novo Compromisso</span>
             </button>
+            </>}
           </div>
         </div>
 
         {/* Controles do mês + toggles */}
-        <div className="flex items-center justify-between mt-4 flex-wrap gap-3">
+        {section === "calendario" && <div className="flex items-center justify-between mt-4 flex-wrap gap-3">
           <div className="flex items-center gap-3">
             <button onClick={prevMonth} className="p-1.5 rounded-lg text-muted-foreground hover:bg-muted/50 transition-colors"><ChevronLeft className="w-4 h-4" /></button>
             <h2 className="text-base font-bold text-foreground min-w-[120px] text-center">{MONTHS[month]} {year}</h2>
@@ -127,12 +164,13 @@ export default function AgendaPage() {
             </label>
 
           </div>
-        </div>
+        </div>}
       </div>
 
       {/* Calendário */}
       <div className="flex-1 overflow-auto scrollbar-none p-4">
-        {view === "mes" && (
+        {section === "reunioes" && <MeetingsPanel />}
+        {section === "calendario" && view === "mes" && (
           <div className="h-full flex flex-col">
             {/* Cabeçalho dias da semana */}
             <div className="grid grid-cols-7 mb-1">
@@ -147,7 +185,7 @@ export default function AgendaPage() {
                 const isCurrentMonth = dayNum >= 1 && dayNum <= daysInMonth;
                 const key = isCurrentMonth ? dateKey(year, month, dayNum) : "";
                 const holiday = showHolidays && key ? BR_HOLIDAYS_2026[key] : null;
-                const dayEvents = events.filter(e => e.date === key);
+                const dayEvents = allEvents.filter(e => e.date === key);
                 const isToday = isCurrentMonth && year === today.getFullYear() && month === today.getMonth() && dayNum === today.getDate();
 
                 return (
@@ -168,7 +206,9 @@ export default function AgendaPage() {
                       <div className="w-1.5 h-1.5 rounded-full bg-primary mb-0.5 sm:hidden" title={holiday} />
                     )}
                     {dayEvents.map(ev => (
-                      <div key={ev.id} className="text-[8px] sm:text-[9px] font-medium rounded px-1 py-0.5 mb-0.5 truncate text-white hidden sm:block"
+                      <div key={ev.id} onClick={ev.meeting ? (e) => { e.stopPropagation(); setSection("reunioes"); } : undefined}
+                        title={ev.meeting ? "Reunião agendada — abrir em Reuniões" : undefined}
+                        className="text-[8px] sm:text-[9px] font-medium rounded px-1 py-0.5 mb-0.5 truncate text-white hidden sm:block"
                         style={{ backgroundColor: ev.color }}>
                         {ev.time && <span className="opacity-80">{ev.time} </span>}{ev.title}
                       </div>
@@ -183,7 +223,7 @@ export default function AgendaPage() {
           </div>
         )}
 
-        {view === "semana" && (() => {
+        {section === "calendario" && view === "semana" && (() => {
           const weekStart = new Date(year, month - (month !== new Date().getMonth() || year !== new Date().getFullYear() ? 0 : 0), 1);
           // Calcular início da semana atual (domingo)
           const today2 = new Date();
@@ -222,7 +262,7 @@ export default function AgendaPage() {
                     <div className="text-[10px] text-muted-foreground px-2 py-1 shrink-0">{String(h).padStart(2,'0')}:00</div>
                     {weekDays.map((d, i) => {
                       const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-                      const dayEvs = events.filter(e => e.date === key && e.time?.startsWith(String(h).padStart(2,'0')));
+                      const dayEvs = allEvents.filter(e => e.date === key && e.time?.startsWith(String(h).padStart(2,'0')));
                       return (
                         <div key={i} className="border-l border-border/40 px-1 py-0.5">
                           {dayEvs.map(ev => (
@@ -239,7 +279,7 @@ export default function AgendaPage() {
           );
         })()}
 
-        {view === "dia" && (() => {
+        {section === "calendario" && view === "dia" && (() => {
           const today2 = new Date();
           const dayKey = `${today2.getFullYear()}-${String(today2.getMonth()+1).padStart(2,'0')}-${String(today2.getDate()).padStart(2,'0')}`;
           const hours = Array.from({ length: 24 }, (_, i) => i);
@@ -257,7 +297,7 @@ export default function AgendaPage() {
               </div>
               <div className="flex-1 overflow-y-auto scrollbar-none">
                 {hours.map(h => {
-                  const dayEvs = events.filter(e => e.date === dayKey && e.time?.startsWith(String(h).padStart(2,'0')));
+                  const dayEvs = allEvents.filter(e => e.date === dayKey && e.time?.startsWith(String(h).padStart(2,'0')));
                   return (
                     <div key={h} className="flex gap-3 border-b border-border/40 min-h-[56px] px-4 py-1">
                       <span className="text-xs text-muted-foreground w-10 shrink-0 pt-1">{String(h).padStart(2,'0')}:00</span>
@@ -326,7 +366,7 @@ export default function AgendaPage() {
               </button>
             </div>
             <p className="text-xs text-muted-foreground text-center mt-3 opacity-60">
-              Sincronização com Google Agenda disponível em Configurações
+              Compromissos manuais ficam só neste navegador. Reuniões agendadas pelo link entram sozinhas.
             </p>
           </div>
         </div>
