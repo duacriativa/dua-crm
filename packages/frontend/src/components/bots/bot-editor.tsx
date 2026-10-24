@@ -11,7 +11,7 @@ import { ArrowLeft, Flame, FlaskConical, LayoutGrid, Loader2, Plus, Save, Send, 
 import { useRouter } from "next/navigation";
 import { authFetch } from "@/lib/auth-fetch";
 import { fetchTemplates, type WaTemplate } from "@/components/whatsapp/templates";
-import { Bot, BotRun, BotStep, BotStepStat, botsApi, newStepId } from "./bot-api";
+import { Bot, BotRun, BotStep, BotStepStat, BotStepStats, botsApi, newStepId } from "./bot-api";
 import {
   BotGraph, OutKind, Output, landAt, linkKey, linkOf, outputsOf, removeButton, removeNode, toGraph, toSteps,
 } from "./bot-graph";
@@ -33,7 +33,8 @@ interface StepNodeData {
   step: BotStep;
   outputs: (Output & { target: string | null })[];
   stat?: NodeStat;
-  total: number;
+  visited: number; // sessões que passaram por aqui
+  tracked: number; // sessões com histórico de passos (base do %)
 }
 
 /** Sessões por cartão a partir do passo atual de cada sessão (índice do array salvo). */
@@ -84,10 +85,9 @@ function layout(g: BotGraph, size: (s: BotStep) => { w: number; h: number }): Re
 // ── Cartões ──────────────────────────────────────────────────────────────────
 
 const StepNode = memo(function StepNode({ data, selected }: NodeProps<StepNodeData>) {
-  const { step, outputs, stat, total } = data;
+  const { step, outputs, stat, visited, tracked } = data;
   const meta = STEP_META[step.type];
   const summary = stepSummary(step);
-  const pct = (n: number) => (total ? ` · ${Math.round((n / total) * 100)}%` : "");
   return (
     <div className={`bg-white rounded-xl border shadow-sm text-gray-900 ${selected ? "border-brand-500 ring-2 ring-brand-200" : "border-gray-200"}`} style={{ width: NODE_W }}>
       <Handle type="target" position={Position.Left} style={{ top: 20, width: 10, height: 10, background: "#64748b" }} />
@@ -111,9 +111,13 @@ const StepNode = memo(function StepNode({ data, selected }: NodeProps<StepNodeDa
       </div>
       <div className="flex items-center gap-2 px-3 py-1.5 border-t border-gray-100 text-[10px] text-gray-400"
         title={stat ? Object.entries(stat.by).map(([s, n]) => `${RUN_STATUS[s]?.label ?? s}: ${n}`).join("\n") : "Nenhuma sessão parou aqui"}>
-        <span className={stat?.now ? "text-blue-600 font-semibold" : ""}>{stat?.now ?? 0} aqui agora</span>
+        <span className={visited ? "text-gray-700 font-semibold" : ""} title="Sessões que passaram por este passo">
+          Passaram {visited}{tracked ? ` · ${Math.round((visited / tracked) * 100)}%` : ""}
+        </span>
         <span>·</span>
-        <span className={stat?.ended ? "text-gray-600 font-semibold" : ""}>{stat?.ended ?? 0} terminaram aqui{stat?.ended ? pct(stat.ended) : ""}</span>
+        <span className={stat?.now ? "text-blue-600 font-semibold" : ""}>{stat?.now ?? 0} agora</span>
+        <span>·</span>
+        <span className={stat?.ended ? "text-gray-600 font-semibold" : ""}>{stat?.ended ?? 0} pararam</span>
       </div>
     </div>
   );
@@ -161,7 +165,7 @@ export function BotEditor({ bot, onSaved }: { bot: Bot; onSaved: () => Promise<B
   const [tplError, setTplError] = useState("");
   const [stages, setStages] = useState<Stage[]>([]);
   const [runs, setRuns] = useState<BotRun[]>([]);
-  const [stepStats, setStepStats] = useState<BotStepStat[]>([]);
+  const [stepStats, setStepStats] = useState<BotStepStats>({ runs: [], visited: {}, tracked: 0 });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [testPhone, setTestPhone] = useState("");
@@ -244,8 +248,8 @@ export function BotEditor({ bot, onSaved }: { bot: Bot; onSaved: () => Promise<B
   const setLink = (id: string, handle: string, target: string | null) =>
     change((g) => (id === START ? { ...g, start: target } : { ...g, links: { ...g.links, [linkKey(id, handle)]: { target, implicit: false } } }));
 
-  const nodeStats = useMemo(() => statsByNode(saved, stepStats), [saved, stepStats]);
-  const total = useMemo(() => stepStats.reduce((a, s) => a + s.count, 0), [stepStats]);
+  const nodeStats = useMemo(() => statsByNode(saved, stepStats.runs), [saved, stepStats]);
+  const total = useMemo(() => stepStats.runs.reduce((a, s) => a + s.count, 0), [stepStats]);
 
   const nodes: Node[] = useMemo(() => {
     const startPos = graph.start && pos[graph.start] ? pos[graph.start] : { x: 0, y: 0 };
@@ -261,11 +265,12 @@ export function BotEditor({ bot, onSaved }: { bot: Bot; onSaved: () => Promise<B
           step: s,
           outputs: outputsOf(s).map((o) => ({ ...o, target: linkOf(graph, s.id!, o.handle).target })),
           stat: nodeStats[s.id!],
-          total,
+          visited: stepStats.visited[s.id!] ?? 0,
+          tracked: stepStats.tracked,
         } satisfies StepNodeData,
       })),
     ];
-  }, [graph, pos, selected, nodeStats, total, bot.triggerLabel]);
+  }, [graph, pos, selected, nodeStats, stepStats, total, bot.triggerLabel]);
 
   const edges: Edge[] = useMemo(() => {
     const out: Edge[] = [];
@@ -492,12 +497,11 @@ export function BotEditor({ bot, onSaved }: { bot: Bot; onSaved: () => Promise<B
                 </div>
               )}
 
-              {nodeStats[sel.id!] && (
-                <div className="text-xs text-gray-500 space-y-0.5">
-                  <p className="font-semibold text-gray-500 uppercase tracking-wide">Sessões neste passo</p>
-                  {Object.entries(nodeStats[sel.id!].by).map(([s, n]) => <p key={s}>{RUN_STATUS[s]?.label ?? s}: {n}</p>)}
-                </div>
-              )}
+              <div className="text-xs text-gray-500 space-y-0.5">
+                <p className="font-semibold text-gray-500 uppercase tracking-wide">Sessões neste passo</p>
+                <p>Passaram por aqui: {stepStats.visited[sel.id!] ?? 0} de {stepStats.tracked} (contagem desde 24/10/2026)</p>
+                {Object.entries(nodeStats[sel.id!]?.by ?? {}).map(([s, n]) => <p key={s}>Estão ou pararam aqui, {(RUN_STATUS[s]?.label ?? s).toLowerCase()}: {n}</p>)}
+              </div>
 
               <button onClick={() => deleteStep(sel.id!)} className="flex items-center gap-1.5 text-sm text-red-600 px-2 py-1 rounded-lg hover:bg-red-50">
                 <Trash2 className="w-4 h-4" /> Excluir passo

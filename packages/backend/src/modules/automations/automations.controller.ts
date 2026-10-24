@@ -78,17 +78,31 @@ export class AutomationsController {
   }
 
   /**
-   * Onde as sessões estão agora e onde terminaram, por passo (índice em `actions`).
-   * O histórico completo do caminho não é guardado: só o passo atual de cada sessão.
+   * Onde as sessões estão agora e onde terminaram, por passo (índice em `actions`),
+   * e quantas passaram por cada passo (id), a partir de `visitedSteps`.
    */
   @Get(':id/step-stats')
   async stepStats(@Request() req: any, @Param('id') id: string) {
-    const groups = await this.prisma.automationRun.groupBy({
-      by: ['stepIndex', 'status'],
-      where: { tenantId: req.user.tenantId, automationId: id, isTest: false },
-      _count: { _all: true },
-    });
-    return groups.map((g) => ({ stepIndex: g.stepIndex, status: g.status, count: g._count._all }));
+    const tenantId = req.user.tenantId;
+    const [groups, visited, tracked] = await Promise.all([
+      this.prisma.automationRun.groupBy({
+        by: ['stepIndex', 'status'],
+        where: { tenantId, automationId: id, isTest: false },
+        _count: { _all: true },
+      }),
+      // Sessões que passaram por cada passo (cada sessão conta uma vez por passo)
+      this.prisma.$queryRaw<{ stepId: string; count: number }[]>`
+        SELECT s."stepId", COUNT(DISTINCT r.id)::int AS count
+        FROM "AutomationRun" r, unnest(r."visitedSteps") AS s("stepId")
+        WHERE r."tenantId" = ${tenantId} AND r."automationId" = ${id} AND r."isTest" = false
+        GROUP BY s."stepId"`,
+      this.prisma.automationRun.count({ where: { tenantId, automationId: id, isTest: false, NOT: { visitedSteps: { isEmpty: true } } } }),
+    ]);
+    return {
+      runs: groups.map((g) => ({ stepIndex: g.stepIndex, status: g.status, count: g._count._all })),
+      visited: Object.fromEntries(visited.map((v) => [v.stepId, v.count])),
+      tracked, // sessões com histórico (as anteriores ao histórico não entram no "passaram")
+    };
   }
 
   @Post()

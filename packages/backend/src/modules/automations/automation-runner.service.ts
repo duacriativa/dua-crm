@@ -246,6 +246,12 @@ export class AutomationRunner implements OnModuleInit, OnModuleDestroy {
         // Entre um passo e outro o time pode ter assumido a conversa
         if (n > 0 && !(await this.stillActive(run.id))) return;
         const step = steps[i];
+        // Só para os contadores do editor ("passaram por"); falha aqui não afeta a sessão
+        if (step.id) {
+          await this.prisma.automationRun
+            .update({ where: { id: run.id }, data: { visitedSteps: { push: step.id } } })
+            .catch(() => {});
+        }
 
         if (step.type === 'wait') {
           await this.prisma.automationRun.update({

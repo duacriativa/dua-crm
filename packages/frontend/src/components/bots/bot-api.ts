@@ -51,6 +51,8 @@ export interface Bot {
 
 /** Sessões (sem as de teste) por passo do array salvo: onde estão agora ou onde terminaram. */
 export interface BotStepStat { stepIndex: number; status: string; count: number }
+/** `visited`: sessões que passaram por cada passo (id); `tracked`: sessões com esse histórico. */
+export interface BotStepStats { runs: BotStepStat[]; visited: Record<string, number>; tracked: number }
 
 export interface BotRun {
   id: string;
@@ -79,7 +81,7 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
 export const botsApi = {
   list: () => req<Bot[]>(""),
   runs: (id: string) => req<BotRun[]>(`/${id}/runs`),
-  stepStats: (id: string) => req<BotStepStat[]>(`/${id}/step-stats`),
+  stepStats: (id: string) => req<BotStepStats>(`/${id}/step-stats`),
   create: (body: Partial<Bot>) => req<Bot>("", { method: "POST", body: JSON.stringify(body) }),
   update: (id: string, body: Partial<Bot>) => req<Bot>(`/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   remove: (id: string) => req<{ ok: true }>(`/${id}`, { method: "DELETE" }),
