@@ -3,7 +3,7 @@ import { authFetch } from "@/lib/auth-fetch";
 
 import { Sidebar } from "@/components/ui/sidebar";
 import { PushPrompt } from "@/components/notifications/push-prompt";
-import { Bell, Search, Globe, Headphones, Trophy, X, UserPlus, TrendingUp, ChevronRight } from "lucide-react";
+import { Bell, Search, Globe, Headphones, Trophy, X, UserPlus, TrendingUp, ChevronRight, Eye, EyeOff } from "lucide-react";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 
@@ -172,6 +172,14 @@ function TrophyWidget() {
   const [editMeta, setEditMeta] = useState(false);
   const [metaInput, setMetaInput] = useState("");
   const [atual, setAtual] = useState(0);
+  // Esconde os valores em R$ (para tirar print da tela sem mostrar o faturamento)
+  const [hidden, setHidden] = useState(() => {
+    try { return typeof window !== "undefined" && localStorage.getItem("dua-crm-ocultar-valores") === "1"; } catch { return false; }
+  });
+  const toggleHidden = () => setHidden((h) => {
+    try { localStorage.setItem("dua-crm-ocultar-valores", h ? "0" : "1"); } catch {}
+    return !h;
+  });
   const ref = useRef<HTMLDivElement>(null);
 
   // Busca valor recebido real do Asaas
@@ -183,7 +191,8 @@ function TrophyWidget() {
   }, []);
 
   const percent = Math.min(100, (atual / meta) * 100);
-  const fmtBR = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
+  const brl = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
+  const fmtBR = (v: number) => (hidden ? "R$ •••••" : brl(v));
 
   const MARCOS = [1000,5000,10000,20000,30000,40000,50000,75000,100000];
   const PLACAS = [
@@ -204,7 +213,7 @@ function TrophyWidget() {
   }, []);
 
   return (
-    <div ref={ref} className="relative hidden xl:block">
+    <div ref={ref} className="relative hidden xl:flex items-center gap-1">
       <button onClick={() => setOpen(!open)}
         className={`flex items-center gap-3 px-4 py-2 rounded-xl border transition-all ${open ? "bg-primary/10 border-primary/40" : "bg-muted/40 border-border hover:border-primary/30"}`}>
         <Trophy className="h-4 w-4 text-warning shrink-0" />
@@ -217,6 +226,10 @@ function TrophyWidget() {
             <div className="h-full rounded-full bg-gradient-primary transition-all" style={{ width: `${percent}%` }} />
           </div>
         </div>
+      </button>
+      <button onClick={toggleHidden} title={hidden ? "Mostrar valores" : "Ocultar valores"} aria-label={hidden ? "Mostrar valores" : "Ocultar valores"}
+        className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors">
+        {hidden ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
       </button>
 
       {open && (
@@ -290,7 +303,7 @@ function TrophyWidget() {
                     <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs shrink-0 ${conquistado ? "bg-emerald-500 text-white" : "bg-muted/50 text-muted-foreground border border-border"}`}>
                       {conquistado ? "✓" : "○"}
                     </div>
-                    <span className={`flex-1 font-medium ${conquistado ? "text-foreground" : "text-muted-foreground"}`}>{fmtBR(marco)}</span>
+                    <span className={`flex-1 font-medium ${conquistado ? "text-foreground" : "text-muted-foreground"}`}>{brl(marco)}</span>
                     <span className={`text-xs ${conquistado ? "text-emerald-400 font-semibold" : "text-muted-foreground"}`}>
                       {conquistado ? "✓ Conquistado" : `faltam ${fmtBR(falta)}`}
                     </span>
