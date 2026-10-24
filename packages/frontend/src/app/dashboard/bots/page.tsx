@@ -18,6 +18,9 @@ import {
   ArrowRight,
   FlaskConical,
   Loader2,
+  ChevronDown,
+  ChevronRight,
+  ChevronLeft,
 } from "lucide-react";
 import { fetchTemplates } from "@/components/whatsapp/templates";
 import { Bot as BotFlow, botsApi, findFollowupTemplate, findFormTemplate, formBotPreset, formQualifyPreset, whatsappQualifyPreset } from "@/components/bots/bot-api";
@@ -37,6 +40,8 @@ const statusConfig = {
   draft: { label: "Rascunho", color: "bg-gray-100 text-gray-500", dot: "bg-gray-400" },
 };
 
+const INACTIVE_PAGE_SIZE = 10;
+
 const statusOf = (b: BotFlow) => (b.active ? "active" : "paused") as keyof typeof statusConfig;
 
 export default function BotsPage() {
@@ -46,6 +51,9 @@ export default function BotsPage() {
   const [showNew, setShowNew] = useState(false);
   const [creating, setCreating] = useState(false);
   const [openMenu, setOpenMenu] = useState<string | null>(null);
+  // Pausados ficam guardados numa seção recolhida para reativar um dia sem refazer
+  const [showInactive, setShowInactive] = useState(false);
+  const [inactivePage, setInactivePage] = useState(0);
   const router = useRouter();
   const openEditor = (id: string) => router.push(`/dashboard/bots/editor?id=${id}`);
 
@@ -105,10 +113,117 @@ export default function BotsPage() {
     }
   };
 
-  const totalActive = bots.filter((b) => b.active).length;
+  const activeBots = bots.filter((b) => b.active);
+  const totalActive = activeBots.length;
   const totalSessions = bots.reduce((a, b) => a + b.stats.sessions, 0);
   const totalReplied = bots.reduce((a, b) => a + b.stats.replied, 0);
   const avgConversion = totalSessions > 0 ? Math.round((totalReplied / totalSessions) * 100) : 0;
+
+  const inactiveBots = bots.filter((b) => !b.active);
+  const inactivePages = Math.max(1, Math.ceil(inactiveBots.length / INACTIVE_PAGE_SIZE));
+  // Ao ativar o último de uma página, volta para a anterior em vez de mostrar página vazia
+  const page = Math.min(inactivePage, inactivePages - 1);
+  const inactiveSlice = inactiveBots.slice(page * INACTIVE_PAGE_SIZE, (page + 1) * INACTIVE_PAGE_SIZE);
+
+  const renderBot = (bot: BotFlow) => {
+    const st = statusConfig[statusOf(bot)];
+    const convRate = bot.stats.sessions > 0 ? Math.round((bot.stats.replied / bot.stats.sessions) * 100) : 0;
+    const testOnly = (bot.conditions?.onlyPhones ?? []).length > 0;
+
+    return (
+      <div key={bot.id} className="bg-white rounded-2xl border border-gray-100 p-5 hover:border-gray-200 hover:shadow-sm transition-all">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex items-start gap-4 flex-1 min-w-0">
+            <div className="p-2.5 bg-brand-50 rounded-xl shrink-0">
+              <Bot className="w-5 h-5 text-brand-600" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="font-semibold text-gray-900 text-sm">{bot.name}</h3>
+                <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full flex items-center gap-1 ${st.color}`}>
+                  <span className={`w-1.5 h-1.5 rounded-full ${st.dot}`} />
+                  {st.label}
+                </span>
+                {testOnly && (
+                  <span className="text-[11px] font-medium px-2 py-0.5 rounded-full flex items-center gap-1 bg-amber-50 text-amber-700" title={bot.conditions.onlyPhones!.join(", ")}>
+                    <FlaskConical className="w-3 h-3" /> Só números de teste
+                  </span>
+                )}
+                {bot.stats.active > 0 && (
+                  <span className="text-[11px] text-blue-600">{bot.stats.active} em andamento</span>
+                )}
+                {bot.stats.failed > 0 && (
+                  <span className="text-[11px] text-red-600">{bot.stats.failed} com falha</span>
+                )}
+              </div>
+              {bot.description && <p className="text-xs text-gray-400 mt-0.5">{bot.description}</p>}
+              <div className="flex items-center gap-1.5 mt-2">
+                <Zap className="w-3 h-3 text-gray-400" />
+                <span className="text-xs text-gray-400">{bot.triggerLabel}</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-6 shrink-0">
+            <div className="text-center">
+              <p className="text-xs text-gray-400 mb-0.5">Sessões</p>
+              <p className="text-sm font-bold text-gray-800">{bot.stats.sessions}</p>
+            </div>
+            <div className="text-center">
+              <p className="text-xs text-gray-400 mb-0.5" title="Contatos que responderam durante o bot">Resposta</p>
+              <p className="text-sm font-bold text-gray-800">{convRate}%</p>
+            </div>
+            <div className="text-center">
+              <p className="text-xs text-gray-400 mb-0.5">Enviados</p>
+              <p className="text-sm font-bold text-gray-800">{bot.stats.sent}</p>
+            </div>
+
+            <div className="flex items-center gap-1.5 ml-2">
+              <button
+                onClick={() => toggleStatus(bot)}
+                className={`p-2 rounded-xl transition-colors ${
+                  bot.active
+                    ? "bg-yellow-50 text-yellow-600 hover:bg-yellow-100"
+                    : "bg-green-50 text-green-600 hover:bg-green-100"
+                }`}
+                title={bot.active ? "Pausar" : "Ativar"}
+              >
+                {bot.active ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+              </button>
+              <button
+                onClick={() => openEditor(bot.id)}
+                className="p-2 rounded-xl bg-gray-50 text-gray-500 hover:bg-gray-100 transition-colors"
+                title="Configurar"
+              >
+                <Settings className="w-4 h-4" />
+              </button>
+              <div className="relative">
+                <button
+                  onClick={() => setOpenMenu(openMenu === bot.id ? null : bot.id)}
+                  className="p-2 rounded-xl bg-gray-50 text-gray-500 hover:bg-gray-100 transition-colors"
+                >
+                  <MoreVertical className="w-4 h-4" />
+                </button>
+                {openMenu === bot.id && (
+                  <div className="absolute right-0 top-9 z-20 bg-white border border-gray-200 rounded-xl shadow-lg py-1 min-w-[140px]">
+                    <button onClick={() => duplicateBot(bot)} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-600 hover:bg-gray-50">
+                      <Copy className="w-3.5 h-3.5" /> Duplicar
+                    </button>
+                    <button
+                      onClick={() => deleteBot(bot)}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" /> Excluir
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div className="h-full bg-gray-50 overflow-y-auto">
@@ -145,108 +260,53 @@ export default function BotsPage() {
           ))}
         </div>
 
-        {/* Bots list */}
+        {/* Bots ativos */}
         <div className="space-y-3">
-          {bots.map((bot) => {
-            const st = statusConfig[statusOf(bot)];
-            const convRate = bot.stats.sessions > 0 ? Math.round((bot.stats.replied / bot.stats.sessions) * 100) : 0;
-            const testOnly = (bot.conditions?.onlyPhones ?? []).length > 0;
-
-            return (
-              <div key={bot.id} className="bg-white rounded-2xl border border-gray-100 p-5 hover:border-gray-200 hover:shadow-sm transition-all">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex items-start gap-4 flex-1 min-w-0">
-                    <div className="p-2.5 bg-brand-50 rounded-xl shrink-0">
-                      <Bot className="w-5 h-5 text-brand-600" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <h3 className="font-semibold text-gray-900 text-sm">{bot.name}</h3>
-                        <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full flex items-center gap-1 ${st.color}`}>
-                          <span className={`w-1.5 h-1.5 rounded-full ${st.dot}`} />
-                          {st.label}
-                        </span>
-                        {testOnly && (
-                          <span className="text-[11px] font-medium px-2 py-0.5 rounded-full flex items-center gap-1 bg-amber-50 text-amber-700" title={bot.conditions.onlyPhones!.join(", ")}>
-                            <FlaskConical className="w-3 h-3" /> Só números de teste
-                          </span>
-                        )}
-                        {bot.stats.active > 0 && (
-                          <span className="text-[11px] text-blue-600">{bot.stats.active} em andamento</span>
-                        )}
-                        {bot.stats.failed > 0 && (
-                          <span className="text-[11px] text-red-600">{bot.stats.failed} com falha</span>
-                        )}
-                      </div>
-                      {bot.description && <p className="text-xs text-gray-400 mt-0.5">{bot.description}</p>}
-                      <div className="flex items-center gap-1.5 mt-2">
-                        <Zap className="w-3 h-3 text-gray-400" />
-                        <span className="text-xs text-gray-400">{bot.triggerLabel}</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-6 shrink-0">
-                    <div className="text-center">
-                      <p className="text-xs text-gray-400 mb-0.5">Sessões</p>
-                      <p className="text-sm font-bold text-gray-800">{bot.stats.sessions}</p>
-                    </div>
-                    <div className="text-center">
-                      <p className="text-xs text-gray-400 mb-0.5" title="Contatos que responderam durante o bot">Resposta</p>
-                      <p className="text-sm font-bold text-gray-800">{convRate}%</p>
-                    </div>
-                    <div className="text-center">
-                      <p className="text-xs text-gray-400 mb-0.5">Enviados</p>
-                      <p className="text-sm font-bold text-gray-800">{bot.stats.sent}</p>
-                    </div>
-
-                    <div className="flex items-center gap-1.5 ml-2">
-                      <button
-                        onClick={() => toggleStatus(bot)}
-                        className={`p-2 rounded-xl transition-colors ${
-                          bot.active
-                            ? "bg-yellow-50 text-yellow-600 hover:bg-yellow-100"
-                            : "bg-green-50 text-green-600 hover:bg-green-100"
-                        }`}
-                        title={bot.active ? "Pausar" : "Ativar"}
-                      >
-                        {bot.active ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-                      </button>
-                      <button
-                        onClick={() => openEditor(bot.id)}
-                        className="p-2 rounded-xl bg-gray-50 text-gray-500 hover:bg-gray-100 transition-colors"
-                        title="Configurar"
-                      >
-                        <Settings className="w-4 h-4" />
-                      </button>
-                      <div className="relative">
-                        <button
-                          onClick={() => setOpenMenu(openMenu === bot.id ? null : bot.id)}
-                          className="p-2 rounded-xl bg-gray-50 text-gray-500 hover:bg-gray-100 transition-colors"
-                        >
-                          <MoreVertical className="w-4 h-4" />
-                        </button>
-                        {openMenu === bot.id && (
-                          <div className="absolute right-0 top-9 z-20 bg-white border border-gray-200 rounded-xl shadow-lg py-1 min-w-[140px]">
-                            <button onClick={() => duplicateBot(bot)} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-600 hover:bg-gray-50">
-                              <Copy className="w-3.5 h-3.5" /> Duplicar
-                            </button>
-                            <button
-                              onClick={() => deleteBot(bot)}
-                              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" /> Excluir
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
+          {activeBots.map(renderBot)}
         </div>
+
+        {!loading && activeBots.length === 0 && inactiveBots.length > 0 && (
+          <p className="text-sm text-gray-400 py-6 text-center">Nenhum bot ativo no momento</p>
+        )}
+
+        {/* Automações inativas */}
+        {inactiveBots.length > 0 && (
+          <div className="mt-8">
+            <button
+              onClick={() => setShowInactive((v) => !v)}
+              className="flex items-center gap-1.5 text-sm font-semibold text-gray-500 hover:text-gray-800 transition-colors"
+            >
+              {showInactive ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+              Automações inativas ({inactiveBots.length})
+            </button>
+            {showInactive && (
+              <div className="mt-3">
+                <div className="space-y-3">
+                  {inactiveSlice.map(renderBot)}
+                </div>
+                {inactivePages > 1 && (
+                  <div className="flex items-center justify-between mt-3 text-sm text-gray-500">
+                    <button
+                      disabled={page === 0}
+                      onClick={() => setInactivePage(page - 1)}
+                      className="flex items-center gap-1 px-3 py-1.5 rounded-xl hover:bg-gray-100 disabled:opacity-40 disabled:hover:bg-transparent"
+                    >
+                      <ChevronLeft className="w-4 h-4" /> Anterior
+                    </button>
+                    <span className="text-xs text-gray-400">Página {page + 1} de {inactivePages}</span>
+                    <button
+                      disabled={page >= inactivePages - 1}
+                      onClick={() => setInactivePage(page + 1)}
+                      className="flex items-center gap-1 px-3 py-1.5 rounded-xl hover:bg-gray-100 disabled:opacity-40 disabled:hover:bg-transparent"
+                    >
+                      Próxima <ChevronRight className="w-4 h-4" />
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
 
         {error && <p className="text-sm text-red-600 mb-3">{error}</p>}
         {loading && (
