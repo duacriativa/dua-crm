@@ -668,3 +668,55 @@ model Meeting {
   @@index([tenantId, startAt])
   @@index([contactId])
 }
+
+// ─── Instagram (API do Instagram com Login do Facebook) ──────────────────────
+
+// Conta profissional do Instagram ligada à Página do Facebook, com o token da Página.
+// Sem relação com Tenant de propósito: tabela nova criada pelo ensureSchema (ver prisma.service.ts).
+model InstagramAccount {
+  id        String   @id @default(cuid())
+  tenantId  String   @unique
+  pageId    String
+  pageName  String?
+  igUserId  String   @unique // id da conta profissional (entry.id dos webhooks)
+  username  String?
+  pageToken String   // token da Página, criptografado AES-256
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Regra de palavra-chave do Instagram (estilo ManyChat): comentário, resposta/menção a story ou DM → DM automática.
+model InstagramAutomation {
+  id            String   @id @default(cuid())
+  tenantId      String
+  name          String
+  trigger       String   // COMMENT | STORY_REPLY | STORY_MENTION | DM_KEYWORD | FIRST_DM (boas-vindas)
+  keywords      String[] @default([]) // vazio = qualquer texto
+  mediaIds      String[] @default([]) // COMMENT: só nesses posts/reels (vazio = todos)
+  dmText        String   // resposta privada (comentário) ou DM
+  publicReplies String[] @default([]) // COMMENT: resposta pública ao comentário (sorteia uma)
+  buttons       Json     @default("[]") // até 3: { title, url } abre link; { title } sem url responde o título (encadeia outra regra)
+  stageId       String?  // etapa do funil onde o contato entra (vazio = 1ª etapa do funil principal)
+  tag           String?  // etiqueta colocada no contato
+  active        Boolean  @default(true)
+  runCount      Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([tenantId, trigger, active])
+}
+
+// Comentário já tratado por uma regra: a Private Replies API aceita só 1 resposta por comentário.
+model InstagramCommentReply {
+  commentId    String   @id
+  tenantId     String
+  automationId String?
+  mediaId      String?
+  username     String?
+  text         String?
+  status       String   // SENT | FAILED
+  error        String?
+  createdAt    DateTime @default(now())
+
+  @@index([tenantId, createdAt])
+}

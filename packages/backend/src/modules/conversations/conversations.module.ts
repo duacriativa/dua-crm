@@ -5,9 +5,10 @@ import { PrismaModule } from '../../prisma/prisma.module';
 
 import { WhatsAppCloudModule } from '../whatsapp-cloud/whatsapp-cloud.module';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { InstagramModule } from '../instagram/instagram.module';
 
 @Module({
-  imports: [PrismaModule, WhatsAppCloudModule, NotificationsModule],
+  imports: [PrismaModule, WhatsAppCloudModule, InstagramModule, NotificationsModule],
   controllers: [ConversationsController],
   providers: [ConversationsService],
   exports: [ConversationsService],
