@@ -114,6 +114,7 @@ const tabs: { label: string; value: string }[] = [
 function ConversasInner() {
   const searchParams = useSearchParams();
   const phoneParam = searchParams.get("phone");
+  const convParam = searchParams.get("conv");
 
   const [activeTab, setActiveTab] = useState("ALL");
   const [search, setSearch] = useState("");
@@ -355,24 +356,26 @@ function ConversasInner() {
     return () => clearInterval(interval);
   }, [fetchConversations]);
 
-  // ── Auto-seleciona conversa pelo ?phone= param ────────────────────────────
+  // ── Auto-seleciona conversa pelo ?conv= (notificação push) ou ?phone= ──────
   useEffect(() => {
-    if (!phoneParam || loading || phoneParamUsed.current) return;
+    if ((!phoneParam && !convParam) || loading || phoneParamUsed.current) return;
     const nameParam = searchParams.get("name");
-    const digits = phoneParam.replace(/\D/g, "");
+    const digits = phoneParam?.replace(/\D/g, "");
     const match = conversations.find((c) =>
-      c.contact.phone?.replace(/\D/g, "") === digits
+      (convParam && c.id === convParam) || (digits && c.contact.phone?.replace(/\D/g, "") === digits)
     );
     if (match) {
       phoneParamUsed.current = true;
       selectConversation(match);
-    } else if (!loading) {
+    } else if (!phoneParam) {
+      phoneParamUsed.current = true;
+    } else {
       phoneParamUsed.current = true;
       setNewConvPhone(phoneParam);
       if (nameParam) setNewConvName(nameParam);
       setShowNewConv(true);
     }
-  }, [phoneParam, conversations, loading, searchParams]);
+  }, [phoneParam, convParam, conversations, loading, searchParams]);
 
   // ── Inicia conversa outbound ──────────────────────────────────────────────
   const startConversation = async () => {

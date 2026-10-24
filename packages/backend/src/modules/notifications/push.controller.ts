@@ -27,7 +27,7 @@ export class PushController {
     await this.push.sendToTenant(req.user.tenantId, {
       title: 'Dua CRM',
       body: 'Notificações ativadas neste aparelho ✅',
-      url: '/dashboard/whatsapp',
+      url: '/dashboard/conversas',
     });
     return { ok: true };
   }
