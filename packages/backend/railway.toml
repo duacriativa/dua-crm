@@ -3,8 +3,8 @@ builder = "dockerfile"
 dockerfilePath = "Dockerfile"
 
 [deploy]
-restartPolicyType = "on_failure"
-restartPolicyMaxRetries = 3
+# Bots e lembretes rodam 24h: reinicia sempre que o processo cair, sem limite de tentativas
+restartPolicyType = "always"
 
 [deploy.healthcheck]
 path = "/health"
