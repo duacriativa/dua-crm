@@ -152,7 +152,7 @@ const QUALIFY_BUTTONS = (existing: string, fresh: string) => [
 
 /**
  * Roteiro de qualificação (do passo "momento" em diante), igual para o formulário e para o WhatsApp:
- * já vende ou está começando → 2 perguntas de cada caminho → convite para a call (Calendly).
+ * já vende ou está começando → 2 perguntas de cada caminho → convite para a call (link de agendamento).
  * Quem para no meio cai em "parou" (aviso para o Daniel).
  */
 function qualifySteps(momentoText: string): BotStep[] {
@@ -196,9 +196,9 @@ function qualifySteps(momentoText: string): BotStep[] {
     { id: "pausa_convite", name: "Convite", type: "wait", seconds: 30 },
     {
       id: "convite", type: "send_text",
-      text: "Perfeito, {{primeiro_nome}}! Com o que você me contou já dá pra preparar uma conversa bem direcionada pro momento da sua marca 💜\n\nQuem vai conversar com você é o *Daniel*, que cuida da estratégia aqui na Dua. São 45 min por vídeo: ele entende seu cenário com calma, te mostra como a gente trabalha e, se fizer sentido pros dois lados, vocês veem os próximos passos.\n\nEscolhe o melhor horário aqui: https://calendly.com/duacriativa/45min",
+      text: "Perfeito, {{primeiro_nome}}! Com o que você me contou já dá pra preparar uma conversa bem direcionada pro momento da sua marca 💜\n\nQuem vai conversar com você é o *Daniel*, que cuida da estratégia aqui na Dua. São 45 min por vídeo: ele entende seu cenário com calma, te mostra como a gente trabalha e, se fizer sentido pros dois lados, vocês veem os próximos passos.\n\nEscolhe o melhor horário aqui: https://crm.duacriativa.com.br/agendar/especialista",
     },
-    { id: "aviso_fim", type: "notify", to: "Daniel", text: "{{primeiro_nome}} concluiu a qualificação e recebeu o link do Calendly.\n\nRespostas:\n{{respostas}}" },
+    { id: "aviso_fim", type: "notify", to: "Daniel", text: "{{primeiro_nome}} concluiu a qualificação e recebeu o link de agendamento.\n\nRespostas:\n{{respostas}}" },
     { id: "fim", type: "end" },
 
     { id: "parou", name: "Parou no meio", type: "notify", to: "Daniel", text: "{{primeiro_nome}} parou no meio da qualificação. O que respondeu até agora:\n{{respostas}}" },
@@ -209,7 +209,7 @@ function qualifySteps(momentoText: string): BotStep[] {
 /**
  * Qualificação de quem preencheu o formulário, seguindo o roteiro da call do Dua Lab:
  * 1ª mensagem → follow-up se não responder → marca já vende ou está começando →
- * 2 perguntas de diagnóstico de cada caminho → convite para a call com o Daniel (Calendly).
+ * 2 perguntas de diagnóstico de cada caminho → convite para a call com o Daniel (link de agendamento).
  * O bot para sozinho quando alguém do time escreve na conversa.
  */
 export function formQualifyPreset(first: WaTemplate | undefined, followup: WaTemplate | undefined): Partial<Bot> {
