@@ -690,11 +690,13 @@ model InstagramAutomation {
   id            String   @id @default(cuid())
   tenantId      String
   name          String
-  trigger       String   // COMMENT | STORY_REPLY | STORY_MENTION | DM_KEYWORD
+  trigger       String   // COMMENT | STORY_REPLY | STORY_MENTION | DM_KEYWORD | FIRST_DM (boas-vindas)
   keywords      String[] @default([]) // vazio = qualquer texto
   mediaIds      String[] @default([]) // COMMENT: só nesses posts/reels (vazio = todos)
   dmText        String   // resposta privada (comentário) ou DM
   publicReplies String[] @default([]) // COMMENT: resposta pública ao comentário (sorteia uma)
+  buttons       Json     @default("[]") // até 3: { title, url } abre link; { title } sem url responde o título (encadeia outra regra)
+  stageId       String?  // etapa do funil onde o contato entra (vazio = 1ª etapa do funil principal)
   tag           String?  // etiqueta colocada no contato
   active        Boolean  @default(true)
   runCount      Int      @default(0)

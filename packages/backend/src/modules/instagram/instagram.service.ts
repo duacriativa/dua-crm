@@ -24,8 +24,19 @@ const RULE_COOLDOWN_MS = 3600_000;
 /** O eco de uma mensagem enviada pelo CRM pode chegar antes de o envio gravar o mid. */
 const ECHO_DELAY_MS = 3000;
 
-export const IG_TRIGGERS = ['COMMENT', 'STORY_REPLY', 'STORY_MENTION', 'DM_KEYWORD'] as const;
+/** Como cada gatilho aparece na nota do card no funil. */
+const TRIGGER_ORIGIN: Record<string, string> = {
+  COMMENT: 'comentário', STORY_REPLY: 'resposta ao story', STORY_MENTION: 'menção no story', DM_KEYWORD: 'palavra-chave na DM', FIRST_DM: 'primeira DM',
+};
+
+export const IG_TRIGGERS = ['COMMENT', 'STORY_REPLY', 'STORY_MENTION', 'DM_KEYWORD', 'FIRST_DM'] as const;
 export type IgTrigger = (typeof IG_TRIGGERS)[number];
+
+/** Botão da DM: com url abre o link; sem url, o toque volta como mensagem com o título (dá para encadear outra regra). */
+export type RuleButton = { title: string; url?: string };
+
+/** Funil das regras de brinde/conteúdo: lead frio, separado do funil de vendas. */
+const INSTAGRAM_FUNNEL = { name: 'Instagram', stages: ['Recebeu o brinde', 'Respondeu', 'Qualificado', 'Enviado para Vendas'] };
 
 type MsgType = 'TEXT' | 'IMAGE' | 'VIDEO' | 'AUDIO' | 'DOCUMENT' | 'INTERACTIVE';
 
@@ -263,9 +274,39 @@ export class InstagramService {
     return this.sendText(tenantId, igsid, text, { humanAgent: age > WINDOW_MS });
   }
 
-  /** Resposta privada a um comentário (1 por comentário, em até 7 dias). */
-  private async privateReply(acc: Account, commentId: string, text: string) {
-    return this.postMessage(acc, { recipient: { comment_id: commentId }, message: { text } });
+  /**
+   * Mensagem de uma regra, com botões quando houver (modelo de botões do Instagram).
+   * Se o Instagram recusar o modelo, manda o texto com os links e respostas rápidas.
+   * `recipient` é { id } (DM) ou { comment_id } (resposta privada: 1 por comentário, em até 7 dias).
+   */
+  private async sendRuleMessage(acc: Account, recipient: { id: string } | { comment_id: string }, text: string, buttons: RuleButton[]) {
+    if (!buttons.length) return this.postMessage(acc, { recipient, message: { text } });
+    try {
+      return await this.postMessage(acc, {
+        recipient,
+        message: {
+          attachment: {
+            type: 'template',
+            payload: {
+              template_type: 'button',
+              text,
+              buttons: buttons.map((b) => (b.url ? { type: 'web_url', url: b.url, title: b.title } : { type: 'postback', title: b.title, payload: b.title })),
+            },
+          },
+        },
+      });
+    } catch (err: any) {
+      this.logger.warn(`[IG] Modelo com botões recusado (${err.message}): enviando como texto`);
+      const links = buttons.filter((b) => b.url).map((b) => `👉 ${b.title}: ${b.url}`).join('\n');
+      const replies = buttons.filter((b) => !b.url);
+      return this.postMessage(acc, {
+        recipient,
+        message: {
+          text: links ? `${text}\n\n${links}` : text,
+          ...(replies.length ? { quick_replies: replies.map((b) => ({ content_type: 'text', title: b.title, payload: b.title })) } : {}),
+        },
+      });
+    }
   }
 
   private async publicReply(acc: Account, commentId: string, text: string) {
@@ -505,7 +546,6 @@ export class InstagramService {
       return;
     }
 
-    await this.funnel.ensureLead(acc.tenantId, contact.id, isNew ? 'Origem: Instagram — Direct' : undefined);
     this.events.emit('instagram.inbound', { tenantId: acc.tenantId, contactId: contact.id, conversationId: conv.id, firstMessage: isNew });
     this.push.sendToTenant(acc.tenantId, {
       title: `${contact.name} · Instagram`,
@@ -515,7 +555,15 @@ export class InstagramService {
     });
 
     const trigger: IgTrigger = parsed.story === 'reply' ? 'STORY_REPLY' : parsed.story === 'mention' ? 'STORY_MENTION' : 'DM_KEYWORD';
-    await this.runDmRule(acc, trigger, parsed.content, contact, conv.id, igsid);
+    let rule = await this.runDmRule(acc, trigger, parsed.content, contact, conv.id, igsid);
+    // Primeira DM de quem nunca falou com a gente e não caiu em palavra-chave: boas-vindas
+    if (!rule && isNew && trigger === 'DM_KEYWORD') rule = await this.runDmRule(acc, 'FIRST_DM', parsed.content, contact, conv.id, igsid);
+
+    // Funil: a regra pode mandar para uma etapa própria (ex.: funil Instagram); senão, quem ainda
+    // não tem card em nenhum funil entra no principal (quem veio de um brinde não vai para Vendas sozinho)
+    if (!rule?.stageId && !(await this.prisma.pipelineLead.findFirst({ where: { contactId: contact.id }, select: { id: true } }))) {
+      await this.funnel.ensureLead(acc.tenantId, contact.id, isNew ? 'Origem: Instagram — Direct' : undefined);
+    }
   }
 
   // ── Regras de palavra-chave ────────────────────────────────────────────────
@@ -527,30 +575,44 @@ export class InstagramService {
     });
   }
 
-  /** Story ou DM: a primeira regra que bate responde na DM (uma vez por hora por contato). */
+  /** Story ou DM: a primeira regra que bate responde na DM (uma vez por hora por contato). Devolve a regra que respondeu. */
   private async runDmRule(
     acc: Account, trigger: IgTrigger, text: string,
     contact: { id: string; name: string; tags: string[]; instagramHandle: string | null }, conversationId: string, igsid: string,
   ) {
     // Menção a story não tem texto: palavras-chave não se aplicam
-    const rule = (await this.rulesFor(acc.tenantId, trigger)).find((r) => trigger === 'STORY_MENTION' || matchesKeywords(text, r.keywords));
-    if (!rule) return;
+    // Menção a story e boas-vindas não usam palavra-chave
+    const rule = (await this.rulesFor(acc.tenantId, trigger))
+      .find((r) => trigger === 'STORY_MENTION' || trigger === 'FIRST_DM' || matchesKeywords(text, r.keywords));
+    if (!rule) return null;
 
     const reply = fillVars(rule.dmText, this.varsFor(contact.name, contact.instagramHandle));
     const recent = await this.prisma.message.findFirst({
-      where: { conversationId, direction: 'OUTBOUND', senderName: 'Bot', content: reply, sentAt: { gte: new Date(Date.now() - RULE_COOLDOWN_MS) } },
+      where: { conversationId, direction: 'OUTBOUND', senderName: 'Bot', content: { startsWith: reply }, sentAt: { gte: new Date(Date.now() - RULE_COOLDOWN_MS) } },
       select: { id: true },
     });
-    if (recent) return;
+    if (recent) return null;
 
     try {
-      const { externalId } = await this.sendText(acc.tenantId, igsid, reply);
-      await this.recordBotMessage(conversationId, reply, externalId);
-      await this.afterRule(rule, contact);
+      const buttons = this.buttonsOf(rule);
+      const { externalId } = await this.sendRuleMessage(acc, { id: igsid }, reply, buttons);
+      await this.recordBotMessage(conversationId, this.withButtons(reply, buttons), externalId);
+      await this.afterRule(rule, contact, `Origem: Instagram — ${TRIGGER_ORIGIN[trigger]}`);
       this.logger.log(`[IG] Regra "${rule.name}" (${trigger}) respondeu ${contact.id}`);
+      return rule;
     } catch (err: any) {
       this.logger.warn(`[IG] Regra "${rule.name}" falhou para ${contact.id}: ${err.message}`);
+      return null;
     }
+  }
+
+  private buttonsOf(rule: { buttons: any }): RuleButton[] {
+    return Array.isArray(rule.buttons) ? rule.buttons : [];
+  }
+
+  /** Texto do balão no CRM: a mensagem e os botões, como no WhatsApp. */
+  private withButtons(text: string, buttons: RuleButton[]) {
+    return buttons.length ? `${text}\n\n${buttons.map((b) => `[ ${b.title} ]`).join('  ')}` : text;
   }
 
   /**
@@ -581,11 +643,13 @@ export class InstagramService {
     const vars = this.varsFor(username ? `@${username}` : '', username);
     const dm = fillVars(rule.dmText, vars);
     try {
-      const { externalId, recipientId } = await this.privateReply(acc, commentId, dm);
+      const buttons = this.buttonsOf(rule);
+      const { externalId, recipientId } = await this.sendRuleMessage(acc, { comment_id: commentId }, dm, buttons);
       const { contact, conv, isNew } = await this.ensureContact(acc, recipientId || fromId, { username });
-      await this.recordBotMessage(conv.id, dm, externalId, `Comentário: "${text.slice(0, 300)}"`);
-      await this.funnel.ensureLead(acc.tenantId, contact.id, isNew ? `Origem: Instagram — comentário "${text.slice(0, 80)}"` : undefined);
-      await this.afterRule(rule, contact);
+      await this.recordBotMessage(conv.id, this.withButtons(dm, buttons), externalId, `Comentário: "${text.slice(0, 300)}"`);
+      const origin = `Origem: Instagram — comentário "${text.slice(0, 80)}"`;
+      if (!rule.stageId) await this.funnel.ensureLead(acc.tenantId, contact.id, isNew ? origin : undefined);
+      await this.afterRule(rule, contact, origin);
 
       if (rule.publicReplies.length) {
         const pick = rule.publicReplies[Math.floor(Math.random() * rule.publicReplies.length)];
@@ -614,11 +678,39 @@ export class InstagramService {
     await this.prisma.conversation.update({ where: { id: conversationId }, data: { updatedAt: new Date() } });
   }
 
-  private async afterRule(rule: { id: string; tag: string | null }, contact: { id: string; tags: string[] }) {
+  private async afterRule(rule: { id: string; tenantId: string; tag: string | null; stageId: string | null }, contact: { id: string; tags: string[] }, origin: string) {
     await this.prisma.instagramAutomation.update({ where: { id: rule.id }, data: { runCount: { increment: 1 } } });
+    if (rule.stageId) await this.funnel.ensureLeadAt(rule.tenantId, contact.id, rule.stageId, origin);
     if (rule.tag && !contact.tags.includes(rule.tag)) {
       await this.prisma.contact.update({ where: { id: contact.id }, data: { tags: [...contact.tags, rule.tag] } });
     }
+  }
+
+  // ── Funis ──────────────────────────────────────────────────────────────────
+
+  /** Funis e etapas (sem os cards), para escolher onde a regra coloca o contato. */
+  listFunnels(tenantId: string) {
+    return this.prisma.pipeline.findMany({
+      where: { tenantId },
+      orderBy: { createdAt: 'asc' },
+      select: { id: true, name: true, stages: { orderBy: { position: 'asc' }, select: { id: true, name: true, kind: true } } },
+    });
+  }
+
+  /** Cria o funil "Instagram" (leads frios dos brindes/conteúdo); se já existir, devolve o que está lá. */
+  async ensureInstagramFunnel(tenantId: string) {
+    const existing = await this.prisma.pipeline.findFirst({ where: { tenantId, name: { equals: INSTAGRAM_FUNNEL.name, mode: 'insensitive' } } });
+    if (!existing) {
+      // O funil principal é o mais antigo: este, criado depois, nunca vira o principal
+      await this.prisma.pipeline.create({
+        data: {
+          tenantId,
+          name: INSTAGRAM_FUNNEL.name,
+          stages: { create: INSTAGRAM_FUNNEL.stages.map((name, position) => ({ name, position, color: '#EC4899' })) },
+        },
+      });
+    }
+    return this.listFunnels(tenantId);
   }
 
   // ── CRUD das regras ────────────────────────────────────────────────────────
@@ -654,16 +746,39 @@ export class InstagramService {
     if (!partial || body.mediaIds !== undefined) out.mediaIds = list(body.mediaIds, 50, 40);
     if (!partial || body.publicReplies !== undefined) out.publicReplies = list(body.publicReplies, 10, 300);
     if (!partial || body.tag !== undefined) out.tag = String(body.tag ?? '').trim().slice(0, 60) || null;
+    if (!partial || body.stageId !== undefined) out.stageId = String(body.stageId ?? '').trim() || null;
+    if (!partial || body.buttons !== undefined) {
+      const buttons: RuleButton[] = (Array.isArray(body.buttons) ? body.buttons : [])
+        .map((b: any) => ({ title: String(b?.title ?? '').trim(), url: String(b?.url ?? '').trim() }))
+        .filter((b: RuleButton) => b.title)
+        .map((b: RuleButton) => (b.url ? b : { title: b.title }));
+      if (buttons.length > 3) throw new BadRequestException('Use no máximo 3 botões.');
+      if (buttons.some((b) => b.title.length > 20)) throw new BadRequestException('Texto do botão com mais de 20 caracteres (limite do Instagram).');
+      if (buttons.some((b) => b.url && !/^https?:\/\/\S+$/i.test(b.url))) throw new BadRequestException('Link do botão inválido: comece com https://');
+      out.buttons = buttons;
+    }
+    if (out.buttons?.length && out.dmText && out.dmText.length > 640) throw new BadRequestException('Com botões, a mensagem pode ter até 640 caracteres.');
     if (body.active !== undefined) out.active = !!body.active;
     return out;
   }
 
-  createAutomation(tenantId: string, body: any) {
-    return this.prisma.instagramAutomation.create({ data: { tenantId, ...this.sanitize(body) } });
+  /** A etapa escolhida precisa ser de um funil do tenant. */
+  private async checkStage(tenantId: string, stageId: string | null | undefined) {
+    if (!stageId) return;
+    const ok = await this.prisma.pipelineStage.findFirst({ where: { id: stageId, pipeline: { tenantId } }, select: { id: true } });
+    if (!ok) throw new BadRequestException('Etapa do funil não encontrada.');
+  }
+
+  async createAutomation(tenantId: string, body: any) {
+    const data = this.sanitize(body);
+    await this.checkStage(tenantId, data.stageId);
+    return this.prisma.instagramAutomation.create({ data: { tenantId, ...data } });
   }
 
   async updateAutomation(tenantId: string, id: string, body: any) {
-    const { count } = await this.prisma.instagramAutomation.updateMany({ where: { id, tenantId }, data: this.sanitize(body, true) });
+    const data = this.sanitize(body, true);
+    await this.checkStage(tenantId, data.stageId);
+    const { count } = await this.prisma.instagramAutomation.updateMany({ where: { id, tenantId }, data });
     if (!count) throw new NotFoundException('Regra não encontrada.');
     return this.prisma.instagramAutomation.findUnique({ where: { id } });
   }

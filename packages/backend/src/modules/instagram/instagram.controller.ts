@@ -33,6 +33,20 @@ export class InstagramController {
     return this.ig.listMedia(req.user.tenantId);
   }
 
+  /** GET /instagram/funnels — funis e etapas para a regra escolher onde o contato entra */
+  @Get('funnels')
+  @UseGuards(JwtAuthGuard)
+  funnels(@Req() req: any) {
+    return this.ig.listFunnels(req.user.tenantId);
+  }
+
+  /** POST /instagram/funnels — cria o funil "Instagram" (leads dos brindes), se ainda não existir */
+  @Post('funnels')
+  @UseGuards(JwtAuthGuard)
+  createFunnel(@Req() req: any) {
+    return this.ig.ensureInstagramFunnel(req.user.tenantId);
+  }
+
   @Get('automations')
   @UseGuards(JwtAuthGuard)
   listAutomations(@Req() req: any) {

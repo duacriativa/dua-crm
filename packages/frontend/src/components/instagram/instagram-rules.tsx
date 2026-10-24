@@ -1,14 +1,17 @@
 "use client";
 
 import { useCallback, useEffect, useState, type ReactNode } from "react";
-import { Instagram, Plus, Loader2, Trash2, Pause, Play, Pencil, X, MessageCircle, CircleDot, AtSign, Send } from "lucide-react";
+import { Instagram, Plus, Loader2, Trash2, Pause, Play, Pencil, X, MessageCircle, CircleDot, AtSign, Send, Hand, Link2, Reply } from "lucide-react";
 import api from "@/lib/api";
 
-type Trigger = "COMMENT" | "STORY_REPLY" | "STORY_MENTION" | "DM_KEYWORD";
+type Trigger = "COMMENT" | "STORY_REPLY" | "STORY_MENTION" | "DM_KEYWORD" | "FIRST_DM";
+// Com url abre o link; sem url, o toque volta como mensagem com o título (pode disparar outra regra)
+type RuleButton = { title: string; url?: string };
+interface Funnel { id: string; name: string; stages: { id: string; name: string; kind: string }[] }
 
 export interface IgRule {
   id: string; name: string; trigger: Trigger; keywords: string[]; mediaIds: string[];
-  dmText: string; publicReplies: string[]; tag: string | null; active: boolean; runCount: number;
+  dmText: string; publicReplies: string[]; buttons: RuleButton[]; stageId: string | null; tag: string | null; active: boolean; runCount: number;
 }
 interface IgMedia { id: string; caption?: string; media_product_type?: string; media_type?: string; thumbnail_url?: string; media_url?: string; permalink?: string; timestamp?: string }
 interface IgStatus { connected: boolean; username?: string }
@@ -17,7 +20,8 @@ const TRIGGERS: Record<Trigger, { label: string; hint: string; icon: ReactNode }
   COMMENT: { label: "Comentário em post/reel", hint: "Responde na DM de quem comentou a palavra (1 resposta por comentário, até 7 dias)", icon: <MessageCircle className="w-4 h-4" /> },
   STORY_REPLY: { label: "Resposta a story", hint: "Quem responder um story com a palavra recebe a DM", icon: <CircleDot className="w-4 h-4" /> },
   STORY_MENTION: { label: "Menção no story", hint: "Quem marcar o @ no story recebe a DM (sem palavra-chave)", icon: <AtSign className="w-4 h-4" /> },
-  DM_KEYWORD: { label: "Palavra-chave na DM", hint: "Quem mandar a palavra no Direct recebe a resposta", icon: <Send className="w-4 h-4" /> },
+  DM_KEYWORD: { label: "Palavra-chave na DM", hint: "Quem mandar a palavra no Direct recebe a resposta (também vale para o toque num botão sem link)", icon: <Send className="w-4 h-4" /> },
+  FIRST_DM: { label: "Boas-vindas (1ª DM)", hint: "Quem nunca falou com a Dua e manda a primeira DM recebe a apresentação (se nenhuma palavra-chave respondeu antes)", icon: <Hand className="w-4 h-4" /> },
 };
 
 const errMsg = (e: any) => {
@@ -26,7 +30,7 @@ const errMsg = (e: any) => {
 };
 
 const empty = (): Omit<IgRule, "id" | "runCount"> => ({
-  name: "", trigger: "COMMENT", keywords: [], mediaIds: [], dmText: "", publicReplies: [], tag: null, active: true,
+  name: "", trigger: "COMMENT", keywords: [], mediaIds: [], dmText: "", publicReplies: [], buttons: [], stageId: null, tag: null, active: true,
 });
 
 /* ── Regras de palavra-chave do Instagram (comentário/story/DM → DM automática) ── */
@@ -97,9 +101,10 @@ export function InstagramRules() {
                 <span className="text-[11px] text-gray-400">{TRIGGERS[r.trigger]?.label}</span>
               </div>
               <p className="text-xs text-gray-500 mt-1">
-                {r.trigger === "STORY_MENTION" ? "Qualquer menção" : r.keywords.length ? <>Palavras: {r.keywords.map((k) => <b key={k} className="mr-1">{k}</b>)}</> : "Qualquer texto"}
+                {r.trigger === "STORY_MENTION" ? "Qualquer menção" : r.trigger === "FIRST_DM" ? "Primeira mensagem" : r.keywords.length ? <>Palavras: {r.keywords.map((k) => <b key={k} className="mr-1">{k}</b>)}</> : "Qualquer texto"}
                 {r.trigger === "COMMENT" && <> · {r.mediaIds.length ? `${r.mediaIds.length} post(s)` : "todos os posts"}</>}
                 {r.publicReplies.length > 0 && <> · responde no comentário</>}
+                {r.buttons?.length > 0 && <> · {r.buttons.length} botão(ões)</>}
               </p>
               <p className="text-xs text-gray-400 mt-1 truncate">DM: {r.dmText}</p>
             </div>
@@ -131,8 +136,23 @@ function RuleEditor({ rule, onClose, onSaved }: {
   const [publicReplies, setPublicReplies] = useState(rule.publicReplies.join("\n"));
   const [media, setMedia] = useState<IgMedia[] | null>(null);
   const [mediaError, setMediaError] = useState("");
+  const [funnels, setFunnels] = useState<Funnel[] | null>(null);
+  const [creatingFunnel, setCreatingFunnel] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  useEffect(() => { api.get("/instagram/funnels").then((r) => setFunnels(r.data)).catch(() => setFunnels([])); }, []);
+  const createFunnel = async () => {
+    setCreatingFunnel(true);
+    try {
+      const list: Funnel[] = (await api.post("/instagram/funnels")).data;
+      setFunnels(list);
+      const ig = list.find((f) => f.name.toLowerCase() === "instagram");
+      if (ig?.stages[0]) set({ stageId: ig.stages[0].id });
+    } catch (e) { setError(errMsg(e)); } finally { setCreatingFunnel(false); }
+  };
+  const hasIgFunnel = !!funnels?.some((f) => f.name.toLowerCase() === "instagram");
+  const setButton = (i: number, patch: Partial<RuleButton>) =>
+    set({ buttons: form.buttons.map((b, j) => (j === i ? { ...b, ...patch } : b)) });
   const set = (patch: Partial<typeof form>) => setForm((f) => ({ ...f, ...patch }));
 
   useEffect(() => {
@@ -144,12 +164,14 @@ function RuleEditor({ rule, onClose, onSaved }: {
     set({ mediaIds: form.mediaIds.includes(id) ? form.mediaIds.filter((m) => m !== id) : [...form.mediaIds, id] });
 
   const save = async () => {
+    if (form.buttons.some((b) => b.title.trim() && b.url !== undefined && !b.url.trim())) { setError("Preencha o link do botão (ou use um botão de resposta)."); return; }
     setSaving(true); setError("");
     const body = {
       ...form,
       keywords: keywords.split(",").map((k) => k.trim()).filter(Boolean),
       publicReplies: form.trigger === "COMMENT" ? publicReplies.split("\n").map((k) => k.trim()).filter(Boolean) : [],
       mediaIds: form.trigger === "COMMENT" ? form.mediaIds : [],
+      buttons: form.buttons.filter((b) => b.title.trim()),
     };
     try {
       if (form.id) await api.patch(`/instagram/automations/${form.id}`, body);
@@ -187,7 +209,7 @@ function RuleEditor({ rule, onClose, onSaved }: {
             <p className="text-[11px] text-gray-400 mt-1.5">{TRIGGERS[form.trigger].hint}</p>
           </div>
 
-          {form.trigger !== "STORY_MENTION" && (
+          {form.trigger !== "STORY_MENTION" && form.trigger !== "FIRST_DM" && (
             <label className="block">
               <span className="text-xs font-semibold text-gray-600">Palavras-chave (separadas por vírgula)</span>
               <input value={keywords} onChange={(e) => setKeywords(e.target.value)} placeholder="ebook, quero, link" className={`${input} mt-1`} />
@@ -228,6 +250,30 @@ function RuleEditor({ rule, onClose, onSaved }: {
             <span className="text-[11px] text-gray-400">Use {"{{primeiro_nome}}"}, {"{{nome}}"} ou {"{{usuario}}"} (o @).</span>
           </label>
 
+          <div>
+            <span className="text-xs font-semibold text-gray-600">Botões (até 3)</span>
+            <p className="text-[11px] text-gray-400 mb-1.5">Com link abre o site. Sem link, o toque responde o texto do botão: crie uma regra "Palavra-chave na DM" com ele para continuar a conversa.</p>
+            <div className="space-y-1.5">
+              {form.buttons.map((b, i) => (
+                <div key={i} className="flex gap-1.5 items-center">
+                  {b.url !== undefined ? <Link2 className="w-4 h-4 text-gray-400 shrink-0" /> : <Reply className="w-4 h-4 text-gray-400 shrink-0" />}
+                  <input value={b.title} maxLength={20} onChange={(e) => setButton(i, { title: e.target.value })} placeholder="Texto (até 20)" className={`${input} w-36`} />
+                  {b.url !== undefined && (
+                    <input value={b.url} onChange={(e) => setButton(i, { url: e.target.value })} placeholder="https://duacriativa.com.br" className={`${input} flex-1`} />
+                  )}
+                  {b.url === undefined && <span className="flex-1 text-[11px] text-gray-400">responde "{b.title || "…"}"</span>}
+                  <button type="button" onClick={() => set({ buttons: form.buttons.filter((_, j) => j !== i) })} className="p-1.5 text-gray-400 hover:text-red-600"><X className="w-4 h-4" /></button>
+                </div>
+              ))}
+            </div>
+            {form.buttons.length < 3 && (
+              <div className="flex gap-2 mt-1.5">
+                <button type="button" onClick={() => set({ buttons: [...form.buttons, { title: "", url: "" }] })} className="text-xs font-semibold text-brand-600 hover:underline">+ Botão com link</button>
+                <button type="button" onClick={() => set({ buttons: [...form.buttons, { title: "" }] })} className="text-xs font-semibold text-brand-600 hover:underline">+ Botão de resposta</button>
+              </div>
+            )}
+          </div>
+
           {form.trigger === "COMMENT" && (
             <label className="block">
               <span className="text-xs font-semibold text-gray-600">Resposta pública no comentário (opcional, uma por linha: sorteia uma)</span>
@@ -235,6 +281,24 @@ function RuleEditor({ rule, onClose, onSaved }: {
                 placeholder={"Te mandei na DM! 💌\nConfere o Direct, {{usuario}} 😉"} className={`${input} mt-1 resize-none`} />
             </label>
           )}
+
+          <div>
+            <span className="text-xs font-semibold text-gray-600">Funil</span>
+            <select value={form.stageId ?? ""} onChange={(e) => set({ stageId: e.target.value || null })} className={`${input} mt-1`}>
+              <option value="">Padrão: 1ª etapa do funil de vendas</option>
+              {(funnels ?? []).map((f) => (
+                <optgroup key={f.id} label={f.name}>
+                  {f.stages.filter((st) => st.kind === "OPEN").map((st) => <option key={st.id} value={st.id}>{f.name} → {st.name}</option>)}
+                </optgroup>
+              ))}
+            </select>
+            {funnels && !hasIgFunnel && (
+              <button type="button" onClick={createFunnel} disabled={creatingFunnel} className="text-xs font-semibold text-brand-600 hover:underline mt-1 disabled:opacity-50">
+                {creatingFunnel ? "Criando…" : "+ Criar funil Instagram (para leads dos brindes)"}
+              </button>
+            )}
+            <p className="text-[11px] text-gray-400 mt-1">Quem já tem card nesse funil fica onde está. Leads do funil Instagram não entram em Vendas sozinhos: mova o card quando esquentar.</p>
+          </div>
 
           <label className="block">
             <span className="text-xs font-semibold text-gray-600">Etiqueta no contato (opcional)</span>

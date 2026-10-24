@@ -74,6 +74,33 @@ export class FunnelService {
   }
 
   /**
+   * Garante um card do contato na etapa `stageId` (de qualquer funil do tenant).
+   * Quem já tem card nesse funil fica onde está; cliente é ignorado. Etapa inexistente → ensureLead.
+   */
+  async ensureLeadAt(tenantId: string, contactId: string, stageId: string, notes?: string) {
+    try {
+      const stage = await this.prisma.pipelineStage.findFirst({
+        where: { id: stageId, pipeline: { tenantId } },
+        include: { pipeline: { select: { name: true } } },
+      });
+      if (!stage) return this.ensureLead(tenantId, contactId, notes);
+      const contact = await this.prisma.contact.findFirst({ where: { id: contactId, tenantId }, select: { type: true } });
+      if (!contact || contact.type === 'CLIENT') return;
+
+      const existing = await this.prisma.pipelineLead.findFirst({
+        where: { contactId, stage: { pipelineId: stage.pipelineId } },
+        select: { id: true },
+      });
+      if (existing) return;
+      const count = await this.prisma.pipelineLead.count({ where: { stageId: stage.id } });
+      await this.prisma.pipelineLead.create({ data: { stageId: stage.id, contactId, position: count, notes: notes ?? null } });
+      this.logger.log(`[Funnel] Contato ${contactId} adicionado em "${stage.pipeline.name}" → "${stage.name}"`);
+    } catch (err: any) {
+      this.logger.warn(`[Funnel] Falha ao adicionar contato ${contactId} na etapa ${stageId}: ${err.message}`);
+    }
+  }
+
+  /**
    * Leva o card do contato para a etapa `stageName` do funil principal, só para frente:
    * não volta quem já está mais adiante nem mexe em card Ganho/Perdido.
    * Se a etapa não existir, cai no ensureLead (card na primeira etapa). Nunca lança erro.

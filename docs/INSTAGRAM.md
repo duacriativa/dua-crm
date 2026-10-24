@@ -23,18 +23,34 @@ empresa Dua Marketing de Moda, usuário de sistema **CRM Dua**.
     frases). Dá para limitar a posts/reels escolhidos.
   - **Resposta a story** com a palavra → DM automática.
   - **Menção no story** → DM automática (não tem texto, então não usa palavra-chave).
-  - **Palavra-chave na DM** → resposta automática.
+  - **Palavra-chave na DM** → resposta automática (vale também para o toque num botão de resposta).
+  - **Boas-vindas (1ª DM)** → quem nunca falou com a Dua e manda a primeira DM recebe a
+    apresentação, se nenhuma palavra-chave respondeu antes. É o substituto possível do
+    "seguiu → DM" (ver abaixo).
+  - **Botões** (até 3 por mensagem): com link abre o site (ex.: "Ver site", "Pedir orçamento");
+    sem link, o toque volta como mensagem com o título do botão, e uma regra "Palavra-chave na
+    DM" com esse texto continua a conversa. Se o Instagram recusar o modelo com botões, a
+    mensagem vai como texto com os links.
+  - **Funil por regra**: cada regra escolhe a etapa onde o contato entra. Há dois funis:
+    **Vendas** (o principal: LP, WhatsApp, DMs diretas) e **Instagram** (leads frios dos
+    brindes e conteúdos), criado pelo botão "Criar funil Instagram" no editor da regra, com as
+    etapas Recebeu o brinde → Respondeu → Qualificado → Enviado para Vendas. Quem está no
+    funil Instagram não entra em Vendas sozinho quando responde: o time move o card quando
+    o lead esquentar. Regra sem funil escolhido = 1ª etapa de Vendas. O funil de creators
+    fica para depois (o processo ainda está sendo montado no lab de creators).
   - Textos aceitam `{{primeiro_nome}}`, `{{nome}}` e `{{usuario}}` (o @). A regra pode
     colocar uma etiqueta no contato. A mesma regra não responde o mesmo contato duas vezes
     em 1h; um comentário nunca é respondido duas vezes (tabela `InstagramCommentReply`).
 
-### Por que não tem "novo seguidor"
+### Por que não tem "seguiu → DM"
 
-A Meta **não oferece webhook nem API** que avise quando alguém segue a conta, e não deixa
-mandar DM para quem não escreveu antes. Ferramentas que "mandam DM para novos seguidores"
-usam automação não oficial, que viola os termos e pode bloquear a conta. Por isso esse
-gatilho ficou de fora. O que dá para fazer: um story/post pedindo para comentar ou responder
-uma palavra, e a regra manda a DM.
+O ManyChat (e o Kommo) têm o "Follow to DM", mas é um acesso que a Meta libera só para
+alguns parceiros: a API pública que o app Dua CRM usa **não tem webhook de novo seguidor**
+e não deixa mandar DM para quem não escreveu antes. Mesmo nesses parceiros o gatilho está
+instável em 2026 (o ManyChat registrou em março um bug do lado da Meta). Por isso ficou de
+fora. Alternativas: a regra de boas-vindas na 1ª DM, comentários e stories com palavra-chave,
+ou manter o ManyChat só para o "seguiu → DM" (sem regras de DM no ManyChat, para as duas
+ferramentas não responderem a mesma mensagem).
 
 ## Código
 

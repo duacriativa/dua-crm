@@ -203,6 +203,8 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
         "mediaIds" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
         "dmText" TEXT NOT NULL,
         "publicReplies" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
+        "buttons" JSONB NOT NULL DEFAULT '[]',
+        "stageId" TEXT,
         "tag" TEXT,
         "active" BOOLEAN NOT NULL DEFAULT true,
         "runCount" INTEGER NOT NULL DEFAULT 0,
