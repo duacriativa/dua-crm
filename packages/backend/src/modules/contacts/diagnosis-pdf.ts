@@ -15,7 +15,7 @@ const CW = PAGE_W - M * 2;
 const BOTTOM = PAGE_H - 64; // abaixo disso só o rodapé
 
 /** Logo da Dua (mesmo desenho do favicon.svg). */
-function logo(doc: PDFKit.PDFDocument, x: number, y: number, size: number) {
+export function logo(doc: PDFKit.PDFDocument, x: number, y: number, size: number) {
   doc.save().translate(x, y).scale(size / 936);
   doc.rect(0, 0, 936, 936).fill(LIME);
   doc.translate(75, 160).path('M0 0H786V616H569V255H565V244A378 372 0 0 1 187 616H0V364H208A138 136 0 0 0 346 228V223H0Z').fill('#000');
@@ -23,7 +23,7 @@ function logo(doc: PDFKit.PDFDocument, x: number, y: number, size: number) {
 }
 
 /** Helvetica do PDF só tem Latin-1: tira emojis e símbolos que virariam lixo. */
-function clean(s: unknown) {
+export function clean(s: unknown) {
   return String(s ?? '')
     .replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}\u{200D}]/gu, '')
     .replace(/[ \t]+([.,!?;:])/g, '$1')

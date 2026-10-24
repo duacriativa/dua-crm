@@ -25,10 +25,12 @@ async function proxy(req: NextRequest, path: string[]): Promise<NextResponse> {
     const contentType = upstream.headers.get('content-type') ?? 'application/json';
     const data = await upstream.arrayBuffer();
 
-    return new NextResponse(data, {
-      status: upstream.status,
-      headers: { 'Content-Type': contentType },
-    });
+    const out: Record<string, string> = { 'Content-Type': contentType };
+    // PDFs (diagnóstico, plano): mantém o nome do arquivo no download
+    const disposition = upstream.headers.get('content-disposition');
+    if (disposition) out['Content-Disposition'] = disposition;
+
+    return new NextResponse(data, { status: upstream.status, headers: out });
   } catch (e: any) {
     const code = e?.cause?.code ?? e?.code ?? 'UNKNOWN';
     const msg = code === 'ECONNREFUSED'
