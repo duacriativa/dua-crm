@@ -10,8 +10,8 @@ import {
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { TemplatesManager } from "@/components/whatsapp/templates";
-import { BookingSettings, GoogleCalendarCard } from "@/components/scheduling/booking-settings";
-import { MetaAdsCard } from "@/components/integrations/meta-ads-card";
+import { BookingSettings, GoogleCalendarCard, startGoogleConnect } from "@/components/scheduling/booking-settings";
+import { MetaAdsCard, startMetaConnect } from "@/components/integrations/meta-ads-card";
 
 const API_URL = "";
 function getToken() { return typeof window !== "undefined" ? localStorage.getItem("access_token") : ""; }
@@ -472,6 +472,40 @@ function TabIntegracoes() {
       .catch(() => {});
   }, []);
 
+  // Ativas × Disponíveis: o que está desconectado desce para os cards pequenos com "Ativar"
+  const [conn, setConn] = useState<{ google: boolean | null; meta: boolean | null; kommo: boolean | null }>({ google: null, meta: null, kommo: null });
+  const [activating, setActivating] = useState("");
+  const loadConn = useCallback(async () => {
+    const get = (path: string) => authFetch(`${API_URL}/api/v1/${path}`, { headers: authHeaders() }).then(r => r.ok ? r.json() : null).catch(() => null);
+    const [g, m, k] = await Promise.all([get("google/status"), get("meta-ads/status"), get("kommo/status")]);
+    setConn({ google: !!g?.connected, meta: !!m?.connected, kommo: k ? !!k.active : true });
+  }, []);
+  useEffect(() => { loadConn(); }, [loadConn]);
+
+  const setKommo = async (active: boolean) => {
+    if (!active && !confirm("Desativar o Kommo? O webhook passa a ser ignorado. Os leads já recebidos ficam guardados e dá para ativar de novo.")) return;
+    setActivating("kommo");
+    try {
+      await authFetch(`${API_URL}/api/v1/kommo${active ? "/activate" : ""}`, { method: active ? "POST" : "DELETE", headers: authHeaders() });
+      await loadConn();
+    } finally { setActivating(""); }
+  };
+  const activateWith = (key: string, start: () => Promise<void>) => async () => {
+    setActivating(key);
+    try { await start(); } catch (e: any) {
+      const m = e?.response?.data?.message;
+      alert((Array.isArray(m) ? m[0] : m) || e?.message || "Não foi possível ativar.");
+      setActivating("");
+    }
+  };
+
+  const available = [
+    waStatus === "disconnected" && { key: "wa", name: "WhatsApp", desc: "Atenda e automatize pelo WhatsApp", icon: "💬", onActivate: async () => router.push("/dashboard/whatsapp") },
+    conn.google === false && { key: "google", name: "Google Agenda", desc: "Agendamentos com Google Meet", icon: "📅", onActivate: activateWith("google", startGoogleConnect) },
+    conn.meta === false && { key: "meta", name: "Meta Ads", desc: "Investimento e leads dos anúncios", icon: "📣", onActivate: activateWith("meta", startMetaConnect) },
+    conn.kommo === false && { key: "kommo", name: "Kommo CRM", desc: "Receba leads do funil do Kommo", icon: "🎯", onActivate: () => setKommo(true) },
+  ].filter(Boolean) as { key: string; name: string; desc: string; icon: string; onActivate: () => void | Promise<void> }[];
+
   const copyWebhookUrl = () => {
     navigator.clipboard.writeText(KOMMO_WEBHOOK_URL);
     setKommoCopied(true);
@@ -493,7 +527,7 @@ function TabIntegracoes() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
           
           {/* Card Especial do WhatsApp */}
-          <div className="surface-card p-5 flex flex-col">
+          {waStatus !== "disconnected" && <div className="surface-card p-5 flex flex-col">
             <div className="flex items-start justify-between mb-3">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-muted/50 flex items-center justify-center text-xl">💬</div>
@@ -520,7 +554,7 @@ function TabIntegracoes() {
               }`}>
               {waStatus === "connected" ? "Gerenciar" : "Configurar"}
             </button>
-          </div>
+          </div>}
 
           {/* Card do Asaas */}
           <div className="surface-card p-5 flex flex-col">
@@ -541,12 +575,12 @@ function TabIntegracoes() {
             </button>
           </div>
 
-          <GoogleCalendarCard />
+          {conn.google && <GoogleCalendarCard onChange={loadConn} />}
 
-          <MetaAdsCard />
+          {conn.meta && <MetaAdsCard onChange={loadConn} />}
 
           {/* Card do Kommo */}
-          <div className="surface-card p-5 flex flex-col md:col-span-2">
+          {conn.kommo && <div className="surface-card p-5 flex flex-col md:col-span-2">
             <div className="flex items-start justify-between mb-3">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-muted/50 flex items-center justify-center text-xl">🎯</div>
@@ -613,10 +647,38 @@ function TabIntegracoes() {
               </div>
               <p className="text-[10px] text-muted-foreground mt-2">Eventos: Adicionar lead, Atualizar lead, Mudar status</p>
             </div>
-          </div>
+            <button onClick={() => setKommo(false)} disabled={activating === "kommo"}
+              className="w-full py-2 mt-auto text-sm font-medium rounded-xl border border-border text-muted-foreground hover:bg-muted/50 hover:text-red-400 disabled:opacity-50">
+              Desativar integração
+            </button>
+          </div>}
 
         </div>
       </div>
+
+      {available.length > 0 && (
+        <div>
+          <h2 className="text-base font-bold text-foreground mb-1">Disponíveis</h2>
+          <p className="text-xs text-muted-foreground mb-4">Integrações prontas para ativar</p>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {available.map(intg => (
+              <div key={intg.key} className="surface-card p-4 flex flex-col">
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="w-9 h-9 rounded-xl bg-muted/50 flex items-center justify-center text-lg">{intg.icon}</div>
+                  <div>
+                    <p className="font-semibold text-foreground text-sm">{intg.name}</p>
+                    <p className="text-xs text-muted-foreground">{intg.desc}</p>
+                  </div>
+                </div>
+                <button onClick={intg.onActivate} disabled={activating === intg.key}
+                  className="self-start mt-auto px-4 py-1.5 text-xs font-semibold rounded-full text-white bg-gradient-primary hover:opacity-90 disabled:opacity-50">
+                  {activating === intg.key ? "Ativando..." : "Ativar"}
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div>
         <h2 className="text-base font-bold text-foreground mb-1">Em breve</h2>

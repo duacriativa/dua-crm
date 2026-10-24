@@ -3,6 +3,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { FunnelService } from '../pipelines/funnel.service';
 import { normalizePhone, phoneVariants } from '../../common/phone.util';
+import { kommoOffKey } from '../kommo/kommo.controller';
 
 @Controller('webhooks')
 export class WebhooksController {
@@ -79,6 +80,8 @@ export class WebhooksController {
     try {
       const tenant = await this.prisma.tenant.findUnique({ where: { slug: 'dua-criativa' } });
       if (!tenant) return { ok: true };
+      // Integração desativada em Configurações: responde 200 (o Kommo não fica reenviando) e ignora
+      if (await this.prisma.appSetting.findUnique({ where: { key: kommoOffKey(tenant.id) } })) return { ok: true };
 
       const tenantId = tenant.id;
 

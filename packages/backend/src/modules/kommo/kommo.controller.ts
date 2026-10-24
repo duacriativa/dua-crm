@@ -1,11 +1,35 @@
-import { Controller, Get, UseGuards, Req } from '@nestjs/common';
+import { Controller, Delete, Get, Post, UseGuards, Req } from '@nestjs/common';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PrismaService } from '../../prisma/prisma.service';
+
+/** Chave em AppSetting: existe = integração do Kommo desativada (webhook ignora os eventos). */
+export const kommoOffKey = (tenantId: string) => `kommo-desativado:${tenantId}`;
 
 @Controller('kommo')
 @UseGuards(JwtAuthGuard)
 export class KommoController {
   constructor(private readonly prisma: PrismaService) {}
+
+  /** Ativa/desativa pelo card em Configurações → Integrações. Desativar não apaga o histórico. */
+  @Get('status')
+  async status(@Req() req: any) {
+    const off = await this.prisma.appSetting.findUnique({ where: { key: kommoOffKey(req.user.tenantId) } });
+    return { active: !off };
+  }
+
+  @Post('activate')
+  async activate(@Req() req: any) {
+    await this.prisma.appSetting.deleteMany({ where: { key: kommoOffKey(req.user.tenantId) } });
+    return { active: true };
+  }
+
+  @Delete()
+  async deactivate(@Req() req: any) {
+    const key = kommoOffKey(req.user.tenantId);
+    const value = new Date().toISOString();
+    await this.prisma.appSetting.upsert({ where: { key }, create: { key, value }, update: { value } });
+    return { active: false };
+  }
 
   @Get('stats')
   async getStats(@Req() req: any) {

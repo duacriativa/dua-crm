@@ -23,8 +23,15 @@ export function bookingUrl(slug: string) {
   return `${typeof window !== "undefined" ? window.location.origin : "https://crm.duacriativa.com.br"}/agendar/${slug}`;
 }
 
-/* ── Card do Google em Integrações ── */
-export function GoogleCalendarCard() {
+/** Leva para a tela de autorização do Google (volta em /integracoes/google/callback). */
+export async function startGoogleConnect() {
+  const redirectUri = `${window.location.origin}/integracoes/google/callback`;
+  const { data } = await api.get("/google/auth-url", { params: { redirectUri } });
+  window.location.href = data.url;
+}
+
+/* ── Card do Google em Integrações (onChange: avisa a tela ao desconectar) ── */
+export function GoogleCalendarCard({ onChange }: { onChange?: () => void } = {}) {
   const [st, setSt] = useState<GoogleStatus | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -34,16 +41,12 @@ export function GoogleCalendarCard() {
 
   const connect = async () => {
     setBusy(true); setError("");
-    try {
-      const redirectUri = `${window.location.origin}/integracoes/google/callback`;
-      const { data } = await api.get("/google/auth-url", { params: { redirectUri } });
-      window.location.href = data.url;
-    } catch (e) { setError(errMsg(e)); setBusy(false); }
+    try { await startGoogleConnect(); } catch (e) { setError(errMsg(e)); setBusy(false); }
   };
   const disconnect = async () => {
     if (!confirm("Desconectar o Google Agenda? A página de agendamento continua no ar, mas sem checar a agenda e sem criar o Meet.")) return;
     setBusy(true);
-    try { await api.delete("/google"); await load(); } catch (e) { setError(errMsg(e)); } finally { setBusy(false); }
+    try { await api.delete("/google"); await load(); onChange?.(); } catch (e) { setError(errMsg(e)); } finally { setBusy(false); }
   };
 
   return (

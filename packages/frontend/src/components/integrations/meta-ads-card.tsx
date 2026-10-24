@@ -15,8 +15,15 @@ const errMsg = (e: any) => {
   return (Array.isArray(m) ? m[0] : m) || e?.message || "Algo deu errado.";
 };
 
+/** Leva para a tela de autorização do Meta (volta em /integracoes/meta/callback). */
+export async function startMetaConnect() {
+  const redirectUri = `${window.location.origin}/integracoes/meta/callback`;
+  const { data } = await api.get("/meta-ads/auth-url", { params: { redirectUri } });
+  window.location.href = data.url;
+}
+
 /* ── Card do Meta Ads em Integrações: investimento e leads dos anúncios no Dashboard ── */
-export function MetaAdsCard() {
+export function MetaAdsCard({ onChange }: { onChange?: () => void } = {}) {
   const [st, setSt] = useState<MetaAdsStatus | null>(null);
   const [accounts, setAccounts] = useState<AdAccount[] | null>(null);
   const [busy, setBusy] = useState(false);
@@ -34,11 +41,7 @@ export function MetaAdsCard() {
 
   const connect = async () => {
     setBusy(true); setError("");
-    try {
-      const redirectUri = `${window.location.origin}/integracoes/meta/callback`;
-      const { data } = await api.get("/meta-ads/auth-url", { params: { redirectUri } });
-      window.location.href = data.url;
-    } catch (e) { setError(errMsg(e)); setBusy(false); }
+    try { await startMetaConnect(); } catch (e) { setError(errMsg(e)); setBusy(false); }
   };
   const changeAccount = async () => {
     setBusy(true); setError("");
@@ -46,12 +49,14 @@ export function MetaAdsCard() {
   };
   const pick = async (accountId: string) => {
     setBusy(true); setError("");
-    try { await api.post("/meta-ads/account", { accountId }); setAccounts(null); await load(); } catch (e) { setError(errMsg(e)); } finally { setBusy(false); }
+    // Recarrega o status (já com a conta) antes de fechar a lista; ao contrário, o efeito de cima
+    // via "sem conta" por um instante e buscava a lista de novo, deixando-a aberta
+    try { await api.post("/meta-ads/account", { accountId }); await load(); setAccounts(null); onChange?.(); } catch (e) { setError(errMsg(e)); } finally { setBusy(false); }
   };
   const disconnect = async () => {
     if (!confirm("Desconectar o Meta Ads? O Dashboard deixa de mostrar investimento, leads dos anúncios, CAC e ROAS.")) return;
     setBusy(true);
-    try { await api.delete("/meta-ads"); setAccounts(null); await load(); } catch (e) { setError(errMsg(e)); } finally { setBusy(false); }
+    try { await api.delete("/meta-ads"); await load(); setAccounts(null); onChange?.(); } catch (e) { setError(errMsg(e)); } finally { setBusy(false); }
   };
 
   return (
