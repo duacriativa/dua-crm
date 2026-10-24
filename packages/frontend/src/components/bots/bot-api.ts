@@ -1,11 +1,12 @@
 import { authFetch } from "@/lib/auth-fetch";
 import type { WaTemplate } from "@/components/whatsapp/templates";
 
-/* Bots (backend: /automations). Os passos ficam em `actions` e rodam em ordem. */
+/* Bots (backend: /automations). Os passos ficam em `actions` e rodam em ordem;
+   desvios ("ir para") apontam para o `id` do passo. Destino vazio = próximo passo, "end" = encerra. */
 
-export type BotStep =
-  | { type: "wait"; seconds: number }
-  | { type: "wait_reply"; timeoutSeconds?: number }
+export type BotStep = { id?: string; name?: string } & (
+  | { type: "wait"; seconds: number; alignTo?: string }
+  | { type: "wait_reply"; timeoutSeconds?: number; alignTo?: string; onReply?: string; onTimeout?: string }
   | { type: "send_text"; text: string }
   | {
       type: "send_template";
@@ -15,7 +16,23 @@ export type BotStep =
       bodyText?: string;
       params?: { key: string; value: string }[];
     }
-  | { type: "move_stage"; stageId?: string; stageName?: string };
+  | {
+      type: "send_buttons";
+      text: string;
+      buttons: { title: string; goto?: string }[];
+      onOther?: string;
+      timeoutSeconds?: number;
+      alignTo?: string;
+      onTimeout?: string;
+    }
+  | { type: "move_stage"; stageId?: string; stageName?: string }
+  | { type: "add_tag"; tag: string }
+  | { type: "notify"; text: string; to?: string }
+  | { type: "goto"; target?: string }
+  | { type: "end" }
+);
+
+export const newStepId = () => `s${Math.random().toString(36).slice(2, 8)}`;
 
 export interface BotStats { sessions: number; active: number; completed: number; failed: number; sent: number; replied: number; lastRunAt: string | null }
 
@@ -106,6 +123,94 @@ export function formBotPreset(template: WaTemplate | undefined): Partial<Bot> {
       { type: "send_text", text: FORM_BOT_TEXT },
       { type: "move_stage", stageName: "Qualificação" },
     ],
+  };
+}
+
+/** Template de follow-up para quem não respondeu a 1ª mensagem do formulário. */
+export function findFollowupTemplate(templates: WaTemplate[]) {
+  const ok = templates.filter((t) => t.status === "APPROVED");
+  return ok.find((t) => /followup_cadastro_site/i.test(t.name)) ?? ok.find((t) => /conseguiu ver minha mensagem/i.test(bodyOf(t)));
+}
+
+const H = 3600;
+const QUALIFY_BUTTONS = (existing: string, fresh: string) => [
+  { title: "Já estou vendendo", goto: existing },
+  { title: "Estou começando", goto: fresh },
+];
+
+/**
+ * Qualificação de quem preencheu o formulário, seguindo o roteiro da call do Dua Lab:
+ * 1ª mensagem → follow-up se não responder → marca já vende ou está começando →
+ * 2 perguntas de diagnóstico de cada caminho → convite para a call com o Daniel (Calendly).
+ * O bot para sozinho quando alguém do time escreve na conversa.
+ */
+export function formQualifyPreset(first: WaTemplate | undefined, followup: WaTemplate | undefined): Partial<Bot> {
+  const tpl = (t: WaTemplate | undefined): BotStep => (t ? templateStep(t) : { type: "send_template", templateName: "", language: "pt_BR", params: [] });
+  const steps: BotStep[] = [
+    { id: "inicio", type: "wait", seconds: 10 },
+    { id: "msg1", name: "1ª mensagem", ...tpl(first) } as BotStep,
+    { id: "espera1", type: "wait_reply", timeoutSeconds: 8 * H, alignTo: "10:00", onReply: "respondeu", onTimeout: "followup" },
+    { id: "followup", name: "Follow-up", ...tpl(followup) } as BotStep,
+    { id: "espera_fu", type: "wait_reply", timeoutSeconds: 3 * 24 * H, onReply: "respondeu", onTimeout: "sem_resposta" },
+    { id: "sem_resposta", name: "Não respondeu", type: "add_tag", tag: "sem resposta do bot" },
+    { id: "fim_sem_resposta", type: "end" },
+
+    { id: "respondeu", name: "Respondeu", type: "move_stage", stageName: "Qualificação" },
+    { id: "aviso1", type: "notify", to: "Daniel", text: "{{primeiro_nome}} respondeu o bot do site:\n{{respostas}}" },
+    { id: "pausa1", type: "wait", seconds: 120 },
+    {
+      id: "momento", name: "Momento da marca", type: "send_buttons",
+      text: "Entendi, {{primeiro_nome}}, obrigada por me contar! 😊\n\nPra eu te direcionar certinho: a sua marca já está vendendo ou está começando agora?",
+      buttons: QUALIFY_BUTTONS("existente", "nova"), onOther: "momento_de_novo", timeoutSeconds: 4 * H, onTimeout: "parou",
+    },
+    {
+      id: "momento_de_novo", type: "send_buttons",
+      text: "É só tocar numa das opções aqui embaixo 👇",
+      buttons: QUALIFY_BUTTONS("existente", "nova"), onOther: "parou", timeoutSeconds: 4 * H, onTimeout: "parou",
+    },
+
+    { id: "existente", name: "Marca existente", type: "add_tag", tag: "marca existente" },
+    {
+      id: "aquisicao", type: "send_text",
+      text: "Vi aqui que vocês vendem {{canal_venda}}.\nHoje a maior parte dos clientes chega como: indicação, Instagram orgânico ou anúncio? E vocês já investem em tráfego pago?",
+    },
+    { id: "espera_aquisicao", type: "wait_reply", timeoutSeconds: 4 * H, onTimeout: "parou" },
+    { id: "pausa_ex", type: "wait", seconds: 60 },
+    {
+      id: "followup_pergunta", type: "send_text",
+      text: "Faz sentido!\n\nÚltima pergunta: quando alguém chama no WhatsApp, pergunta preço ou produto e não compra, vocês costumam fazer algum acompanhamento depois?",
+    },
+    { id: "espera_followup", type: "wait_reply", timeoutSeconds: 4 * H, onReply: "pausa_convite", onTimeout: "parou" },
+
+    { id: "nova", name: "Marca nova", type: "add_tag", tag: "marca nova" },
+    { id: "produto", type: "send_text", text: "Que legal, adoro acompanhar marca nascendo! ✨\n\nMe conta: o produto já está pronto ou vocês ainda estão desenvolvendo?" },
+    { id: "espera_produto", type: "wait_reply", timeoutSeconds: 4 * H, onTimeout: "parou" },
+    { id: "pausa_nova", type: "wait", seconds: 60 },
+    {
+      id: "orcamento", name: "Orçamento", type: "send_buttons",
+      text: "Ótimo! E vocês já separaram um orçamento pra colocar a marca no mercado e investir em marketing?",
+      buttons: [{ title: "Sim, já separei", goto: "pausa_convite" }, { title: "Ainda vou definir", goto: "sem_orcamento" }],
+      onOther: "pausa_convite", timeoutSeconds: 4 * H, onTimeout: "parou",
+    },
+    { id: "sem_orcamento", type: "add_tag", tag: "sem orçamento definido" },
+
+    { id: "pausa_convite", name: "Convite", type: "wait", seconds: 45 },
+    {
+      id: "convite", type: "send_text",
+      text: "Perfeito, {{primeiro_nome}}! Com o que você me contou já dá pra preparar uma conversa bem direcionada pro momento da sua marca 💜\n\nQuem vai conversar com você é o *Daniel*, que cuida da estratégia aqui na Dua. São 45 min por vídeo: ele entende seu cenário com calma, te mostra como a gente trabalha e, se fizer sentido pros dois lados, vocês veem os próximos passos.\n\nEscolhe o melhor horário aqui: https://calendly.com/duacriativa/45min",
+    },
+    { id: "aviso_fim", type: "notify", to: "Daniel", text: "{{primeiro_nome}} concluiu a qualificação e recebeu o link do Calendly.\n\nRespostas:\n{{respostas}}" },
+    { id: "fim", type: "end" },
+
+    { id: "parou", name: "Parou no meio", type: "notify", to: "Daniel", text: "{{primeiro_nome}} parou no meio da qualificação. O que respondeu até agora:\n{{respostas}}" },
+    { id: "fim_parou", type: "end" },
+  ];
+  return {
+    name: "Qualificação do cadastro no site",
+    description: "1ª mensagem + follow-up, entende se a marca já vende ou está começando e convida para a call com o Daniel",
+    trigger: "LEAD_FORM_SUBMITTED",
+    active: false,
+    actions: steps,
   };
 }
 

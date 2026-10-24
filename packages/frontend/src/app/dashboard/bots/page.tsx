@@ -19,13 +19,13 @@ import {
   Loader2,
 } from "lucide-react";
 import { fetchTemplates } from "@/components/whatsapp/templates";
-import { Bot as BotFlow, botsApi, findFormTemplate, formBotPreset } from "@/components/bots/bot-api";
+import { Bot as BotFlow, botsApi, findFollowupTemplate, findFormTemplate, formBotPreset, formQualifyPreset } from "@/components/bots/bot-api";
 import { BotConfigModal } from "@/components/bots/bot-config";
 
-// Só o primeiro já funciona; os outros entram conforme forem migrados do Kommo
+// Os prontos já funcionam; os outros entram conforme forem migrados do Kommo
 const TEMPLATES = [
   { id: "form", name: "Cadastro no site", description: "1ª mensagem no WhatsApp para quem preencheu o formulário (igual ao Kommo)", icon: "📝", color: "bg-blue-50 border-blue-200", ready: true },
-  { id: "t2", name: "Qualificação de Leads", description: "Perguntas automáticas para qualificar prospects", icon: "🎯", color: "bg-purple-50 border-purple-200", ready: false },
+  { id: "qualify", name: "Qualificação do cadastro no site", description: "1ª mensagem + follow-up, entende o momento da marca e convida para a call (roteiro Dua Lab)", icon: "🎯", color: "bg-purple-50 border-purple-200", ready: true },
   { id: "t3", name: "Follow-up", description: "Reengaja leads que pararam de responder", icon: "🔄", color: "bg-red-50 border-red-200", ready: false },
   { id: "t4", name: "Pós-venda / NPS", description: "Acompanhamento e NPS após a venda fechada", icon: "⭐", color: "bg-yellow-50 border-yellow-200", ready: false },
 ];
@@ -86,11 +86,14 @@ export default function BotsPage() {
   };
 
   const createFromTemplate = async (id: string) => {
-    if (id !== "form") return;
+    if (id !== "form" && id !== "qualify") return;
     setCreating(true);
     try {
-      const template = await fetchTemplates().then(findFormTemplate).catch(() => undefined);
-      const bot = await botsApi.create(formBotPreset(template));
+      const templates = await fetchTemplates().catch(() => []);
+      const preset = id === "form"
+        ? formBotPreset(findFormTemplate(templates))
+        : formQualifyPreset(findFormTemplate(templates), findFollowupTemplate(templates));
+      const bot = await botsApi.create(preset);
       setShowNew(false);
       const all = await botsApi.list();
       setBots(all);

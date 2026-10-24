@@ -4,26 +4,38 @@ import { useEffect, useMemo, useState } from "react";
 import { authFetch } from "@/lib/auth-fetch";
 import {
   X, Timer, MessageSquare, MessageCircle, FileText, ArrowRightLeft, Trash2, ChevronUp, ChevronDown, Plus, Send, FlaskConical, Loader2,
+  MousePointerClick, Tag, Bell, CornerDownRight, StopCircle,
 } from "lucide-react";
 import { fetchTemplates, type WaTemplate } from "@/components/whatsapp/templates";
-import { Bot, BotRun, BotStep, botsApi, templateStep } from "./bot-api";
+import { Bot, BotRun, BotStep, botsApi, newStepId, templateStep } from "./bot-api";
 
 interface Stage { id: string; name: string; position: number }
+type StepType = BotStep["type"];
 
-const STEP_META: Record<BotStep["type"], { label: string; icon: JSX.Element; color: string }> = {
+const STEP_META: Record<StepType, { label: string; icon: JSX.Element; color: string }> = {
   wait: { label: "Aguardar tempo", icon: <Timer className="w-3.5 h-3.5" />, color: "bg-gray-100 text-gray-600" },
   wait_reply: { label: "Aguardar resposta", icon: <MessageSquare className="w-3.5 h-3.5" />, color: "bg-orange-50 text-orange-600" },
   send_template: { label: "Enviar template (WhatsApp)", icon: <FileText className="w-3.5 h-3.5" />, color: "bg-blue-50 text-blue-600" },
   send_text: { label: "Enviar mensagem", icon: <MessageCircle className="w-3.5 h-3.5" />, color: "bg-blue-50 text-blue-600" },
+  send_buttons: { label: "Mensagem com botões", icon: <MousePointerClick className="w-3.5 h-3.5" />, color: "bg-indigo-50 text-indigo-600" },
   move_stage: { label: "Mover no funil", icon: <ArrowRightLeft className="w-3.5 h-3.5" />, color: "bg-green-50 text-green-600" },
+  add_tag: { label: "Adicionar etiqueta", icon: <Tag className="w-3.5 h-3.5" />, color: "bg-green-50 text-green-600" },
+  notify: { label: "Avisar o time", icon: <Bell className="w-3.5 h-3.5" />, color: "bg-amber-50 text-amber-700" },
+  goto: { label: "Ir para", icon: <CornerDownRight className="w-3.5 h-3.5" />, color: "bg-purple-50 text-purple-600" },
+  end: { label: "Encerrar o bot", icon: <StopCircle className="w-3.5 h-3.5" />, color: "bg-red-50 text-red-600" },
 };
 
-const NEW_STEP: Record<BotStep["type"], BotStep> = {
-  wait: { type: "wait", seconds: 60 },
-  wait_reply: { type: "wait_reply" },
-  send_template: { type: "send_template", templateName: "", language: "pt_BR", params: [] },
-  send_text: { type: "send_text", text: "" },
-  move_stage: { type: "move_stage" },
+const NEW_STEP: Record<StepType, () => BotStep> = {
+  wait: () => ({ type: "wait", seconds: 60 }),
+  wait_reply: () => ({ type: "wait_reply" }),
+  send_template: () => ({ type: "send_template", templateName: "", language: "pt_BR", params: [] }),
+  send_text: () => ({ type: "send_text", text: "" }),
+  send_buttons: () => ({ type: "send_buttons", text: "", buttons: [{ title: "" }, { title: "" }], timeoutSeconds: 4 * 3600 }),
+  move_stage: () => ({ type: "move_stage" }),
+  add_tag: () => ({ type: "add_tag", tag: "" }),
+  notify: () => ({ type: "notify", to: "Daniel", text: "{{primeiro_nome}} respondeu o bot:\n{{respostas}}" }),
+  goto: () => ({ type: "goto" }),
+  end: () => ({ type: "end" }),
 };
 
 const RUN_STATUS: Record<string, { label: string; cls: string }> = {
@@ -31,9 +43,12 @@ const RUN_STATUS: Record<string, { label: string; cls: string }> = {
   WAITING_REPLY: { label: "Aguardando resposta", cls: "bg-orange-50 text-orange-700" },
   COMPLETED: { label: "Concluído", cls: "bg-green-50 text-green-700" },
   EXPIRED: { label: "Sem resposta", cls: "bg-gray-100 text-gray-600" },
+  HANDED_OFF: { label: "Assumido pelo time", cls: "bg-purple-50 text-purple-700" },
   CANCELLED: { label: "Cancelado", cls: "bg-gray-100 text-gray-600" },
   FAILED: { label: "Falhou", cls: "bg-red-50 text-red-700" },
 };
+
+const VARS_HINT = "Use {{primeiro_nome}}, {{nome}}, {{canal_venda}} (ex.: \"pelo Instagram e WhatsApp\"), {{faturamento}} ou {{respostas}}. Linha com variável vazia some da mensagem.";
 
 const UNITS = [{ s: 1, label: "seg" }, { s: 60, label: "min" }, { s: 3600, label: "horas" }, { s: 86400, label: "dias" }];
 const bestUnit = (s: number) => [...UNITS].reverse().find((u) => s >= u.s && s % u.s === 0) ?? UNITS[0];
@@ -55,10 +70,63 @@ function DurationInput({ seconds, onChange }: { seconds: number; onChange: (s: n
   );
 }
 
+/** "e depois esperar o próximo dia útil às 10:00" (vazio = sem ajuste de horário). */
+function AlignInput({ value, onChange }: { value?: string; onChange: (v: string | undefined) => void }) {
+  return (
+    <label className="flex items-center gap-2 text-xs text-gray-500 flex-wrap">
+      <input type="checkbox" checked={!!value} onChange={(e) => onChange(e.target.checked ? "10:00" : undefined)} />
+      <span>e depois esperar o próximo dia útil às</span>
+      <input type="time" value={value ?? "10:00"} disabled={!value} onChange={(e) => onChange(e.target.value || undefined)}
+        className="px-2 py-1 text-sm text-gray-900 bg-white border border-gray-200 rounded-lg disabled:opacity-40" />
+    </label>
+  );
+}
+
+/** Escolhe o destino de um desvio: próximo passo, outro passo ou encerrar. */
+function TargetSelect({ value, onChange, steps, self, empty = "Próximo passo", noEnd }: {
+  value?: string; onChange: (v: string | undefined) => void; steps: BotStep[]; self: number; empty?: string; noEnd?: boolean;
+}) {
+  return (
+    <select value={value ?? ""} onChange={(e) => onChange(e.target.value || undefined)}
+      className="flex-1 min-w-0 px-2 py-1.5 text-sm text-gray-900 border border-gray-200 rounded-lg bg-white">
+      <option value="">{empty}</option>
+      {!noEnd && <option value="end">Encerrar o bot</option>}
+      {steps.map((s, j) => j !== self && s.id && (
+        <option key={s.id} value={s.id}>{`${j + 1}. ${s.name || STEP_META[s.type].label}`}</option>
+      ))}
+    </select>
+  );
+}
+
+function Branch({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex items-center gap-2 text-xs text-gray-500">
+      <CornerDownRight className="w-3.5 h-3.5 shrink-0 text-gray-300" />
+      <span className="shrink-0">{label}</span>
+      {children}
+    </div>
+  );
+}
+
+/** Desvios que apontam para `id` voltam a "próximo passo" (o passo foi removido). */
+function dropRefs(steps: BotStep[], id?: string): BotStep[] {
+  if (!id) return steps;
+  const fix = (t?: string) => (t === id ? undefined : t);
+  return steps.map((s) => {
+    switch (s.type) {
+      case "wait_reply": return { ...s, onReply: fix(s.onReply), onTimeout: fix(s.onTimeout) };
+      case "send_buttons": return { ...s, onOther: fix(s.onOther), onTimeout: fix(s.onTimeout), buttons: s.buttons.map((b) => ({ ...b, goto: fix(b.goto) })) };
+      case "goto": return { ...s, target: fix(s.target) };
+      default: return s;
+    }
+  });
+}
+
 export function BotConfigModal({ bot, onClose, onSaved }: { bot: Bot; onClose: () => void; onSaved: () => void }) {
   const [name, setName] = useState(bot.name);
   const [description, setDescription] = useState(bot.description ?? "");
-  const [steps, setSteps] = useState<BotStep[]>(bot.actions);
+  // Todo passo precisa de id para os desvios funcionarem antes de salvar
+  const [steps, setSteps] = useState<BotStep[]>(() => bot.actions.map((s) => (s.id ? s : { ...s, id: newStepId() })));
   const [onlyPhones, setOnlyPhones] = useState((bot.conditions?.onlyPhones ?? []).join("\n"));
   const [templates, setTemplates] = useState<WaTemplate[]>([]);
   const [tplError, setTplError] = useState("");
@@ -85,6 +153,7 @@ export function BotConfigModal({ bot, onClose, onSaved }: { bot: Bot; onClose: (
     [next[i], next[i + d]] = [next[i + d], next[i]];
     return next;
   });
+  const remove = (i: number) => setSteps((prev) => dropRefs(prev.filter((_, j) => j !== i), prev[i].id));
 
   const stageLabel = useMemo(() => Object.fromEntries(stages.map((s) => [s.id, s.name])), [stages]);
 
@@ -136,37 +205,79 @@ export function BotConfigModal({ bot, onClose, onSaved }: { bot: Bot; onClose: (
 
           {/* Passos */}
           <div>
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Passos</p>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Passos</p>
+            <p className="text-[11px] text-gray-400 mb-2">Rodam em ordem; “Ir para” e os desvios pulam para outro passo. Se alguém do time escrever na conversa, o bot para.</p>
             <ol className="space-y-2">
               {steps.map((step, i) => {
                 const meta = STEP_META[step.type];
                 return (
-                  <li key={i} className="border border-gray-100 rounded-xl p-3">
+                  <li key={step.id ?? i} className="border border-gray-100 rounded-xl p-3">
                     <div className="flex items-center gap-2 mb-2">
                       <span className="text-[11px] text-gray-400 w-4">{i + 1}</span>
-                      <span className={`flex items-center gap-1.5 text-xs font-medium px-2 py-1 rounded-lg ${meta.color}`}>{meta.icon}{meta.label}</span>
-                      <div className="ml-auto flex items-center gap-0.5">
+                      <span className={`flex items-center gap-1.5 text-xs font-medium px-2 py-1 rounded-lg shrink-0 ${meta.color}`}>{meta.icon}{meta.label}</span>
+                      <input
+                        value={step.name ?? ""} onChange={(e) => set(i, { name: e.target.value })} placeholder="nome do passo (opcional)"
+                        className="min-w-0 flex-1 px-2 py-1 text-xs text-gray-700 bg-transparent placeholder:text-gray-300 border border-transparent hover:border-gray-200 focus:border-gray-200 rounded-lg focus:outline-none"
+                      />
+                      <div className="ml-auto flex items-center gap-0.5 shrink-0">
                         <button disabled={i === 0} onClick={() => move(i, -1)} className="p-1 rounded hover:bg-gray-100 disabled:opacity-30"><ChevronUp className="w-3.5 h-3.5" /></button>
                         <button disabled={i === steps.length - 1} onClick={() => move(i, 1)} className="p-1 rounded hover:bg-gray-100 disabled:opacity-30"><ChevronDown className="w-3.5 h-3.5" /></button>
-                        <button onClick={() => setSteps((p) => p.filter((_, j) => j !== i))} className="p-1 rounded hover:bg-red-50 text-red-500"><Trash2 className="w-3.5 h-3.5" /></button>
+                        <button onClick={() => remove(i)} className="p-1 rounded hover:bg-red-50 text-red-500"><Trash2 className="w-3.5 h-3.5" /></button>
                       </div>
                     </div>
 
-                    {step.type === "wait" && <DurationInput seconds={step.seconds} onChange={(seconds) => set(i, { seconds })} />}
+                    {step.type === "wait" && (
+                      <div className="space-y-2">
+                        <DurationInput seconds={step.seconds} onChange={(seconds) => set(i, { seconds })} />
+                        <AlignInput value={step.alignTo} onChange={(alignTo) => set(i, { alignTo })} />
+                      </div>
+                    )}
 
                     {step.type === "wait_reply" && (
-                      <div className="flex items-center gap-2 text-xs text-gray-500 flex-wrap">
-                        <span>Sem resposta em</span>
-                        <DurationInput seconds={step.timeoutSeconds ?? 7 * 86400} onChange={(timeoutSeconds) => set(i, { timeoutSeconds })} />
-                        <span>o bot encerra.</span>
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2 text-xs text-gray-500 flex-wrap">
+                          <span>Esperar até</span>
+                          <DurationInput seconds={step.timeoutSeconds ?? 7 * 86400} onChange={(timeoutSeconds) => set(i, { timeoutSeconds })} />
+                        </div>
+                        <AlignInput value={step.alignTo} onChange={(alignTo) => set(i, { alignTo })} />
+                        <Branch label="Se responder:"><TargetSelect value={step.onReply} onChange={(onReply) => set(i, { onReply })} steps={steps} self={i} /></Branch>
+                        <Branch label="Se não responder:"><TargetSelect value={step.onTimeout} onChange={(onTimeout) => set(i, { onTimeout })} steps={steps} self={i} empty="Encerrar o bot" noEnd /></Branch>
                       </div>
                     )}
 
                     {step.type === "send_text" && (
                       <>
                         <textarea rows={4} value={step.text} onChange={(e) => set(i, { text: e.target.value })} className={inp} />
-                        <p className="text-[11px] text-gray-400 mt-1">Use {"{{primeiro_nome}}"} ou {"{{nome}}"}. Texto livre só chega se o contato falou com a gente nas últimas 24h.</p>
+                        <p className="text-[11px] text-gray-400 mt-1">{VARS_HINT} Texto livre só chega se o contato falou com a gente nas últimas 24h.</p>
                       </>
+                    )}
+
+                    {step.type === "send_buttons" && (
+                      <div className="space-y-2">
+                        <textarea rows={3} value={step.text} onChange={(e) => set(i, { text: e.target.value })} className={inp} />
+                        {step.buttons.map((b, k) => (
+                          <div key={k} className="flex items-center gap-2">
+                            <input
+                              value={b.title} maxLength={20} placeholder={`Botão ${k + 1} (até 20 letras)`}
+                              onChange={(e) => set(i, { buttons: step.buttons.map((x, m) => (m === k ? { ...x, title: e.target.value } : x)) })}
+                              className="w-44 shrink-0 px-3 py-1.5 text-sm text-gray-900 bg-white placeholder:text-gray-400 border border-gray-200 rounded-lg"
+                            />
+                            <span className="text-xs text-gray-400 shrink-0">vai para</span>
+                            <TargetSelect value={b.goto} onChange={(goto) => set(i, { buttons: step.buttons.map((x, m) => (m === k ? { ...x, goto } : x)) })} steps={steps} self={i} />
+                            <button onClick={() => set(i, { buttons: step.buttons.filter((_, m) => m !== k) })} className="p-1 rounded hover:bg-red-50 text-red-400 shrink-0"><X className="w-3.5 h-3.5" /></button>
+                          </div>
+                        ))}
+                        {step.buttons.length < 3 && (
+                          <button onClick={() => set(i, { buttons: [...step.buttons, { title: "" }] })} className="text-xs text-brand-600 font-medium">+ botão</button>
+                        )}
+                        <Branch label="Se escrever em vez de tocar:"><TargetSelect value={step.onOther} onChange={(onOther) => set(i, { onOther })} steps={steps} self={i} /></Branch>
+                        <div className="flex items-center gap-2 text-xs text-gray-500 flex-wrap">
+                          <span>Esperar a escolha até</span>
+                          <DurationInput seconds={step.timeoutSeconds ?? 7 * 86400} onChange={(timeoutSeconds) => set(i, { timeoutSeconds })} />
+                        </div>
+                        <Branch label="Se não responder:"><TargetSelect value={step.onTimeout} onChange={(onTimeout) => set(i, { onTimeout })} steps={steps} self={i} empty="Encerrar o bot" noEnd /></Branch>
+                        <p className="text-[11px] text-gray-400">{VARS_HINT} Só chega dentro das 24h depois da última mensagem do contato.</p>
+                      </div>
                     )}
 
                     {step.type === "send_template" && (
@@ -205,6 +316,26 @@ export function BotConfigModal({ bot, onClose, onSaved }: { bot: Bot; onClose: (
                         {stages.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
                       </select>
                     )}
+
+                    {step.type === "add_tag" && (
+                      <input value={step.tag} onChange={(e) => set(i, { tag: e.target.value })} placeholder="ex.: marca nova" className={inp} />
+                    )}
+
+                    {step.type === "notify" && (
+                      <div className="space-y-2">
+                        <input value={step.to ?? ""} onChange={(e) => set(i, { to: e.target.value })} placeholder="Para (ex.: Daniel)" className={inp} />
+                        <textarea rows={3} value={step.text} onChange={(e) => set(i, { text: e.target.value })} className={inp} />
+                        <p className="text-[11px] text-gray-400">Vira uma nota interna na conversa e uma notificação nos aparelhos com o CRM instalado. {"{{respostas}}"} lista o que o contato escreveu.</p>
+                      </div>
+                    )}
+
+                    {step.type === "goto" && (
+                      <Branch label="Continuar no passo:">
+                        <TargetSelect value={step.target} onChange={(target) => set(i, { target })} steps={steps} self={i} empty="Escolha o passo…" />
+                      </Branch>
+                    )}
+
+                    {step.type === "end" && <p className="text-xs text-gray-500">O bot termina aqui (os passos abaixo só rodam se algum desvio apontar para eles).</p>}
                   </li>
                 );
               })}
@@ -215,8 +346,8 @@ export function BotConfigModal({ bot, onClose, onSaved }: { bot: Bot; onClose: (
               </button>
               {addOpen && (
                 <div className="absolute z-10 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg py-1 min-w-[220px]">
-                  {(Object.keys(STEP_META) as BotStep["type"][]).map((t) => (
-                    <button key={t} onClick={() => { setSteps((p) => [...p, NEW_STEP[t]]); setAddOpen(false); }}
+                  {(Object.keys(STEP_META) as StepType[]).map((t) => (
+                    <button key={t} onClick={() => { setSteps((p) => [...p, { ...NEW_STEP[t](), id: newStepId() } as BotStep]); setAddOpen(false); }}
                       className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
                       {STEP_META[t].icon}{STEP_META[t].label}
                     </button>
@@ -250,13 +381,14 @@ export function BotConfigModal({ bot, onClose, onSaved }: { bot: Bot; onClose: (
               <ul className="divide-y divide-gray-50 text-xs">
                 {runs.map((r) => {
                   const st = RUN_STATUS[r.status] ?? { label: r.status, cls: "bg-gray-100 text-gray-600" };
+                  const at = steps[r.stepIndex];
                   return (
                     <li key={r.id} className="py-2 flex items-center gap-2">
                       <span className="font-medium text-gray-800 truncate">{r.contact?.name ?? "Contato removido"}</span>
                       <span className="text-gray-400">{r.contact?.phone}</span>
                       {r.isTest && <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-50 text-amber-700">teste</span>}
                       <span className="ml-auto text-gray-400">{new Date(r.startedAt).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}</span>
-                      <span className={`px-2 py-0.5 rounded-full ${st.cls}`} title={r.lastError ?? ""}>{st.label}</span>
+                      <span className={`px-2 py-0.5 rounded-full ${st.cls}`} title={r.lastError ?? (at ? `Passo ${r.stepIndex + 1}: ${at.name || STEP_META[at.type].label}` : "")}>{st.label}</span>
                     </li>
                   );
                 })}

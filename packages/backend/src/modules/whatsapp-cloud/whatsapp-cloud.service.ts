@@ -319,6 +319,22 @@ export class WhatsAppCloudService {
     return { externalId: data?.messages?.[0]?.id ?? null, mediaId };
   }
 
+  /** Mensagem com até 3 botões de resposta (só dentro da janela de 24h). */
+  async sendButtons(tenantId: string, to: string, text: string, titles: string[]) {
+    const data = await this.post(tenantId, 'messages', {
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
+      to: this.toWaId(to),
+      type: 'interactive',
+      interactive: {
+        type: 'button',
+        body: { text },
+        action: { buttons: titles.map((title, i) => ({ type: 'reply', reply: { id: `b${i + 1}`, title } })) },
+      },
+    });
+    return { externalId: data?.messages?.[0]?.id ?? null };
+  }
+
   /**
    * Envia um template aprovado. `components` segue o formato da Cloud API
    * (header/body/button com `parameters`); o front monta a partir das variáveis.
@@ -605,6 +621,11 @@ export class WhatsAppCloudService {
         where: { id: conv.id },
         data: { updatedAt: new Date(), ...(direction === 'INBOUND' && (conv.status === 'RESOLVED' || conv.status === 'IN_PROGRESS') ? { status: 'OPEN' } : {}) },
       });
+    }
+
+    // Mensagem mandada pelo app do WhatsApp Business: o time assumiu a conversa
+    if (direction === 'OUTBOUND' && !opts.history) {
+      this.events.emit('conversation.human_message', { tenantId, conversationId: conv.id });
     }
 
     if (direction === 'INBOUND' && !opts.history) {

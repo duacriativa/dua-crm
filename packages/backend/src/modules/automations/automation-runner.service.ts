@@ -2,17 +2,48 @@ import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/commo
 import { OnEvent } from '@nestjs/event-emitter';
 import { PrismaService } from '../../prisma/prisma.service';
 import { WhatsAppCloudService } from '../whatsapp-cloud/whatsapp-cloud.service';
+import { PushService } from '../notifications/push.service';
 import { phoneVariants, toBrDigits } from '../../common/phone.util';
-import { AutomationConditions, AutomationStep, DEFAULT_REPLY_TIMEOUT_S } from './automation-steps';
+import {
+  AutomationConditions, AutomationStep, DEFAULT_REPLY_TIMEOUT_S, StepTarget, salesChannelPhrase, sameAnswer, waitUntil,
+} from './automation-steps';
 
 const ACTIVE = ['RUNNING', 'WAITING_REPLY'];
 const POLL_MS = 5000;
 // Enquanto um passo executa, a sessão fica "reservada" por esse tempo (evita duas instâncias executarem a mesma)
 const LEASE_MS = 2 * 60_000;
+// Índice de "encerrar o bot" nos desvios
+const END = -1;
+// Passos seguidos sem espera numa mesma execução (protege contra "ir para" em círculo)
+const MAX_STEPS_PER_RUN = 60;
 
 /** Eventos que os outros módulos emitem para os bots. */
 export interface LeadFormEvent { tenantId: string; contactId: string }
 export interface InboundMessageEvent { tenantId: string; contactId: string; conversationId: string }
+export interface HumanMessageEvent { tenantId: string; conversationId: string }
+
+type RunWithBot = { id: string; tenantId: string; contactId: string; conversationId: string | null; status: string; stepIndex: number; startedAt: Date; automation: { actions: any } };
+
+const stepsOf = (actions: any) => (Array.isArray(actions) ? actions : []) as AutomationStep[];
+
+/** Posição do destino de um desvio: vazio = próximo, "end" = encerra. */
+function indexOf(steps: AutomationStep[], target: StepTarget, current: number) {
+  if (!target) return current + 1;
+  if (target === 'end') return END;
+  const i = steps.findIndex((s) => s.id === target);
+  return i >= 0 ? i : END;
+}
+
+/** Para onde o bot vai quando o contato responde no passo `i` (botão escolhido, texto livre ou resposta qualquer). */
+function afterReply(steps: AutomationStep[], i: number, answer: string) {
+  const step = steps[i];
+  if (step?.type === 'send_buttons') {
+    const chosen = step.buttons.find((b) => sameAnswer(b.title, answer));
+    return indexOf(steps, chosen ? chosen.goto : step.onOther, i);
+  }
+  if (step?.type === 'wait_reply') return indexOf(steps, step.onReply, i);
+  return i + 1;
+}
 
 /**
  * Executor dos bots. Cada sessão (AutomationRun) guarda no banco o passo atual e
@@ -29,6 +60,7 @@ export class AutomationRunner implements OnModuleInit, OnModuleDestroy {
   constructor(
     private readonly prisma: PrismaService,
     private readonly cloud: WhatsAppCloudService,
+    private readonly push: PushService,
   ) {}
 
   onModuleInit() {
@@ -55,20 +87,37 @@ export class AutomationRunner implements OnModuleInit, OnModuleDestroy {
         where: { tenantId: e.tenantId, contactId: e.contactId, status: { in: ACTIVE }, repliedAt: null },
         data: { repliedAt: now },
       });
-      // Quem estava esperando resposta segue para o próximo passo
+      // Quem estava esperando resposta segue o fluxo (o botão escolhido decide o caminho)
       const waiting = await this.prisma.automationRun.findMany({
         where: { tenantId: e.tenantId, contactId: e.contactId, status: 'WAITING_REPLY' },
-        select: { id: true, stepIndex: true },
+        include: { automation: { select: { actions: true } } },
       });
-      for (const r of waiting) {
-        await this.prisma.automationRun.updateMany({
-          where: { id: r.id, status: 'WAITING_REPLY', stepIndex: r.stepIndex },
-          data: { status: 'RUNNING', stepIndex: r.stepIndex + 1, nextRunAt: now, conversationId: e.conversationId },
-        });
-      }
-      if (waiting.length) this.kick();
+      if (!waiting.length) return;
+      const reply = await this.prisma.message.findFirst({
+        where: { conversationId: e.conversationId, direction: 'INBOUND' },
+        orderBy: { sentAt: 'desc' },
+        select: { content: true },
+      });
+      for (const r of waiting) await this.resume(r, reply?.content ?? '', e.conversationId);
+      this.kick();
     } catch (err: any) {
       this.logger.error(`[Bots] Falha ao tratar resposta de ${e.contactId}: ${err.message}`);
+    }
+  }
+
+  /** Alguém do time escreveu na conversa (CRM ou app do WhatsApp): o bot sai de cena. */
+  @OnEvent('conversation.human_message', { async: true })
+  async onHumanMessage(e: HumanMessageEvent) {
+    try {
+      const conv = await this.prisma.conversation.findFirst({ where: { id: e.conversationId, tenantId: e.tenantId }, select: { contactId: true } });
+      if (!conv) return;
+      const { count } = await this.prisma.automationRun.updateMany({
+        where: { tenantId: e.tenantId, contactId: conv.contactId, status: { in: ACTIVE } },
+        data: { status: 'HANDED_OFF', finishedAt: new Date(), nextRunAt: null },
+      });
+      if (count) this.logger.log(`[Bots] ${count} sessão(ões) do contato ${conv.contactId} assumida(s) pelo time`);
+    } catch (err: any) {
+      this.logger.error(`[Bots] Falha ao pausar bot da conversa ${e.conversationId}: ${err.message}`);
     }
   }
 
@@ -116,6 +165,18 @@ export class AutomationRunner implements OnModuleInit, OnModuleDestroy {
     return run;
   }
 
+  /** Sessão esperando resposta recebeu uma: segue para o passo do caminho escolhido. */
+  private async resume(run: RunWithBot, answer: string, conversationId: string | null) {
+    const next = afterReply(stepsOf(run.automation.actions), run.stepIndex, answer);
+    const now = new Date();
+    await this.prisma.automationRun.updateMany({
+      where: { id: run.id, status: 'WAITING_REPLY', stepIndex: run.stepIndex },
+      data: next === END
+        ? { status: 'COMPLETED', finishedAt: now, nextRunAt: null, conversationId }
+        : { status: 'RUNNING', stepIndex: next, nextRunAt: now, conversationId },
+    });
+  }
+
   // ── Laço ───────────────────────────────────────────────────────────────────
 
   kick() {
@@ -150,60 +211,124 @@ export class AutomationRunner implements OnModuleInit, OnModuleDestroy {
 
   private async process(runId: string) {
     const run = await this.prisma.automationRun.findUnique({ where: { id: runId }, include: { automation: true } });
-    if (!run) return;
+    if (!run || !ACTIVE.includes(run.status)) return;
+    // Só encerra se ainda estiver ativa (o time pode ter assumido no meio)
     const finish = (status: string, lastError?: string) =>
-      this.prisma.automationRun.update({
-        where: { id: run.id },
+      this.prisma.automationRun.updateMany({
+        where: { id: run.id, status: { in: ACTIVE } },
         data: { status, finishedAt: new Date(), nextRunAt: null, ...(lastError ? { lastError: lastError.slice(0, 500) } : {}) },
       });
 
-    // Prazo da espera por resposta venceu sem resposta: encerra
-    if (run.status === 'WAITING_REPLY') { await finish('EXPIRED'); return; }
     // Teste manual roda mesmo com o bot pausado
     if (!run.automation.active && !run.isTest) { await finish('CANCELLED'); return; }
 
-    const steps = (Array.isArray(run.automation.actions) ? run.automation.actions : []) as unknown as AutomationStep[];
+    const steps = stepsOf(run.automation.actions);
     let i = run.stepIndex;
+
+    // Prazo da espera por resposta venceu: segue pelo caminho de "sem resposta" ou encerra
+    if (run.status === 'WAITING_REPLY') {
+      const step = steps[i];
+      const onTimeout = step && (step.type === 'wait_reply' || step.type === 'send_buttons') ? step.onTimeout : undefined;
+      if (!onTimeout || indexOf(steps, onTimeout, i) === END) { await finish('EXPIRED'); return; }
+      i = indexOf(steps, onTimeout, i);
+      await this.prisma.automationRun.update({ where: { id: run.id }, data: { status: 'RUNNING', stepIndex: i } });
+    }
+
+    let conversationId = run.conversationId;
     try {
-      for (; i < steps.length; i++) {
+      for (let n = 0; ; n++) {
+        if (n >= MAX_STEPS_PER_RUN) throw new Error('O bot entrou em círculo: revise os passos "Ir para".');
+        if (i === END || i >= steps.length) {
+          await finish('COMPLETED');
+          this.logger.log(`[Bots] Sessão ${run.id} concluída`);
+          return;
+        }
+        // Entre um passo e outro o time pode ter assumido a conversa
+        if (n > 0 && !(await this.stillActive(run.id))) return;
         const step = steps[i];
+
         if (step.type === 'wait') {
           await this.prisma.automationRun.update({
             where: { id: run.id },
-            data: { stepIndex: i + 1, nextRunAt: new Date(Date.now() + step.seconds * 1000) },
+            data: { stepIndex: i + 1, nextRunAt: waitUntil(new Date(), step.seconds, step.alignTo) },
           });
           // Espera curta: acorda na hora certa em vez de esperar o próximo ciclo de 5s
-          if (step.seconds <= 300) setTimeout(() => this.kick(), step.seconds * 1000 + 50);
+          if (step.seconds <= 300 && !step.alignTo) setTimeout(() => this.kick(), step.seconds * 1000 + 50);
           return;
         }
-        if (step.type === 'wait_reply') {
+
+        if (step.type === 'goto' || step.type === 'end') {
+          i = step.type === 'end' ? END : indexOf(steps, step.target, i);
+          if (i !== END) await this.prisma.automationRun.update({ where: { id: run.id }, data: { stepIndex: i } });
+          continue;
+        }
+
+        if (step.type === 'send_buttons') {
+          const sent = await this.execute({ ...run, conversationId }, step);
+          if (sent) conversationId = sent;
+          await this.prisma.automationRun.update({ where: { id: run.id }, data: { sentCount: { increment: 1 }, conversationId } });
+        }
+
+        if (step.type === 'wait_reply' || step.type === 'send_buttons') {
           const timeout = step.timeoutSeconds || DEFAULT_REPLY_TIMEOUT_S;
           await this.prisma.automationRun.update({
             where: { id: run.id },
-            data: { status: 'WAITING_REPLY', stepIndex: i, nextRunAt: new Date(Date.now() + timeout * 1000) },
+            data: { status: 'WAITING_REPLY', stepIndex: i, nextRunAt: waitUntil(new Date(), timeout, step.alignTo) },
           });
+          // O contato pode ter respondido enquanto o passo rodava
+          const answer = await this.replyAfterBot(conversationId);
+          if (answer !== null) {
+            await this.resume({ ...run, status: 'WAITING_REPLY', stepIndex: i, conversationId }, answer, conversationId);
+            this.kick();
+          }
           return;
         }
-        const sent = await this.execute(run, step);
+
+        const sent = await this.execute({ ...run, conversationId }, step);
+        if (sent) conversationId = sent;
         // Grava o avanço a cada passo: se o processo cair, não reenvia o que já foi
         await this.prisma.automationRun.update({
           where: { id: run.id },
           data: { stepIndex: i + 1, ...(sent ? { sentCount: { increment: 1 }, conversationId: sent } : {}) },
         });
+        i++;
       }
-      await finish('COMPLETED');
-      this.logger.log(`[Bots] Sessão ${run.id} concluída`);
     } catch (err: any) {
       this.logger.warn(`[Bots] Sessão ${run.id} falhou no passo ${i + 1}: ${err.message}`);
-      await this.prisma.automationRun.update({ where: { id: run.id }, data: { stepIndex: i } });
+      await this.prisma.automationRun.updateMany({ where: { id: run.id, status: { in: ACTIVE } }, data: { stepIndex: Math.max(i, 0) } });
       await finish('FAILED', err.message);
     }
+  }
+
+  private async stillActive(runId: string) {
+    const r = await this.prisma.automationRun.findUnique({ where: { id: runId }, select: { status: true } });
+    return !!r && ACTIVE.includes(r.status);
+  }
+
+  /** Última mensagem do contato depois da última mensagem do bot nessa conversa (null = não respondeu). */
+  private async replyAfterBot(conversationId: string | null) {
+    if (!conversationId) return null;
+    const lastBot = await this.prisma.message.findFirst({
+      where: { conversationId, direction: 'OUTBOUND', senderName: 'Bot' },
+      orderBy: { sentAt: 'desc' },
+      select: { sentAt: true },
+    });
+    if (!lastBot) return null;
+    const reply = await this.prisma.message.findFirst({
+      where: { conversationId, direction: 'INBOUND', sentAt: { gt: lastBot.sentAt } },
+      orderBy: { sentAt: 'desc' },
+      select: { content: true },
+    });
+    return reply ? reply.content : null;
   }
 
   // ── Passos ─────────────────────────────────────────────────────────────────
 
   /** Executa um passo de ação. Retorna o id da conversa quando enviou mensagem. */
-  private async execute(run: { tenantId: string; contactId: string }, step: AutomationStep): Promise<string | null> {
+  private async execute(
+    run: { id: string; tenantId: string; contactId: string; conversationId: string | null; startedAt: Date },
+    step: AutomationStep,
+  ): Promise<string | null> {
     const contact = await this.prisma.contact.findFirst({ where: { id: run.contactId, tenantId: run.tenantId } });
     if (!contact) throw new Error('Contato não existe mais.');
 
@@ -212,14 +337,41 @@ export class AutomationRunner implements OnModuleInit, OnModuleDestroy {
       return null;
     }
 
+    if (step.type === 'add_tag') {
+      if (!contact.tags.includes(step.tag)) {
+        await this.prisma.contact.update({ where: { id: contact.id }, data: { tags: [...contact.tags, step.tag] } });
+      }
+      return null;
+    }
+
+    const vars = varsOf(contact.name, contact.phone, {
+      canal_venda: salesChannelPhrase(contact.saleModel),
+      modelo_venda: contact.saleModel ?? '',
+      faturamento: contact.monthlyRevenue ?? '',
+    });
+    const needsAnswers = 'text' in step && /\{\{\s*respostas\s*\}\}/i.test(step.text);
+    if (needsAnswers) vars.respostas = await this.answersOf(run.conversationId, run.startedAt);
+
+    if (step.type === 'notify') {
+      await this.notify(run, contact, fillVars(step.text, vars), step.to);
+      return null;
+    }
+
     const digits = toBrDigits(contact.phone || '');
     if (!digits) throw new Error('Contato sem telefone.');
-    const vars = varsOf(contact.name, contact.phone);
 
     if (step.type === 'send_text') {
       const text = fillVars(step.text, vars);
       const { externalId } = await this.cloud.sendText(run.tenantId, digits, text);
       return this.recordOutbound(run.tenantId, contact.id, digits, { type: 'TEXT', content: text, externalId });
+    }
+
+    if (step.type === 'send_buttons') {
+      const text = fillVars(step.text, vars);
+      const titles = step.buttons.map((b) => b.title);
+      const { externalId } = await this.cloud.sendButtons(run.tenantId, digits, text, titles);
+      const content = `${text}\n\n${titles.map((t) => `[ ${t} ]`).join('  ')}`;
+      return this.recordOutbound(run.tenantId, contact.id, digits, { type: 'INTERACTIVE', content, externalId });
     }
 
     if (step.type === 'send_template') {
@@ -238,12 +390,49 @@ export class AutomationRunner implements OnModuleInit, OnModuleDestroy {
     return null;
   }
 
+  /** O que o contato escreveu desde o início da sessão, uma linha por mensagem. */
+  private async answersOf(conversationId: string | null, since: Date) {
+    if (!conversationId) return '';
+    const msgs = await this.prisma.message.findMany({
+      where: { conversationId, direction: 'INBOUND', sentAt: { gte: since } },
+      orderBy: { sentAt: 'asc' },
+      take: 20,
+      select: { content: true },
+    });
+    return msgs.map((m) => `• ${m.content.replace(/\s+/g, ' ').slice(0, 300)}`).join('\n');
+  }
+
+  /** Aviso para o time: nota interna na conversa do contato + notificação nos aparelhos. */
+  private async notify(
+    run: { id: string; tenantId: string; conversationId: string | null },
+    contact: { id: string; name: string | null; phone: string | null },
+    text: string,
+    to?: string,
+  ) {
+    const conversationId = run.conversationId
+      ?? (await this.prisma.conversation.findFirst({
+        where: { tenantId: run.tenantId, channel: 'WHATSAPP', contactId: contact.id },
+        orderBy: { updatedAt: 'desc' },
+        select: { id: true },
+      }))?.id
+      ?? null;
+    await this.prisma.activity.create({
+      data: { tenantId: run.tenantId, contactId: contact.id, conversationId, type: 'NOTE', content: text, authorName: 'Bot', recipientName: to ?? null },
+    });
+    this.push.sendToTenant(run.tenantId, {
+      title: to ? `Para ${to} — do Bot` : 'Aviso do Bot',
+      body: `${contact.name || contact.phone || 'Contato'}: ${text.replace(/\s+/g, ' ').slice(0, 140)}`,
+      url: contact.phone ? `/dashboard/conversas?phone=${encodeURIComponent(contact.phone)}` : '/dashboard/conversas',
+      tag: `bot-${run.id}`,
+    });
+  }
+
   /** Grava a mensagem enviada na conversa do contato (cria a conversa se o lead nunca falou com a gente). */
   private async recordOutbound(
     tenantId: string,
     contactId: string,
     digits: string,
-    msg: { type: 'TEXT' | 'TEMPLATE'; content: string; externalId: string | null; templateName?: string },
+    msg: { type: 'TEXT' | 'TEMPLATE' | 'INTERACTIVE'; content: string; externalId: string | null; templateName?: string },
   ) {
     let conv = await this.prisma.conversation.findFirst({
       where: { tenantId, channel: 'WHATSAPP', contactId },
@@ -309,16 +498,32 @@ export class AutomationRunner implements OnModuleInit, OnModuleDestroy {
   }
 }
 
-/** Variáveis disponíveis nos textos: {{nome}} e {{primeiro_nome}}. */
-export function varsOf(name: string | null, phone: string | null) {
+/** Variáveis dos textos: {{nome}}, {{primeiro_nome}} e as extras (canal_venda, faturamento, respostas…). */
+export function varsOf(name: string | null, phone: string | null, extra: Record<string, string> = {}): Record<string, string> {
   const clean = (name || '').trim();
   // Contato criado pelo WhatsApp sem nome fica com o número como nome
   const real = clean && clean !== phone && !/^\+?[\d\s()-]+$/.test(clean) ? clean : '';
   const first = real.split(/\s+/)[0] || '';
   const cap = first ? first[0].toUpperCase() + first.slice(1).toLowerCase() : '';
-  return { nome: real || 'você', primeiro_nome: cap || 'você' };
+  return { nome: real || 'você', primeiro_nome: cap || 'você', ...extra };
 }
 
+/**
+ * Preenche as variáveis conhecidas. A linha com uma variável vazia sai do texto
+ * (ex.: "Vi aqui que vocês vendem {{canal_venda}}." some quando o form não trouxe o modelo).
+ */
 export function fillVars(text: string, vars: Record<string, string>) {
-  return (text || '').replace(/\{\{\s*(nome|primeiro_nome)\s*\}\}/gi, (_, k) => vars[k.toLowerCase()] ?? '');
+  return (text || '')
+    .split('\n')
+    .flatMap((line) => {
+      let empty = false;
+      const out = line.replace(/\{\{\s*(\w+)\s*\}\}/g, (all, k) => {
+        const key = String(k).toLowerCase();
+        if (!(key in vars)) return all;
+        if (!vars[key]) empty = true;
+        return vars[key];
+      });
+      return empty ? [] : [out];
+    })
+    .join('\n');
 }

@@ -3,6 +3,7 @@ import { ConversationStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { WhatsAppCloudService } from '../whatsapp-cloud/whatsapp-cloud.service';
 import { PushService } from '../notifications/push.service';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import axios from 'axios';
 
 @Injectable()
@@ -11,7 +12,13 @@ export class ConversationsService {
     private readonly prisma: PrismaService,
     private readonly cloud: WhatsAppCloudService,
     private readonly push: PushService,
+    private readonly events: EventEmitter2,
   ) {}
+
+  /** Mensagem enviada por alguém do time: bots em andamento com esse contato param. */
+  private humanSent(tenantId: string, conversationId: string) {
+    this.events.emit('conversation.human_message', { tenantId, conversationId });
+  }
 
   /** Número do contato para a Cloud API (sem LID/grupo). */
   private cloudRecipient(conv: { externalId: string | null; contact: { phone: string | null } }) {
@@ -182,6 +189,7 @@ export class ConversationsService {
       },
     });
     await this.prisma.conversation.update({ where: { id: conversationId }, data: { updatedAt: new Date() } });
+    this.humanSent(tenantId, conversationId);
     return message;
   }
 
@@ -214,6 +222,7 @@ export class ConversationsService {
       },
     });
     await this.prisma.conversation.update({ where: { id: conversationId }, data: { updatedAt: new Date() } });
+    this.humanSent(tenantId, conversationId);
     return message;
   }
 
@@ -247,6 +256,7 @@ export class ConversationsService {
       },
     });
     await this.prisma.conversation.update({ where: { id: conversationId }, data: { updatedAt: new Date() } });
+    this.humanSent(tenantId, conversationId);
     return message;
   }
 
