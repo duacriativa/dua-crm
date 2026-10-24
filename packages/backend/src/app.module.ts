@@ -24,6 +24,8 @@ import { ServicesModule } from './modules/services/services.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { KommoModule } from './modules/kommo/kommo.module';
 import { SchedulingModule } from './modules/scheduling/scheduling.module';
+import { MetaAdsModule } from './modules/meta-ads/meta-ads.module';
+import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 
 @Module({
@@ -65,6 +67,8 @@ import { EventEmitterModule } from '@nestjs/event-emitter';
     NotificationsModule,
     KommoModule,
     SchedulingModule,
+    MetaAdsModule,
+    DashboardModule,
     EventEmitterModule.forRoot(),
   ],
   providers: [

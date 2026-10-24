@@ -11,6 +11,7 @@ import {
 import { useRouter } from "next/navigation";
 import { TemplatesManager } from "@/components/whatsapp/templates";
 import { BookingSettings, GoogleCalendarCard } from "@/components/scheduling/booking-settings";
+import { MetaAdsCard } from "@/components/integrations/meta-ads-card";
 
 const API_URL = "";
 function getToken() { return typeof window !== "undefined" ? localStorage.getItem("access_token") : ""; }
@@ -542,6 +543,8 @@ function TabIntegracoes() {
 
           <GoogleCalendarCard />
 
+          <MetaAdsCard />
+
           {/* Card do Kommo */}
           <div className="surface-card p-5 flex flex-col md:col-span-2">
             <div className="flex items-start justify-between mb-3">
@@ -653,7 +656,7 @@ function TabIntegracoes() {
 export default function ConfiguracoesPage() {
   const [activeTab, setActiveTab] = useState("Perfil");
 
-  // ?tab=Integrações (volta do "Conectar Google")
+  // ?tab=Integrações (volta do "Conectar Google" / "Conectar Meta Ads")
   useEffect(() => {
     const t = new URLSearchParams(window.location.search).get("tab");
     if (t && tabs.some((x) => x.key === t)) setActiveTab(t);

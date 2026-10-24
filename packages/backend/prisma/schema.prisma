@@ -89,6 +89,7 @@ enum IntegrationType {
   SHOPIFY
   WOOCOMMERCE
   GOOGLE      // Google Agenda (agendamento próprio): refresh token na config criptografada
+  META_ADS    // Meta Ads (só leitura, ads_read): token long-lived + conta de anúncios na config criptografada
 }
 
 enum ContractStatus {

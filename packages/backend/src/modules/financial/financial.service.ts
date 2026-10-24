@@ -1,6 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { AsaasService } from '../asaas/asaas.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { MetaAdsService } from '../meta-ads/meta-ads.service';
+import { diaBR, somaDias } from '../../common/periodo-br.util';
 
 @Injectable()
 export class FinancialService {
@@ -8,6 +10,7 @@ export class FinancialService {
   constructor(
     private asaas: AsaasService,
     private prisma: PrismaService,
+    private metaAds: MetaAdsService,
   ) {}
 
   async getSummary(tenantId: string) {
@@ -109,11 +112,14 @@ export class FinancialService {
     const avgRetentionMonths = 8;
     const ltv = ticketMedio * avgRetentionMonths;
 
-    // CAC (gasto em ads / novos clientes no mês)
-    // Conta contratos assinados nos últimos 30 dias
+    // CAC (investimento no Meta Ads ÷ novos clientes) nos últimos 30 dias.
+    // Sem Meta Ads conectado não há investimento real: CAC fica 0 ("—" na tela).
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-    const adsSpend = 1200;
+    const today = diaBR();
+    const adsSpend = await this.metaAds.insights(tenantId, somaDias(today, -29), today)
+      .then((m) => m?.spend ?? 0)
+      .catch((err) => { this.logger.warn(err.message); return 0; });
     const newClientsThisMonth = await this.prisma.contract.count({
       where: {
         tenantId,

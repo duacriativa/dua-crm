@@ -6,7 +6,7 @@ const STAGE_KINDS = ['OPEN', 'WON', 'LOST'];
 const PAID_MEDIUMS = ['cpc', 'ppc', 'paid', 'paid_social', 'paidsocial', 'ads', 'ctwa'];
 
 /** Origem para relatório: a marcada à mão vence; senão deduz do anúncio/UTM. */
-function originOf(c: { leadOrigin: string | null; adId: string | null; utmSource: string | null; utmMedium: string | null }) {
+export function originOf(c: { leadOrigin: string | null; adId: string | null; utmSource: string | null; utmMedium: string | null }) {
   if (c.leadOrigin) return c.leadOrigin;
   if (c.adId) return 'ADS';
   if (c.utmMedium && PAID_MEDIUMS.includes(c.utmMedium.toLowerCase())) return 'ADS';

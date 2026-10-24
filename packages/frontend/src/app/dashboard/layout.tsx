@@ -178,6 +178,8 @@ function TrophyWidget() {
   });
   const toggleHidden = () => setHidden((h) => {
     try { localStorage.setItem("dua-crm-ocultar-valores", h ? "0" : "1"); } catch {}
+    // Avisa as telas abertas (ex.: Dashboard) para mascararem os R$ também
+    setTimeout(() => window.dispatchEvent(new CustomEvent("dua-crm-ocultar-valores", { detail: !h })), 0);
     return !h;
   });
   const ref = useRef<HTMLDivElement>(null);
