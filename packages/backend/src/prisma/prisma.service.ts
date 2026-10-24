@@ -121,6 +121,10 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
       `CREATE INDEX IF NOT EXISTS "AutomationRun_status_nextRunAt_idx" ON "AutomationRun"("status", "nextRunAt")`,
       `CREATE INDEX IF NOT EXISTS "AutomationRun_automationId_idx" ON "AutomationRun"("automationId")`,
       `CREATE INDEX IF NOT EXISTS "AutomationRun_contactId_status_idx" ON "AutomationRun"("contactId", "status")`,
+      // 20261024000003_add_meeting_automations (tabela/enum do postgres: aplicado pelo Supabase; aqui só não quebra)
+      `ALTER TYPE "AutomationTrigger" ADD VALUE IF NOT EXISTS 'MEETING_SCHEDULED'`,
+      `ALTER TABLE "AutomationRun" ADD COLUMN IF NOT EXISTS "meetingId" TEXT`,
+      `CREATE INDEX IF NOT EXISTS "AutomationRun_meetingId_idx" ON "AutomationRun"("meetingId")`,
       // 20261024000002_add_scheduling (o ALTER TYPE precisa do dono do enum: aplicado pelo Supabase)
       `ALTER TYPE "IntegrationType" ADD VALUE IF NOT EXISTS 'GOOGLE'`,
       `CREATE TABLE IF NOT EXISTS "BookingPage" (

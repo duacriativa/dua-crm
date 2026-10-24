@@ -4,8 +4,10 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { WhatsAppCloudService } from '../whatsapp-cloud/whatsapp-cloud.service';
 import { PushService } from '../notifications/push.service';
 import { phoneVariants, toBrDigits } from '../../common/phone.util';
+import { MEETING_EVENTS, appUrl } from '../scheduling/scheduling.service';
 import {
-  AutomationConditions, AutomationStep, DEFAULT_REPLY_TIMEOUT_S, StepTarget, originFromText, originLabel, salesChannelPhrase, sameAnswer, waitUntil,
+  AutomationConditions, AutomationStep, DEFAULT_MEETING_STATUS_TIMEOUT_S, DEFAULT_REPLY_TIMEOUT_S, MEETING_LATE_GRACE_MS, StepTarget,
+  meetingWaitAt, originFromText, originLabel, salesChannelPhrase, sameAnswer, waitUntil,
 } from './automation-steps';
 
 const ACTIVE = ['RUNNING', 'WAITING_REPLY'];
@@ -23,8 +25,10 @@ const NEW_CONTACT_MS = 24 * 3600_000;
 export interface LeadFormEvent { tenantId: string; contactId: string }
 export interface InboundMessageEvent { tenantId: string; contactId: string; conversationId: string; firstMessage?: boolean }
 export interface HumanMessageEvent { tenantId: string; conversationId: string }
+export interface MeetingEvent { tenantId: string; meetingId: string; contactId: string; startAt: Date }
 
 type RunWithBot = { id: string; tenantId: string; contactId: string; conversationId: string | null; status: string; stepIndex: number; startedAt: Date; automation: { actions: any } };
+type RunRef = { id: string; tenantId: string; contactId: string; conversationId: string | null; startedAt: Date; meetingId: string | null };
 
 const stepsOf = (actions: any) => (Array.isArray(actions) ? actions : []) as AutomationStep[];
 
@@ -79,6 +83,63 @@ export class AutomationRunner implements OnModuleInit, OnModuleDestroy {
   @OnEvent('lead.form_submitted', { async: true })
   async onLeadForm(e: LeadFormEvent) {
     await this.trigger(e.tenantId, 'LEAD_FORM_SUBMITTED', e.contactId);
+  }
+
+  @OnEvent(MEETING_EVENTS.scheduled, { async: true })
+  async onMeetingScheduled(e: MeetingEvent) {
+    await this.trigger(e.tenantId, 'MEETING_SCHEDULED', e.contactId, { meetingId: e.meetingId });
+  }
+
+  /** Remarcou: as esperas da reunião recalculam com o novo horário. */
+  @OnEvent(MEETING_EVENTS.rescheduled, { async: true })
+  async onMeetingRescheduled(e: MeetingEvent) {
+    await this.wakeMeetingRuns(e.meetingId, ['wait_meeting']);
+  }
+
+  /** Time marcou "não compareceu" ou "realizada": quem espera o status segue o caminho. */
+  @OnEvent(MEETING_EVENTS.noShow, { async: true })
+  async onMeetingNoShow(e: MeetingEvent) {
+    await this.wakeMeetingRuns(e.meetingId, ['meeting_status']);
+  }
+
+  @OnEvent(MEETING_EVENTS.completed, { async: true })
+  async onMeetingCompleted(e: MeetingEvent) {
+    await this.wakeMeetingRuns(e.meetingId, ['meeting_status']);
+  }
+
+  @OnEvent(MEETING_EVENTS.cancelled, { async: true })
+  async onMeetingCancelled(e: MeetingEvent) {
+    try {
+      const { count } = await this.prisma.automationRun.updateMany({
+        where: { tenantId: e.tenantId, meetingId: e.meetingId, status: { in: ACTIVE } },
+        data: { status: 'CANCELLED', finishedAt: new Date(), nextRunAt: null, lastError: 'Reunião cancelada' },
+      });
+      if (count) this.logger.log(`[Bots] ${count} sessão(ões) da reunião ${e.meetingId} cancelada(s)`);
+    } catch (err: any) {
+      this.logger.error(`[Bots] Falha ao cancelar sessões da reunião ${e.meetingId}: ${err.message}`);
+    }
+  }
+
+  /** Sessões da reunião paradas num passo desses tipos rodam de novo agora (o passo relê a reunião). */
+  private async wakeMeetingRuns(meetingId: string, types: string[]) {
+    try {
+      const runs = await this.prisma.automationRun.findMany({
+        where: { meetingId, status: 'RUNNING' },
+        include: { automation: { select: { actions: true } } },
+      });
+      let woke = 0;
+      for (const r of runs) {
+        if (!types.includes(stepsOf(r.automation.actions)[r.stepIndex]?.type)) continue;
+        const { count } = await this.prisma.automationRun.updateMany({
+          where: { id: r.id, status: 'RUNNING', stepIndex: r.stepIndex },
+          data: { nextRunAt: new Date() },
+        });
+        woke += count;
+      }
+      if (woke) this.kick();
+    } catch (err: any) {
+      this.logger.error(`[Bots] Falha ao atualizar sessões da reunião ${meetingId}: ${err.message}`);
+    }
   }
 
   @OnEvent('whatsapp.inbound', { async: true })
@@ -140,8 +201,9 @@ export class AutomationRunner implements OnModuleInit, OnModuleDestroy {
     try {
       const conv = await this.prisma.conversation.findFirst({ where: { id: e.conversationId, tenantId: e.tenantId }, select: { contactId: true } });
       if (!conv) return;
+      // Lembretes de reunião continuam mesmo com o time conversando
       const { count } = await this.prisma.automationRun.updateMany({
-        where: { tenantId: e.tenantId, contactId: conv.contactId, status: { in: ACTIVE } },
+        where: { tenantId: e.tenantId, contactId: conv.contactId, status: { in: ACTIVE }, meetingId: null },
         data: { status: 'HANDED_OFF', finishedAt: new Date(), nextRunAt: null },
       });
       if (count) this.logger.log(`[Bots] ${count} sessão(ões) do contato ${conv.contactId} assumida(s) pelo time`);
@@ -151,7 +213,7 @@ export class AutomationRunner implements OnModuleInit, OnModuleDestroy {
   }
 
   /** Abre uma sessão de cada bot ativo desse gatilho para o contato. */
-  async trigger(tenantId: string, trigger: string, contactId: string) {
+  async trigger(tenantId: string, trigger: string, contactId: string, opts: { meetingId?: string } = {}) {
     try {
       const automations = await this.prisma.automation.findMany({
         where: { tenantId, trigger: trigger as any, active: true },
@@ -166,17 +228,20 @@ export class AutomationRunner implements OnModuleInit, OnModuleDestroy {
           const allowed = new Set(cond.onlyPhones.flatMap((p) => phoneVariants(p)));
           if (!phoneVariants(contact.phone).some((v) => allowed.has(v))) continue;
         }
-        // Não repete: já tem sessão em andamento, ou começou nas últimas 24h (form enviado 2x)
+        // Não repete: já tem sessão em andamento, ou começou nas últimas 24h (form enviado 2x).
+        // Reunião: uma sessão por reunião (cancelou e marcou outra → sessão nova)
         const recent = await this.prisma.automationRun.findFirst({
-          where: {
-            automationId: a.id,
-            contactId,
-            OR: [{ status: { in: ACTIVE } }, { startedAt: { gte: new Date(Date.now() - 24 * 3600_000) } }],
-          },
+          where: opts.meetingId
+            ? { automationId: a.id, meetingId: opts.meetingId }
+            : {
+                automationId: a.id,
+                contactId,
+                OR: [{ status: { in: ACTIVE } }, { startedAt: { gte: new Date(Date.now() - 24 * 3600_000) } }],
+              },
           select: { id: true },
         });
         if (recent) continue;
-        await this.start(a.id, tenantId, contactId);
+        await this.start(a.id, tenantId, contactId, { meetingId: opts.meetingId });
       }
     } catch (err: any) {
       this.logger.error(`[Bots] Falha no gatilho ${trigger} (${contactId}): ${err.message}`);
@@ -184,9 +249,12 @@ export class AutomationRunner implements OnModuleInit, OnModuleDestroy {
   }
 
   /** Começa uma sessão já (também usado pelo "testar com um contato"). */
-  async start(automationId: string, tenantId: string, contactId: string, opts: { isTest?: boolean } = {}) {
+  async start(automationId: string, tenantId: string, contactId: string, opts: { isTest?: boolean; meetingId?: string } = {}) {
     const run = await this.prisma.automationRun.create({
-      data: { tenantId, automationId, contactId, status: 'RUNNING', stepIndex: 0, nextRunAt: new Date(), isTest: !!opts.isTest },
+      data: {
+        tenantId, automationId, contactId, status: 'RUNNING', stepIndex: 0, nextRunAt: new Date(), isTest: !!opts.isTest,
+        meetingId: opts.meetingId ?? null,
+      },
     });
     await this.prisma.automation.update({ where: { id: automationId }, data: { runCount: { increment: 1 } } });
     this.logger.log(`[Bots] Sessão ${run.id} iniciada (bot ${automationId}, contato ${contactId})`);
@@ -292,6 +360,33 @@ export class AutomationRunner implements OnModuleInit, OnModuleDestroy {
           return;
         }
 
+        if (step.type === 'wait_meeting' || step.type === 'meeting_status') {
+          const meeting = await this.meetingOf(run);
+          if (meeting.status === 'CANCELLED') { await finish('CANCELLED', 'Reunião cancelada'); return; }
+          const now = Date.now();
+          // Até quando fica parado neste passo (o passo roda de novo e relê a reunião)
+          let until: Date | null = null;
+          if (step.type === 'wait_meeting') {
+            const at = meetingWaitAt(meeting.startAt, step);
+            if (at.getTime() > now) until = at;
+            // Chegou atrasado (marcou em cima da hora ou remarcou para mais cedo): pula o lembrete
+            else i = indexOf(steps, now - at.getTime() > MEETING_LATE_GRACE_MS ? step.onLate : step.onTime, i);
+          } else if (meeting.status === 'NO_SHOW') i = indexOf(steps, step.onNoShow, i);
+          else if (meeting.status === 'COMPLETED') i = indexOf(steps, step.onDone, i);
+          else {
+            const deadline = new Date(meeting.endAt.getTime() + (step.timeoutSeconds || DEFAULT_MEETING_STATUS_TIMEOUT_S) * 1000);
+            if (deadline.getTime() > now) until = deadline;
+            else i = step.onTimeout ? indexOf(steps, step.onTimeout, i) : END;
+          }
+          if (until) {
+            await this.prisma.automationRun.update({ where: { id: run.id }, data: { stepIndex: i, nextRunAt: until } });
+            if (until.getTime() - now <= 300_000) setTimeout(() => this.kick(), until.getTime() - now + 50);
+            return;
+          }
+          if (i !== END) await this.prisma.automationRun.update({ where: { id: run.id }, data: { stepIndex: i } });
+          continue;
+        }
+
         if (step.type === 'check_origin') {
           i = indexOf(steps, (await this.originKnown(run, conversationId)) ? step.onKnown : step.onUnknown, i);
           if (i !== END) await this.prisma.automationRun.update({ where: { id: run.id }, data: { stepIndex: i } });
@@ -371,6 +466,17 @@ export class AutomationRunner implements OnModuleInit, OnModuleDestroy {
     return true;
   }
 
+  /** Reunião da sessão (gatilho "Reunião agendada"). */
+  private async meetingOf(run: { tenantId: string; meetingId: string | null }) {
+    if (!run.meetingId) throw new Error('Sessão sem reunião: passos de reunião só funcionam com o gatilho "Reunião agendada".');
+    const m = await this.prisma.meeting.findFirst({
+      where: { id: run.meetingId, tenantId: run.tenantId },
+      include: { bookingPage: { select: { slug: true, timezone: true } } },
+    });
+    if (!m) throw new Error('A reunião não existe mais.');
+    return m;
+  }
+
   private async stillActive(runId: string) {
     const r = await this.prisma.automationRun.findUnique({ where: { id: runId }, select: { status: true } });
     return !!r && ACTIVE.includes(r.status);
@@ -397,7 +503,7 @@ export class AutomationRunner implements OnModuleInit, OnModuleDestroy {
 
   /** Executa um passo de ação. Retorna o id da conversa quando enviou mensagem. */
   private async execute(
-    run: { id: string; tenantId: string; contactId: string; conversationId: string | null; startedAt: Date },
+    run: RunRef,
     step: AutomationStep,
   ): Promise<string | null> {
     const contact = await this.prisma.contact.findFirst({ where: { id: run.contactId, tenantId: run.tenantId } });
@@ -429,6 +535,7 @@ export class AutomationRunner implements OnModuleInit, OnModuleDestroy {
       modelo_venda: contact.saleModel ?? '',
       faturamento: contact.monthlyRevenue ?? '',
     });
+    if (run.meetingId) Object.assign(vars, meetingVars(await this.meetingOf(run)));
     const needsAnswers = 'text' in step && /\{\{\s*respostas\s*\}\}/i.test(step.text);
     if (needsAnswers) vars.respostas = await this.answersOf(run.conversationId, run.startedAt);
 
@@ -576,6 +683,22 @@ export class AutomationRunner implements OnModuleInit, OnModuleDestroy {
       await this.prisma.contact.updateMany({ where: { id: contactId, tenantId, type: 'LEAD' }, data: { type: 'CLIENT', clientSince: now } });
     }
   }
+}
+
+/** {{reuniao_data}} ("quinta-feira, 30/10"), {{reuniao_hora}}, {{meet}}, {{link_remarcar}} e {{link_agendamento}}, no fuso da página. */
+export function meetingVars(m: { startAt: Date; meetLink: string | null; manageToken: string; bookingPage: { slug: string; timezone: string } | null }) {
+  const timeZone = m.bookingPage?.timezone ?? 'America/Sao_Paulo';
+  const weekday = new Intl.DateTimeFormat('pt-BR', { timeZone, weekday: 'long' }).format(m.startAt);
+  const day = new Intl.DateTimeFormat('pt-BR', { timeZone, day: '2-digit', month: '2-digit' }).format(m.startAt);
+  const manage = `${appUrl()}/reuniao/${m.manageToken}`;
+  return {
+    reuniao_data: `${weekday}, ${day}`,
+    reuniao_hora: new Intl.DateTimeFormat('pt-BR', { timeZone, hour: '2-digit', minute: '2-digit' }).format(m.startAt),
+    // Sem Meet (falha no Google): a página da reunião, que mostra os detalhes
+    meet: m.meetLink || manage,
+    link_remarcar: manage,
+    link_agendamento: m.bookingPage ? `${appUrl()}/agendar/${m.bookingPage.slug}` : '',
+  };
 }
 
 /** Variáveis dos textos: {{nome}}, {{primeiro_nome}} e as extras (canal_venda, faturamento, respostas…). */

@@ -122,6 +122,7 @@ enum AutomationTrigger {
   LEAD_FORM_SUBMITTED    // lead preencheu o formulário do site (POST /webhooks/lead)
   LEAD_STAGE_ENTERED     // card criado/movido para uma etapa do funil (conditions.stageId)
   WHATSAPP_FIRST_MESSAGE // contato novo mandou a 1ª mensagem no WhatsApp (sem formulário)
+  MEETING_SCHEDULED      // reunião marcada pelo agendamento próprio (meeting.scheduled)
 }
 
 // Itens da linha do tempo do contato além das mensagens (tarefas, eventos do funil… virão depois)
@@ -374,6 +375,7 @@ model AutomationRun {
   repliedAt      DateTime?  // o contato respondeu durante o bot (conta como conversão)
   lastError      String?
   visitedSteps   String[]   @default([]) // ids dos passos por onde a sessão passou (contadores do editor)
+  meetingId      String?    // reunião que disparou a sessão (gatilho "Reunião agendada"; esperas relativas ao horário dela)
   startedAt      DateTime   @default(now())
   finishedAt     DateTime?
   updatedAt      DateTime   @updatedAt
@@ -381,6 +383,7 @@ model AutomationRun {
   @@index([status, nextRunAt])
   @@index([automationId])
   @@index([contactId, status])
+  @@index([meetingId])
 }
 
 model Campaign {

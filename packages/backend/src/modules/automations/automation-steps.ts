@@ -1,6 +1,7 @@
 // Passos de um bot (coluna Automation.actions), executados em ordem pelo AutomationRunner.
 // Cada passo tem um `id` estável; desvios ("ir para") apontam para esse id.
 // Textos aceitam {{nome}}, {{primeiro_nome}}, {{canal_venda}}, {{modelo_venda}}, {{faturamento}}, {{origem}} e {{respostas}}.
+// Nos bots de reunião também {{reuniao_data}}, {{reuniao_hora}}, {{meet}}, {{link_remarcar}} e {{link_agendamento}}.
 
 /** Destino de um desvio: vazio = próximo passo, "end" = encerra o bot, senão o id de um passo. */
 export type StepTarget = string | undefined;
@@ -39,7 +40,26 @@ export type AutomationStep = { id?: string; name?: string; pos?: StepPos } & (
   | { type: 'set_origin'; origin: LeadOrigin; source?: string } // grava a origem (ex.: resposta de um botão)
   | { type: 'goto'; target: StepTarget }
   | { type: 'end' }
+  // Reunião (gatilho "Reunião agendada"): espera até `seconds` antes/depois do início.
+  // Remarcou → vale o novo horário. Já passou ao chegar aqui → segue por onLate (pula o lembrete).
+  | { type: 'wait_meeting'; seconds: number; when: 'before' | 'after'; onTime?: StepTarget; onLate?: StepTarget }
+  // Depois da reunião: espera o time marcar "realizada" ou "não compareceu" (até timeoutSeconds após o fim; sem onTimeout → encerra)
+  | { type: 'meeting_status'; timeoutSeconds?: number; onDone?: StepTarget; onNoShow?: StepTarget; onTimeout?: StepTarget }
 );
+
+/** Passos que só funcionam com uma reunião na sessão. */
+export const MEETING_STEPS = ['wait_meeting', 'meeting_status'];
+
+/** Margem para "na hora" da espera da reunião (laço de 5s, reinício do servidor). */
+export const MEETING_LATE_GRACE_MS = 15 * 60_000;
+
+/** Prazo padrão para o time marcar o status da reunião depois do fim. */
+export const DEFAULT_MEETING_STATUS_TIMEOUT_S = 24 * 3600;
+
+/** Momento da espera relativa à reunião. */
+export function meetingWaitAt(startAt: Date, step: { seconds: number; when: 'before' | 'after' }) {
+  return new Date(startAt.getTime() + (step.when === 'before' ? -1 : 1) * step.seconds * 1000);
+}
 
 /** Contact.leadOrigin */
 export type LeadOrigin = 'ADS' | 'ORGANIC' | 'REFERRAL' | 'OTHER';
@@ -49,7 +69,7 @@ export interface AutomationConditions {
   onlyPhones?: string[]; // modo teste: só dispara para esses números
 }
 
-export const STEP_TYPES = ['wait', 'wait_reply', 'send_text', 'send_template', 'send_buttons', 'move_stage', 'add_tag', 'notify', 'check_origin', 'set_origin', 'goto', 'end'];
+export const STEP_TYPES = ['wait', 'wait_reply', 'send_text', 'send_template', 'send_buttons', 'move_stage', 'add_tag', 'notify', 'check_origin', 'set_origin', 'goto', 'end', ...MEETING_STEPS];
 
 /** Espera por resposta sem limite configurado: 7 dias e o bot encerra. */
 export const DEFAULT_REPLY_TIMEOUT_S = 7 * 24 * 3600;
@@ -57,6 +77,7 @@ export const DEFAULT_REPLY_TIMEOUT_S = 7 * 24 * 3600;
 export const TRIGGER_LABEL: Record<string, string> = {
   LEAD_FORM_SUBMITTED: 'Formulário do site preenchido',
   WHATSAPP_FIRST_MESSAGE: 'Primeira mensagem no WhatsApp',
+  MEETING_SCHEDULED: 'Reunião agendada',
   LEAD_STAGE_ENTERED: 'Card entrou na etapa do funil',
   ABANDONED_CART: 'Carrinho abandonado',
   ORDER_DELIVERED: 'Pedido entregue',
@@ -193,6 +214,24 @@ export function sanitizeSteps(input: any, strict = true): AutomationStep[] {
       }
       case 'end':
         return { ...base, type: 'end' };
+      case 'wait_meeting':
+        return {
+          ...base,
+          type: 'wait_meeting',
+          seconds: secs(s.seconds, 30 * 24 * 3600),
+          when: s.when === 'after' ? 'after' : 'before',
+          ...opt('onTime', s.onTime),
+          ...opt('onLate', s.onLate),
+        };
+      case 'meeting_status':
+        return {
+          ...base,
+          type: 'meeting_status',
+          ...(s.timeoutSeconds ? { timeoutSeconds: secs(s.timeoutSeconds, 30 * 24 * 3600) } : {}),
+          ...opt('onDone', s.onDone),
+          ...opt('onNoShow', s.onNoShow),
+          ...opt('onTimeout', s.onTimeout),
+        };
       default:
         throw new Error(`Passo desconhecido: ${s?.type}`);
     }

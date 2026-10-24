@@ -11,7 +11,7 @@ import { ArrowLeft, Flame, FlaskConical, LayoutGrid, Loader2, Plus, Save, Send, 
 import { useRouter } from "next/navigation";
 import { authFetch } from "@/lib/auth-fetch";
 import { fetchTemplates, type WaTemplate } from "@/components/whatsapp/templates";
-import { Bot, BotRun, BotStep, BotStepStat, BotStepStats, botsApi, newStepId } from "./bot-api";
+import { Bot, BotRun, BotStep, BotStepStat, BotStepStats, MEETING_STEP_TYPES, botsApi, newStepId } from "./bot-api";
 import {
   BotGraph, OutKind, Output, landAt, linkKey, linkOf, outputsOf, removeButton, removeNode, toGraph, toSteps,
 } from "./bot-graph";
@@ -400,6 +400,7 @@ export function BotEditor({ bot, onSaved }: { bot: Bot; onSaved: () => Promise<B
   };
 
   const sel = selected ? graph.nodes.find((n) => n.id === selected) : undefined;
+  const isMeetingBot = bot.trigger === "MEETING_SCHEDULED";
   const others = (self?: string) => graph.nodes.filter((n) => n.id !== self);
 
   return (
@@ -422,7 +423,7 @@ export function BotEditor({ bot, onSaved }: { bot: Bot; onSaved: () => Promise<B
             </button>
             {addOpen && (
               <div className="absolute right-0 z-50 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg py-1 min-w-[230px]">
-                {(Object.keys(STEP_META) as StepType[]).filter((t) => t !== "goto").map((t) => (
+                {(Object.keys(STEP_META) as StepType[]).filter((t) => t !== "goto" && (isMeetingBot || !MEETING_STEP_TYPES.includes(t))).map((t) => (
                   <button key={t} onClick={() => addStep(t)} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
                     {STEP_META[t].icon()}{STEP_META[t].label}
                   </button>
@@ -477,6 +478,7 @@ export function BotEditor({ bot, onSaved }: { bot: Bot; onSaved: () => Promise<B
                 stages={stages}
                 onAddButton={() => sel.type === "send_buttons" && setStep(sel.id!, { buttons: [...sel.buttons, { title: "" }] })}
                 onRemoveButton={(k) => change((g) => removeButton(g, sel.id!, k))}
+                meeting={isMeetingBot}
               />
 
               {outputsOf(sel).length > 0 && (
@@ -537,7 +539,9 @@ export function BotEditor({ bot, onSaved }: { bot: Bot; onSaved: () => Promise<B
                     <Send className="w-3.5 h-3.5" /> Testar
                   </button>
                 </div>
-                <p className="text-[11px] text-gray-500">O teste roda os passos salvos, mesmo com o bot pausado.</p>
+                <p className="text-[11px] text-gray-500">
+                  O teste roda os passos salvos, mesmo com o bot pausado.{isMeetingBot && " Usa a próxima reunião marcada desse número (agende uma pelo link antes)."}
+                </p>
                 {testMsg && <p className="text-xs text-gray-700">{testMsg}</p>}
               </div>
 

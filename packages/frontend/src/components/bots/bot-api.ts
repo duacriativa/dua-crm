@@ -32,7 +32,12 @@ export type BotStep = { id?: string; name?: string; pos?: { x: number; y: number
   | { type: "set_origin"; origin: LeadOrigin; source?: string }
   | { type: "goto"; target?: string }
   | { type: "end" }
+  | { type: "wait_meeting"; seconds: number; when: "before" | "after"; onTime?: string; onLate?: string }
+  | { type: "meeting_status"; timeoutSeconds?: number; onDone?: string; onNoShow?: string; onTimeout?: string }
 );
+
+/** Passos que só existem nos bots com o gatilho "Reunião agendada". */
+export const MEETING_STEP_TYPES: BotStep["type"][] = ["wait_meeting", "meeting_status"];
 
 /** Contact.leadOrigin */
 export type LeadOrigin = "ADS" | "ORGANIC" | "REFERRAL" | "OTHER";
@@ -273,6 +278,80 @@ export function whatsappQualifyPreset(): Partial<Bot> {
     name: "Pré-qualificação do WhatsApp",
     description: "Quem chama direto no WhatsApp: descobre a origem (ou pergunta), entende se a marca já vende ou está começando e convida para a call",
     trigger: "WHATSAPP_FIRST_MESSAGE",
+    active: false,
+    actions: steps,
+  };
+}
+
+/**
+ * Templates (UTILITY, pt_BR) dos lembretes de reunião. Fora da janela de 24h do WhatsApp só template
+ * aprovado chega, então todas as mensagens do modelo são templates. `vars`: valor de cada {{n}}, na ordem.
+ * Ainda NÃO enviados para aprovação: criar em Configurações → Templates com estes nomes e textos.
+ */
+export const MEETING_TEMPLATES = {
+  confirmacao: {
+    name: "reuniao_confirmada",
+    body: "Oi, {{1}}! Sua reunião com a Dua está confirmada para {{2}}, às {{3}} (horário de Brasília). 💜\n\nO link do Google Meet foi enviado para o seu e-mail, e eu também te mando por aqui antes da conversa.\n\nSe precisar remarcar ou cancelar, é só acessar: {{4}}\n\nAté lá!",
+    vars: ["{{primeiro_nome}}", "{{reuniao_data}}", "{{reuniao_hora}}", "{{link_remarcar}}"],
+  },
+  lembrete24h: {
+    name: "reuniao_lembrete_24h",
+    body: "Oi, {{1}}! Passando para lembrar da sua reunião com a Dua: {{2}}, às {{3}} (horário de Brasília).\n\nSe o horário não der mais certo, você pode remarcar por aqui: {{4}}\n\nNos vemos lá!",
+    vars: ["{{primeiro_nome}}", "{{reuniao_data}}", "{{reuniao_hora}}", "{{link_remarcar}}"],
+  },
+  lembrete1h: {
+    name: "reuniao_lembrete_1h",
+    body: "Oi, {{1}}! Sua reunião com a Dua começa às {{2}} (horário de Brasília).\n\nPara entrar, é só acessar o Google Meet: {{3}}\n\nTe esperamos!",
+    vars: ["{{primeiro_nome}}", "{{reuniao_hora}}", "{{meet}}"],
+  },
+  naoCompareceu: {
+    name: "reuniao_nao_compareceu",
+    body: "Oi, {{1}}! Não conseguimos nos encontrar na reunião de {{2}}. Imagino que tenha surgido algum imprevisto.\n\nSe ainda fizer sentido conversar, escolha um novo horário aqui: {{3}}\n\nQualquer dúvida, é só responder esta mensagem.",
+    vars: ["{{primeiro_nome}}", "{{reuniao_data}}", "{{link_agendamento}}"],
+  },
+};
+
+type MeetingTpl = (typeof MEETING_TEMPLATES)[keyof typeof MEETING_TEMPLATES];
+
+/** Passo do template: o aprovado na WABA, se já existir; senão já preenchido com o texto proposto (falha até ser aprovado). */
+function meetingTemplateStep(templates: WaTemplate[], t: MeetingTpl): BotStep {
+  const approved = templates.find((x) => x.name === t.name && x.status === "APPROVED");
+  const base = approved ? templateStep(approved) : null;
+  const keys = base?.type === "send_template" && base.params?.length ? base.params.map((p) => p.key) : t.vars.map((_, i) => String(i + 1));
+  return {
+    type: "send_template",
+    templateName: t.name,
+    language: base?.type === "send_template" ? base.language : "pt_BR",
+    parameterFormat: base?.type === "send_template" ? base.parameterFormat : "POSITIONAL",
+    bodyText: base?.type === "send_template" ? base.bodyText : t.body,
+    params: keys.map((key, i) => ({ key, value: t.vars[i] ?? "" })),
+  };
+}
+
+/**
+ * Lembretes da reunião: confirmação logo após agendar, lembrete 24h antes, lembrete 1h antes com o Meet
+ * e, depois da reunião, follow-up para quem não compareceu. Remarcou → as esperas seguem o novo horário;
+ * cancelou → a sessão é cancelada; marcou em cima da hora → pula o lembrete que já passou.
+ */
+export function meetingRemindersPreset(templates: WaTemplate[]): Partial<Bot> {
+  const T = MEETING_TEMPLATES;
+  const steps: BotStep[] = [
+    { id: "confirmacao", name: "Confirmação", ...meetingTemplateStep(templates, T.confirmacao) } as BotStep,
+    { id: "espera_24h", name: "24h antes", type: "wait_meeting", seconds: 24 * H, when: "before", onLate: "espera_1h" },
+    { id: "lembrete_24h", name: "Lembrete 24h", ...meetingTemplateStep(templates, T.lembrete24h) } as BotStep,
+    { id: "espera_1h", name: "1h antes", type: "wait_meeting", seconds: H, when: "before", onLate: "depois" },
+    { id: "lembrete_1h", name: "Lembrete 1h (Meet)", ...meetingTemplateStep(templates, T.lembrete1h) } as BotStep,
+    { id: "depois", name: "15 min depois do início", type: "wait_meeting", seconds: 15 * 60, when: "after", onLate: "status" },
+    { id: "status", name: "Reunião aconteceu?", type: "meeting_status", timeoutSeconds: 24 * H, onDone: "end", onNoShow: "faltou" },
+    { id: "faltou", name: "Não compareceu", type: "add_tag", tag: "não compareceu" },
+    { id: "followup_falta", name: "Follow-up de falta", ...meetingTemplateStep(templates, T.naoCompareceu) } as BotStep,
+    { id: "aviso_falta", type: "notify", to: "Daniel", text: "{{primeiro_nome}} não compareceu à reunião de {{reuniao_data}}, às {{reuniao_hora}}, e recebeu o link para remarcar." },
+    { id: "fim_falta", type: "end" },
+  ];
+  return {
+    name: "Lembretes da reunião",
+    description: "Confirma o agendamento, lembra 24h e 1h antes (com o Meet) e manda follow-up para quem não compareceu",
+    trigger: "MEETING_SCHEDULED",
     active: false,
     actions: steps,
   };

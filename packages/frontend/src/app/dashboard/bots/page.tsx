@@ -23,13 +23,14 @@ import {
   ChevronLeft,
 } from "lucide-react";
 import { fetchTemplates } from "@/components/whatsapp/templates";
-import { Bot as BotFlow, botsApi, findFollowupTemplate, findFormTemplate, formBotPreset, formQualifyPreset, whatsappQualifyPreset } from "@/components/bots/bot-api";
+import { Bot as BotFlow, botsApi, findFollowupTemplate, findFormTemplate, formBotPreset, formQualifyPreset, meetingRemindersPreset, whatsappQualifyPreset } from "@/components/bots/bot-api";
 
 // Os prontos já funcionam; os outros entram conforme forem migrados do Kommo
 const TEMPLATES = [
   { id: "form", name: "Cadastro no site", description: "1ª mensagem no WhatsApp para quem preencheu o formulário (igual ao Kommo)", icon: "📝", color: "bg-blue-50 border-blue-200", ready: true },
   { id: "qualify", name: "Qualificação do cadastro no site", description: "1ª mensagem + follow-up, entende o momento da marca e convida para a call (roteiro Dua Lab)", icon: "🎯", color: "bg-purple-50 border-purple-200", ready: true },
   { id: "whatsapp", name: "Pré-qualificação do WhatsApp", description: "Para quem chama direto no WhatsApp: descobre de onde veio (ou pergunta), entende o momento da marca e convida para a call", icon: "💬", color: "bg-green-50 border-green-200", ready: true },
+  { id: "meeting", name: "Lembretes da reunião", description: "Confirma o agendamento, lembra 24h e 1h antes (com o link do Meet) e faz o follow-up de quem não compareceu", icon: "📅", color: "bg-sky-50 border-sky-200", ready: true },
   { id: "t3", name: "Follow-up", description: "Reengaja leads que pararam de responder", icon: "🔄", color: "bg-red-50 border-red-200", ready: false },
   { id: "t4", name: "Pós-venda / NPS", description: "Acompanhamento e NPS após a venda fechada", icon: "⭐", color: "bg-yellow-50 border-yellow-200", ready: false },
 ];
@@ -96,11 +97,12 @@ export default function BotsPage() {
   };
 
   const createFromTemplate = async (id: string) => {
-    if (id !== "form" && id !== "qualify" && id !== "whatsapp") return;
+    if (!["form", "qualify", "whatsapp", "meeting"].includes(id)) return;
     setCreating(true);
     try {
       const templates = id === "whatsapp" ? [] : await fetchTemplates().catch(() => []);
       const preset = id === "whatsapp" ? whatsappQualifyPreset()
+        : id === "meeting" ? meetingRemindersPreset(templates)
         : id === "form" ? formBotPreset(findFormTemplate(templates))
         : formQualifyPreset(findFormTemplate(templates), findFollowupTemplate(templates));
       const bot = await botsApi.create(preset);

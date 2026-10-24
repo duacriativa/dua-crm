@@ -2,7 +2,7 @@ import { Controller, Get, Post, Patch, Delete, Param, Body, UseGuards, Request, 
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AutomationRunner } from './automation-runner.service';
-import { sanitizeSteps, TRIGGER_LABEL } from './automation-steps';
+import { MEETING_STEPS, sanitizeSteps, TRIGGER_LABEL } from './automation-steps';
 import { normalizePhone, phoneVariants } from '../../common/phone.util';
 
 const ACTIVE = ['RUNNING', 'WAITING_REPLY'];
@@ -14,12 +14,20 @@ function conditionsOf(input: any) {
   return onlyPhones.length ? { onlyPhones } : {};
 }
 
-function stepsOrThrow(actions: any, strict = true) {
+// Gatilhos já ligados ao executor (os outros do enum ainda não disparam)
+const TRIGGERS = ['LEAD_FORM_SUBMITTED', 'WHATSAPP_FIRST_MESSAGE', 'MEETING_SCHEDULED'];
+
+function stepsOrThrow(actions: any, strict = true, trigger?: string) {
+  let steps;
   try {
-    return sanitizeSteps(actions, strict);
+    steps = sanitizeSteps(actions, strict);
   } catch (err: any) {
     throw new BadRequestException(err.message);
   }
+  if (trigger && trigger !== 'MEETING_SCHEDULED' && steps.some((s) => MEETING_STEPS.includes(s.type))) {
+    throw new BadRequestException('Os passos de reunião só funcionam com o gatilho "Reunião agendada".');
+  }
+  return steps;
 }
 
 @Controller('automations')
@@ -109,8 +117,7 @@ export class AutomationsController {
   async create(@Request() req: any, @Body() body: any) {
     const name = String(body?.name ?? '').trim();
     if (!name) throw new BadRequestException('Dê um nome ao bot.');
-    // Gatilhos já ligados ao executor (os outros do enum ainda não disparam)
-    if (!['LEAD_FORM_SUBMITTED', 'WHATSAPP_FIRST_MESSAGE'].includes(body?.trigger)) throw new BadRequestException('Gatilho ainda não disponível.');
+    if (!TRIGGERS.includes(body?.trigger)) throw new BadRequestException('Gatilho ainda não disponível.');
     return this.prisma.automation.create({
       data: {
         tenantId: req.user.tenantId,
@@ -118,7 +125,7 @@ export class AutomationsController {
         description: body.description?.trim() || null,
         trigger: body.trigger,
         conditions: conditionsOf(body.conditions),
-        actions: stepsOrThrow(body.actions, body.active === true) as any,
+        actions: stepsOrThrow(body.actions, body.active === true, body.trigger) as any,
         // Nasce pausado: só liga depois de desligar o equivalente no Kommo
         active: body.active === true,
       },
@@ -140,9 +147,9 @@ export class AutomationsController {
     if (body.conditions !== undefined) data.conditions = conditionsOf(body.conditions);
     if (body.active !== undefined) data.active = body.active === true;
     const willBeActive = data.active ?? current.active;
-    if (body.actions !== undefined) data.actions = stepsOrThrow(body.actions, willBeActive);
+    if (body.actions !== undefined) data.actions = stepsOrThrow(body.actions, willBeActive, current.trigger);
     // Ligar exige os passos completos (template escolhido, etapa etc.)
-    else if (willBeActive && !current.active) stepsOrThrow(current.actions, true);
+    else if (willBeActive && !current.active) stepsOrThrow(current.actions, true, current.trigger);
 
     const updated = await this.prisma.automation.update({ where: { id }, data });
     // Pausar encerra as sessões em andamento (senão elas voltariam fora de contexto ao religar)
@@ -185,7 +192,19 @@ export class AutomationsController {
     });
     if (running) throw new BadRequestException('Esse número já tem uma sessão em andamento neste bot.');
 
-    const run = await this.runner.start(id, tenantId, contact.id, { isTest: true });
+    // Bot de reunião: o teste usa a próxima reunião marcada desse número
+    let meetingId: string | undefined;
+    if (automation.trigger === 'MEETING_SCHEDULED') {
+      const meeting = await this.prisma.meeting.findFirst({
+        where: { tenantId, contactId: contact.id, status: 'SCHEDULED', endAt: { gt: new Date() } },
+        orderBy: { startAt: 'asc' },
+        select: { id: true },
+      });
+      if (!meeting) throw new BadRequestException('Esse número não tem reunião marcada. Agende uma pelo link de agendamento para testar.');
+      meetingId = meeting.id;
+    }
+
+    const run = await this.runner.start(id, tenantId, contact.id, { isTest: true, meetingId });
     return { ok: true, runId: run.id, contactId: contact.id };
   }
 }

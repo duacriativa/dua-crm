@@ -26,11 +26,12 @@ export const MEETING_EVENTS = {
   rescheduled: 'meeting.rescheduled',
   cancelled: 'meeting.cancelled',
   noShow: 'meeting.no_show',
+  completed: 'meeting.completed',
 } as const;
 
 export interface BookingInput { startAt: string; name: string; phone: string; email: string; notes?: string }
 
-const appUrl = () => (process.env.PUBLIC_APP_URL ?? 'https://crm.duacriativa.com.br').replace(/\/$/, '');
+export const appUrl = () => (process.env.PUBLIC_APP_URL ?? 'https://crm.duacriativa.com.br').replace(/\/$/, '');
 
 function cfgOf(p: BookingPage): AvailabilityConfig {
   return {
@@ -432,6 +433,9 @@ export class SchedulingService {
         data: { tenantId, contactId: m.contactId, type: 'NOTE', authorName: 'Agendamento', content: `🚫 Não compareceu à reunião de ${formatWhen(m.startAt, m.bookingPage?.timezone ?? 'America/Sao_Paulo')}` },
       }).catch(() => {});
       this.events.emit(MEETING_EVENTS.noShow, { tenantId, meetingId: id, contactId: m.contactId, startAt: m.startAt });
+    }
+    if (status === 'COMPLETED' && m.status !== 'COMPLETED') {
+      this.events.emit(MEETING_EVENTS.completed, { tenantId, meetingId: id, contactId: m.contactId, startAt: m.startAt });
     }
     return updated;
   }

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import {
   X, Timer, MessageSquare, MessageCircle, FileText, ArrowRightLeft, MousePointerClick, Tag, Bell, CornerDownRight, StopCircle, Compass, MapPin,
+  CalendarClock, CalendarCheck,
 } from "lucide-react";
 import type { WaTemplate } from "@/components/whatsapp/templates";
 import { BotStep, LeadOrigin, ORIGIN_LABEL, fmtDuration, templateStep } from "./bot-api";
@@ -23,6 +24,8 @@ export const STEP_META: Record<StepType, { label: string; icon: (cls?: string) =
   set_origin: { label: "Gravar origem", icon: (c = "w-3.5 h-3.5") => <MapPin className={c} />, color: "bg-teal-50 text-teal-700", head: "bg-teal-600" },
   goto: { label: "Ir para", icon: (c = "w-3.5 h-3.5") => <CornerDownRight className={c} />, color: "bg-purple-50 text-purple-600", head: "bg-purple-500" },
   end: { label: "Encerrar o bot", icon: (c = "w-3.5 h-3.5") => <StopCircle className={c} />, color: "bg-red-50 text-red-600", head: "bg-red-500" },
+  wait_meeting: { label: "Esperar o horário da reunião", icon: (c = "w-3.5 h-3.5") => <CalendarClock className={c} />, color: "bg-sky-50 text-sky-700", head: "bg-sky-600" },
+  meeting_status: { label: "Reunião aconteceu?", icon: (c = "w-3.5 h-3.5") => <CalendarCheck className={c} />, color: "bg-sky-50 text-sky-700", head: "bg-sky-600" },
 };
 
 export const NEW_STEP: Record<StepType, () => BotStep> = {
@@ -38,6 +41,8 @@ export const NEW_STEP: Record<StepType, () => BotStep> = {
   set_origin: () => ({ type: "set_origin", origin: "ORGANIC" }),
   goto: () => ({ type: "goto" }),
   end: () => ({ type: "end" }),
+  wait_meeting: () => ({ type: "wait_meeting", seconds: 3600, when: "before" }),
+  meeting_status: () => ({ type: "meeting_status", timeoutSeconds: 24 * 3600 }),
 };
 
 export const RUN_STATUS: Record<string, { label: string; cls: string }> = {
@@ -51,6 +56,7 @@ export const RUN_STATUS: Record<string, { label: string; cls: string }> = {
 };
 
 export const VARS_HINT = "Use {{primeiro_nome}}, {{nome}}, {{canal_venda}} (ex.: \"pelo Instagram e WhatsApp\"), {{faturamento}}, {{origem}} ou {{respostas}}. Linha com variável vazia some da mensagem.";
+export const MEETING_VARS_HINT = "Reunião: {{reuniao_data}} (ex.: \"quinta-feira, 30/10\"), {{reuniao_hora}}, {{meet}} (link do Google Meet), {{link_remarcar}} e {{link_agendamento}}.";
 
 export const inp = "w-full px-3 py-2 text-sm text-gray-900 bg-white placeholder:text-gray-400 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-200";
 
@@ -78,6 +84,8 @@ export function stepSummary(s: BotStep): string {
     case "check_origin": return "Anúncio, texto pronto do link ou origem já gravada no contato";
     case "set_origin": return `Origem: ${ORIGIN_LABEL[s.origin]}${s.source ? ` (${s.source})` : ""}`;
     case "end": return "O bot termina aqui";
+    case "wait_meeting": return `Até ${fmtDuration(s.seconds)} ${s.when === "before" ? "antes" : "depois"} do início da reunião`;
+    case "meeting_status": return `Espera o time marcar em Agenda → Reuniões (até ${fmtDuration(s.timeoutSeconds || 24 * 3600)} depois do fim)`;
     default: return "";
   }
 }
@@ -118,8 +126,9 @@ export function AlignInput({ value, onChange }: { value?: string; onChange: (v: 
  * Campos de um passo (texto, template, tempos, etapa, etiqueta, aviso).
  * Os destinos dos desvios ficam nas setas do canvas, não aqui.
  */
-export function StepFields({ step, set, templates, tplError, stages, onAddButton, onRemoveButton }: {
+export function StepFields({ step, set, templates, tplError, stages, onAddButton, onRemoveButton, meeting = false }: {
   step: BotStep;
+  meeting?: boolean; // bot com o gatilho "Reunião agendada" (mostra as variáveis da reunião)
   set: (patch: Partial<BotStep>) => void;
   templates: WaTemplate[];
   tplError: string;
@@ -149,7 +158,7 @@ export function StepFields({ step, set, templates, tplError, stages, onAddButton
       {step.type === "send_text" && (
         <>
           <textarea rows={8} value={step.text} onChange={(e) => set({ text: e.target.value })} className={inp} />
-          <p className="text-[11px] text-gray-400">{VARS_HINT} Texto livre só chega se o contato falou com a gente nas últimas 24h.</p>
+          <p className="text-[11px] text-gray-400">{VARS_HINT}{meeting && ` ${MEETING_VARS_HINT}`} Texto livre só chega se o contato falou com a gente nas últimas 24h.</p>
         </>
       )}
 
@@ -173,7 +182,7 @@ export function StepFields({ step, set, templates, tplError, stages, onAddButton
             <DurationInput seconds={step.timeoutSeconds ?? 7 * 86400} onChange={(timeoutSeconds) => set({ timeoutSeconds })} />
           </div>
           <AlignInput value={step.alignTo} onChange={(alignTo) => set({ alignTo })} />
-          <p className="text-[11px] text-gray-400">{VARS_HINT} Só chega dentro das 24h depois da última mensagem do contato.</p>
+          <p className="text-[11px] text-gray-400">{VARS_HINT}{meeting && ` ${MEETING_VARS_HINT}`} Só chega dentro das 24h depois da última mensagem do contato.</p>
         </>
       )}
 
@@ -185,7 +194,7 @@ export function StepFields({ step, set, templates, tplError, stages, onAddButton
             className={inp}
           >
             <option value="">{tplError ? `Erro ao carregar templates: ${tplError}` : "Escolha um template aprovado…"}</option>
-            {step.templateName && !templates.some((t) => t.name === step.templateName) && <option value={step.templateName}>{step.templateName}</option>}
+            {step.templateName && !templates.some((t) => t.name === step.templateName) && <option value={step.templateName}>{step.templateName} (ainda não aprovado)</option>}
             {templates.map((t) => <option key={t.id} value={t.name}>{t.name} ({t.language})</option>)}
           </select>
           {step.bodyText && <p className="text-xs text-gray-600 whitespace-pre-wrap bg-gray-50 rounded-lg p-2">{step.bodyText}</p>}
@@ -200,6 +209,7 @@ export function StepFields({ step, set, templates, tplError, stages, onAddButton
               />
             </div>
           ))}
+          {meeting && <p className="text-[11px] text-gray-400">{MEETING_VARS_HINT}</p>}
         </>
       )}
 
@@ -240,6 +250,38 @@ export function StepFields({ step, set, templates, tplError, stages, onAddButton
           </select>
           <input value={step.source ?? ""} onChange={(e) => set({ source: e.target.value })} placeholder="Fonte (opcional, ex.: instagram, google)" className={inp} />
           <p className="text-[11px] text-gray-400">Grava a origem no contato (relatórios). A fonte só entra se o contato ainda não tiver UTM.</p>
+        </>
+      )}
+
+      {step.type === "wait_meeting" && (
+        <>
+          <div className="flex items-center gap-2 text-xs text-gray-500 flex-wrap">
+            <span>Até</span>
+            <DurationInput seconds={step.seconds} onChange={(seconds) => set({ seconds })} />
+            <select value={step.when} onChange={(e) => set({ when: e.target.value as "before" | "after" })}
+              className="px-2 py-1.5 text-sm text-gray-900 border border-gray-200 rounded-lg bg-white">
+              <option value="before">antes</option>
+              <option value="after">depois</option>
+            </select>
+            <span>do início da reunião</span>
+          </div>
+          <p className="text-[11px] text-gray-400">
+            Se a reunião for remarcada, a espera passa a valer para o novo horário; se for cancelada, o bot para.
+            Quando o horário já passou ao chegar aqui (reunião marcada em cima da hora), segue por "Horário já passou" e pula o lembrete.
+          </p>
+        </>
+      )}
+
+      {step.type === "meeting_status" && (
+        <>
+          <div className="flex items-center gap-2 text-xs text-gray-500 flex-wrap">
+            <span>Esperar a marcação até</span>
+            <DurationInput seconds={step.timeoutSeconds ?? 24 * 3600} onChange={(timeoutSeconds) => set({ timeoutSeconds })} />
+            <span>depois do fim</span>
+          </div>
+          <p className="text-[11px] text-gray-400">
+            Segue quando alguém marca a reunião como "Realizada" ou "Não compareceu" em Agenda → Reuniões (se já estiver marcada, segue na hora).
+          </p>
         </>
       )}
 
