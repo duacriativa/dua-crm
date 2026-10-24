@@ -120,6 +120,7 @@ enum AutomationTrigger {
   CONTACT_AT_RISK        // cliente em risco de churn
   LEAD_FORM_SUBMITTED    // lead preencheu o formulário do site (POST /webhooks/lead)
   LEAD_STAGE_ENTERED     // card criado/movido para uma etapa do funil (conditions.stageId)
+  WHATSAPP_FIRST_MESSAGE // contato novo mandou a 1ª mensagem no WhatsApp (sem formulário)
 }
 
 // Itens da linha do tempo do contato além das mensagens (tarefas, eventos do funil… virão depois)

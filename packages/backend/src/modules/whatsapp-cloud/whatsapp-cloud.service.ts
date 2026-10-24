@@ -7,6 +7,7 @@ import { FunnelService } from '../pipelines/funnel.service';
 import { PushService } from '../notifications/push.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { phoneVariants, toBrDigits } from '../../common/phone.util';
+import { originFromText, originLabel } from '../automations/automation-steps';
 
 type MsgType = 'TEXT' | 'IMAGE' | 'VIDEO' | 'AUDIO' | 'DOCUMENT' | 'INTERACTIVE';
 
@@ -583,6 +584,10 @@ export class WhatsAppCloudService {
       this.logger.log(`[Cloud] Contato ${contact.id} veio do anúncio ${referral.source_id ?? '?'} (${referral.source_type ?? '-'})`);
     }
 
+    // 1ª mensagem do contato com a gente (nada antes em nenhuma conversa, nem do histórico do app)
+    const firstMessage = direction === 'INBOUND' && !opts.history
+      && !(await this.prisma.message.findFirst({ where: { conversation: { tenantId, contactId: contact.id } }, select: { id: true } }));
+
     let conv = await this.prisma.conversation.findFirst({
       where: { tenantId, channel: 'WHATSAPP', contactId: contact.id },
       orderBy: { updatedAt: 'desc' },
@@ -594,6 +599,19 @@ export class WhatsAppCloudService {
     }
 
     const parsed = this.parseMessage(m);
+
+    // Texto pronto dos links (bio do Instagram, botão do site, campanha): grava de onde veio, sem sobrescrever
+    const fromLink = firstMessage && !contact.leadOrigin ? originFromText(parsed.content) : null;
+    if (fromLink) {
+      contact = await this.prisma.contact.update({
+        where: { id: contact.id },
+        data: {
+          leadOrigin: fromLink.leadOrigin,
+          ...(!contact.utmSource && { utmSource: fromLink.utmSource, utmMedium: fromLink.utmMedium }),
+        },
+      });
+      this.logger.log(`[Cloud] Contato ${contact.id} veio pelo link: ${fromLink.utmSource}`);
+    }
     const sentAt = m.timestamp ? new Date(Number(m.timestamp) * 1000) : new Date();
 
     // Resposta a outra mensagem: guarda o texto citado para exibir no balão
@@ -630,10 +648,12 @@ export class WhatsAppCloudService {
 
     if (direction === 'INBOUND' && !opts.history) {
       // Alimenta o funil: lead novo que chamou agora cai na 1ª etapa
-      const origin = referral ? `Origem: Anúncio${contact.adHeadline ? ` — ${contact.adHeadline}` : ''}` : 'Origem: WhatsApp';
-      await this.funnel.ensureLead(tenantId, contact.id, isNewContact || referral ? origin : undefined);
+      const origin = referral
+        ? `Origem: Anúncio${contact.adHeadline ? ` — ${contact.adHeadline}` : ''}`
+        : fromLink ? `Origem: WhatsApp — ${originLabel(contact)}` : 'Origem: WhatsApp';
+      await this.funnel.ensureLead(tenantId, contact.id, isNewContact || referral || fromLink ? origin : undefined);
       // Bots esperando a resposta desse contato seguem o fluxo
-      this.events.emit('whatsapp.inbound', { tenantId, contactId: contact.id, conversationId: conv.id });
+      this.events.emit('whatsapp.inbound', { tenantId, contactId: contact.id, conversationId: conv.id, firstMessage });
       // Notifica os aparelhos com o PWA instalado
       this.push.sendToTenant(tenantId, {
         title: contact.name || phone,

@@ -110,7 +110,7 @@ export class AutomationsController {
     const name = String(body?.name ?? '').trim();
     if (!name) throw new BadRequestException('Dê um nome ao bot.');
     // Gatilhos já ligados ao executor (os outros do enum ainda não disparam)
-    if (!['LEAD_FORM_SUBMITTED'].includes(body?.trigger)) throw new BadRequestException('Gatilho ainda não disponível.');
+    if (!['LEAD_FORM_SUBMITTED', 'WHATSAPP_FIRST_MESSAGE'].includes(body?.trigger)) throw new BadRequestException('Gatilho ainda não disponível.');
     return this.prisma.automation.create({
       data: {
         tenantId: req.user.tenantId,

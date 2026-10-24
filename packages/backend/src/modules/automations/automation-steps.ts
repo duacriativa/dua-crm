@@ -1,6 +1,6 @@
 // Passos de um bot (coluna Automation.actions), executados em ordem pelo AutomationRunner.
 // Cada passo tem um `id` estável; desvios ("ir para") apontam para esse id.
-// Textos aceitam {{nome}}, {{primeiro_nome}}, {{canal_venda}}, {{modelo_venda}}, {{faturamento}} e {{respostas}}.
+// Textos aceitam {{nome}}, {{primeiro_nome}}, {{canal_venda}}, {{modelo_venda}}, {{faturamento}}, {{origem}} e {{respostas}}.
 
 /** Destino de um desvio: vazio = próximo passo, "end" = encerra o bot, senão o id de um passo. */
 export type StepTarget = string | undefined;
@@ -35,21 +35,28 @@ export type AutomationStep = { id?: string; name?: string; pos?: StepPos } & (
   | { type: 'move_stage'; stageId?: string; stageName?: string }
   | { type: 'add_tag'; tag: string }
   | { type: 'notify'; text: string; to?: string } // nota interna na conversa + notificação nos aparelhos
+  | { type: 'check_origin'; onKnown?: StepTarget; onUnknown?: StepTarget } // já sabemos de onde o contato veio?
+  | { type: 'set_origin'; origin: LeadOrigin; source?: string } // grava a origem (ex.: resposta de um botão)
   | { type: 'goto'; target: StepTarget }
   | { type: 'end' }
 );
+
+/** Contact.leadOrigin */
+export type LeadOrigin = 'ADS' | 'ORGANIC' | 'REFERRAL' | 'OTHER';
+export const LEAD_ORIGINS: LeadOrigin[] = ['ADS', 'ORGANIC', 'REFERRAL', 'OTHER'];
 
 export interface AutomationConditions {
   onlyPhones?: string[]; // modo teste: só dispara para esses números
 }
 
-export const STEP_TYPES = ['wait', 'wait_reply', 'send_text', 'send_template', 'send_buttons', 'move_stage', 'add_tag', 'notify', 'goto', 'end'];
+export const STEP_TYPES = ['wait', 'wait_reply', 'send_text', 'send_template', 'send_buttons', 'move_stage', 'add_tag', 'notify', 'check_origin', 'set_origin', 'goto', 'end'];
 
 /** Espera por resposta sem limite configurado: 7 dias e o bot encerra. */
 export const DEFAULT_REPLY_TIMEOUT_S = 7 * 24 * 3600;
 
 export const TRIGGER_LABEL: Record<string, string> = {
   LEAD_FORM_SUBMITTED: 'Formulário do site preenchido',
+  WHATSAPP_FIRST_MESSAGE: 'Primeira mensagem no WhatsApp',
   LEAD_STAGE_ENTERED: 'Card entrou na etapa do funil',
   ABANDONED_CART: 'Carrinho abandonado',
   ORDER_DELIVERED: 'Pedido entregue',
@@ -172,6 +179,13 @@ export function sanitizeSteps(input: any, strict = true): AutomationStep[] {
         const to = String(s.to ?? '').trim().slice(0, 40);
         return { ...base, type: 'notify', text: text.slice(0, 2000), ...(to ? { to } : {}) };
       }
+      case 'check_origin':
+        return { ...base, type: 'check_origin', ...opt('onKnown', s.onKnown), ...opt('onUnknown', s.onUnknown) };
+      case 'set_origin': {
+        if (!LEAD_ORIGINS.includes(s.origin)) throw new Error('Escolha a origem do contato.');
+        const source = String(s.source ?? '').trim().toLowerCase().slice(0, 40);
+        return { ...base, type: 'set_origin', origin: s.origin, ...(source ? { source } : {}) };
+      }
       case 'goto': {
         const t = target(s.target);
         if (!t && strict) throw new Error('Escolha para qual passo o bot vai.');
@@ -218,4 +232,33 @@ export function sameAnswer(a: string, b: string) {
   const norm = (s: string) =>
     (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
   return !!norm(a) && norm(a) === norm(b);
+}
+
+/**
+ * Textos prontos dos links de WhatsApp (wa.me/…?text=…): cada link abre a conversa com uma
+ * frase que diz de onde a pessoa veio. Só reconhece essas frases, não adivinha.
+ */
+const ORIGIN_PHRASES: { re: RegExp; origin: LeadOrigin; utmSource: string; utmMedium: string }[] = [
+  { re: /\bvim pelo instagram\b/, origin: 'ORGANIC', utmSource: 'instagram', utmMedium: 'bio' },
+  { re: /\bvim pelo site\b/, origin: 'ORGANIC', utmSource: 'site', utmMedium: 'botao_whatsapp' },
+  { re: /\bvi o anuncio\b/, origin: 'ADS', utmSource: 'anuncio', utmMedium: 'link_whatsapp' },
+  { re: /\b(fui indicad[oa]|me indicaram|me indicou|vim por indicacao)\b/, origin: 'REFERRAL', utmSource: 'indicacao', utmMedium: 'whatsapp' },
+];
+
+export function originFromText(text: string | null | undefined) {
+  const t = (text || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  const hit = ORIGIN_PHRASES.find((p) => p.re.test(t));
+  return hit ? { leadOrigin: hit.origin, utmSource: hit.utmSource, utmMedium: hit.utmMedium } : null;
+}
+
+/** Origem por extenso para {{origem}} nos textos e avisos. */
+export function originLabel(c: { leadOrigin: string | null; utmSource: string | null; adHeadline?: string | null }) {
+  const src = (c.utmSource || '').toLowerCase();
+  switch (c.leadOrigin) {
+    case 'ADS': return c.adHeadline ? `Anúncio — ${c.adHeadline}` : src === 'meta_ads' ? 'Anúncio da Meta' : 'Anúncio';
+    case 'REFERRAL': return 'Indicação';
+    case 'ORGANIC': return src.includes('instagram') ? 'Instagram' : src === 'site' ? 'Site' : 'Orgânico';
+    case 'OTHER': return 'Outra';
+    default: return 'não informada';
+  }
 }

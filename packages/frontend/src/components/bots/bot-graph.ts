@@ -20,7 +20,7 @@ export interface BotGraph {
 export type OutKind = "next" | "reply" | "timeout" | "other" | "button";
 export interface Output { handle: string; kind: OutKind; label: string }
 
-const LINEAR = new Set<BotStep["type"]>(["wait", "send_text", "send_template", "move_stage", "add_tag", "notify"]);
+const LINEAR = new Set<BotStep["type"]>(["wait", "send_text", "send_template", "move_stage", "add_tag", "notify", "set_origin"]);
 export const isLinear = (s: BotStep) => LINEAR.has(s.type);
 
 export const linkKey = (id: string, handle: string) => `${id}|${handle}`;
@@ -33,6 +33,10 @@ export function outputsOf(s: BotStep): Output[] {
   if (s.type === "wait_reply") return [
     { handle: "reply", kind: "reply", label: "Respondeu" },
     { handle: "timeout", kind: "timeout", label: "Não respondeu" },
+  ];
+  if (s.type === "check_origin") return [
+    { handle: "known", kind: "reply", label: "Sabemos a origem" },
+    { handle: "unknown", kind: "other", label: "Não sabemos" },
   ];
   if (s.type === "send_buttons") return [
     ...s.buttons.map((b, k) => ({ handle: `b${k}`, kind: "button" as const, label: b.title || `Botão ${k + 1}` })),
@@ -72,6 +76,9 @@ export function toGraph(actions: BotStep[]): BotGraph {
     } else if (s.type === "wait_reply") {
       set(id, "reply", resolve(s.onReply, i), !s.onReply);
       set(id, "timeout", s.onTimeout ? resolve(s.onTimeout, i) : null, !s.onTimeout);
+    } else if (s.type === "check_origin") {
+      set(id, "known", resolve(s.onKnown, i), !s.onKnown);
+      set(id, "unknown", resolve(s.onUnknown, i), !s.onUnknown);
     } else if (s.type === "send_buttons") {
       s.buttons.forEach((b, k) => set(id, `b${k}`, resolve(b.goto, i), !b.goto));
       set(id, "other", resolve(s.onOther, i), !s.onOther);
@@ -84,7 +91,7 @@ export function toGraph(actions: BotStep[]): BotGraph {
 /** Passo sem os campos de desvio (eles são regravados a partir das setas). */
 function bare(s: BotStep): BotStep {
   const c: any = { ...s };
-  delete c.onReply; delete c.onTimeout; delete c.onOther; delete c.target; delete c.pos;
+  delete c.onReply; delete c.onTimeout; delete c.onOther; delete c.onKnown; delete c.onUnknown; delete c.target; delete c.pos;
   if (s.type === "send_buttons") c.buttons = s.buttons.map((b) => ({ title: b.title }));
   return c as BotStep;
 }
@@ -144,6 +151,9 @@ export function toSteps(g: BotGraph, posOf: (id: string) => { x: number; y: numb
     if (s.type === "wait_reply") {
       put("onReply", branch("reply"));
       put("onTimeout", timeout("timeout"));
+    } else if (s.type === "check_origin") {
+      put("onKnown", branch("known"));
+      put("onUnknown", branch("unknown"));
     } else if (s.type === "send_buttons") {
       step.buttons = s.buttons.map((b, i) => { const t = branch(`b${i}`); return t ? { title: b.title, goto: t } : { title: b.title }; });
       put("onOther", branch("other"));

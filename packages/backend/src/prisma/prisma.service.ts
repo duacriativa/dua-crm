@@ -97,6 +97,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
       // 20261023000003_add_automation_runs
       `ALTER TYPE "AutomationTrigger" ADD VALUE IF NOT EXISTS 'LEAD_FORM_SUBMITTED'`,
       `ALTER TYPE "AutomationTrigger" ADD VALUE IF NOT EXISTS 'LEAD_STAGE_ENTERED'`,
+      `ALTER TYPE "AutomationTrigger" ADD VALUE IF NOT EXISTS 'WHATSAPP_FIRST_MESSAGE'`,
       `ALTER TABLE "Automation" ADD COLUMN IF NOT EXISTS "description" TEXT`,
       `CREATE TABLE IF NOT EXISTS "AutomationRun" (
         "id" TEXT NOT NULL,

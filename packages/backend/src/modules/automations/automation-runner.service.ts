@@ -5,7 +5,7 @@ import { WhatsAppCloudService } from '../whatsapp-cloud/whatsapp-cloud.service';
 import { PushService } from '../notifications/push.service';
 import { phoneVariants, toBrDigits } from '../../common/phone.util';
 import {
-  AutomationConditions, AutomationStep, DEFAULT_REPLY_TIMEOUT_S, StepTarget, salesChannelPhrase, sameAnswer, waitUntil,
+  AutomationConditions, AutomationStep, DEFAULT_REPLY_TIMEOUT_S, StepTarget, originFromText, originLabel, salesChannelPhrase, sameAnswer, waitUntil,
 } from './automation-steps';
 
 const ACTIVE = ['RUNNING', 'WAITING_REPLY'];
@@ -16,10 +16,12 @@ const LEASE_MS = 2 * 60_000;
 const END = -1;
 // Passos seguidos sem espera numa mesma execução (protege contra "ir para" em círculo)
 const MAX_STEPS_PER_RUN = 60;
+// "Primeira mensagem no WhatsApp" só vale para contato criado há menos que isso
+const NEW_CONTACT_MS = 24 * 3600_000;
 
 /** Eventos que os outros módulos emitem para os bots. */
 export interface LeadFormEvent { tenantId: string; contactId: string }
-export interface InboundMessageEvent { tenantId: string; contactId: string; conversationId: string }
+export interface InboundMessageEvent { tenantId: string; contactId: string; conversationId: string; firstMessage?: boolean }
 export interface HumanMessageEvent { tenantId: string; conversationId: string }
 
 type RunWithBot = { id: string; tenantId: string; contactId: string; conversationId: string | null; status: string; stepIndex: number; startedAt: Date; automation: { actions: any } };
@@ -92,16 +94,43 @@ export class AutomationRunner implements OnModuleInit, OnModuleDestroy {
         where: { tenantId: e.tenantId, contactId: e.contactId, status: 'WAITING_REPLY' },
         include: { automation: { select: { actions: true } } },
       });
-      if (!waiting.length) return;
-      const reply = await this.prisma.message.findFirst({
-        where: { conversationId: e.conversationId, direction: 'INBOUND' },
-        orderBy: { sentAt: 'desc' },
-        select: { content: true },
-      });
-      for (const r of waiting) await this.resume(r, reply?.content ?? '', e.conversationId);
-      this.kick();
+      if (waiting.length) {
+        const reply = await this.prisma.message.findFirst({
+          where: { conversationId: e.conversationId, direction: 'INBOUND' },
+          orderBy: { sentAt: 'desc' },
+          select: { content: true },
+        });
+        for (const r of waiting) await this.resume(r, reply?.content ?? '', e.conversationId);
+        this.kick();
+      }
     } catch (err: any) {
       this.logger.error(`[Bots] Falha ao tratar resposta de ${e.contactId}: ${err.message}`);
+    }
+    // Depois das respostas: a sessão nova não pode ser tomada por resposta a esta mensagem
+    if (e.firstMessage) await this.onFirstMessage(e);
+  }
+
+  /**
+   * Lead novo chamou direto no WhatsApp (bio do Instagram, botão do site, anúncio, indicação).
+   * Fica de fora: cliente, contato antigo, quem preencheu o formulário e quem já está num bot.
+   */
+  private async onFirstMessage(e: InboundMessageEvent) {
+    try {
+      const contact = await this.prisma.contact.findFirst({
+        where: { id: e.contactId, tenantId: e.tenantId },
+        select: { type: true, createdAt: true, monthlyRevenue: true, saleModel: true },
+      });
+      if (!contact || contact.type !== 'LEAD') return;
+      if (Date.now() - contact.createdAt.getTime() > NEW_CONTACT_MS) return;
+      if (contact.monthlyRevenue || contact.saleModel) return;
+      const busy = await this.prisma.automationRun.findFirst({
+        where: { tenantId: e.tenantId, contactId: e.contactId, status: { in: ACTIVE } },
+        select: { id: true },
+      });
+      if (busy) return;
+      await this.trigger(e.tenantId, 'WHATSAPP_FIRST_MESSAGE', e.contactId);
+    } catch (err: any) {
+      this.logger.error(`[Bots] Falha no gatilho de 1ª mensagem (${e.contactId}): ${err.message}`);
     }
   }
 
@@ -263,6 +292,12 @@ export class AutomationRunner implements OnModuleInit, OnModuleDestroy {
           return;
         }
 
+        if (step.type === 'check_origin') {
+          i = indexOf(steps, (await this.originKnown(run, conversationId)) ? step.onKnown : step.onUnknown, i);
+          if (i !== END) await this.prisma.automationRun.update({ where: { id: run.id }, data: { stepIndex: i } });
+          continue;
+        }
+
         if (step.type === 'goto' || step.type === 'end') {
           i = step.type === 'end' ? END : indexOf(steps, step.target, i);
           if (i !== END) await this.prisma.automationRun.update({ where: { id: run.id }, data: { stepIndex: i } });
@@ -304,6 +339,36 @@ export class AutomationRunner implements OnModuleInit, OnModuleDestroy {
       await this.prisma.automationRun.updateMany({ where: { id: run.id, status: { in: ACTIVE } }, data: { stepIndex: Math.max(i, 0) } });
       await finish('FAILED', err.message);
     }
+  }
+
+  /**
+   * Já sabemos de onde o contato veio? Sem origem gravada, tenta o texto pronto dos links
+   * nas mensagens recentes dele (no teste a mensagem pode ter chegado antes da sessão).
+   */
+  private async originKnown(run: { tenantId: string; contactId: string; startedAt: Date }, conversationId: string | null) {
+    const contact = await this.prisma.contact.findFirst({
+      where: { id: run.contactId, tenantId: run.tenantId },
+      select: { id: true, leadOrigin: true, utmSource: true },
+    });
+    if (!contact) return false;
+    if (contact.leadOrigin) return true;
+    const msgs = await this.prisma.message.findMany({
+      where: {
+        direction: 'INBOUND',
+        sentAt: { gte: new Date(run.startedAt.getTime() - 24 * 3600_000) },
+        ...(conversationId ? { conversationId } : { conversation: { tenantId: run.tenantId, contactId: contact.id } }),
+      },
+      orderBy: { sentAt: 'asc' },
+      take: 10,
+      select: { content: true },
+    });
+    const hit = msgs.map((m) => originFromText(m.content)).find(Boolean);
+    if (!hit) return false;
+    await this.prisma.contact.update({
+      where: { id: contact.id },
+      data: { leadOrigin: hit.leadOrigin, ...(!contact.utmSource && { utmSource: hit.utmSource, utmMedium: hit.utmMedium }) },
+    });
+    return true;
   }
 
   private async stillActive(runId: string) {
@@ -350,7 +415,16 @@ export class AutomationRunner implements OnModuleInit, OnModuleDestroy {
       return null;
     }
 
+    if (step.type === 'set_origin') {
+      await this.prisma.contact.update({
+        where: { id: contact.id },
+        data: { leadOrigin: step.origin, ...(step.source && !contact.utmSource && { utmSource: step.source, utmMedium: 'whatsapp' }) },
+      });
+      return null;
+    }
+
     const vars = varsOf(contact.name, contact.phone, {
+      origem: originLabel(contact),
       canal_venda: salesChannelPhrase(contact.saleModel),
       modelo_venda: contact.saleModel ?? '',
       faturamento: contact.monthlyRevenue ?? '',

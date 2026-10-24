@@ -2,10 +2,10 @@
 
 import { useState } from "react";
 import {
-  X, Timer, MessageSquare, MessageCircle, FileText, ArrowRightLeft, MousePointerClick, Tag, Bell, CornerDownRight, StopCircle,
+  X, Timer, MessageSquare, MessageCircle, FileText, ArrowRightLeft, MousePointerClick, Tag, Bell, CornerDownRight, StopCircle, Compass, MapPin,
 } from "lucide-react";
 import type { WaTemplate } from "@/components/whatsapp/templates";
-import { BotStep, fmtDuration, templateStep } from "./bot-api";
+import { BotStep, LeadOrigin, ORIGIN_LABEL, fmtDuration, templateStep } from "./bot-api";
 
 export interface Stage { id: string; name: string; position: number }
 export type StepType = BotStep["type"];
@@ -19,6 +19,8 @@ export const STEP_META: Record<StepType, { label: string; icon: (cls?: string) =
   move_stage: { label: "Mover no funil", icon: (c = "w-3.5 h-3.5") => <ArrowRightLeft className={c} />, color: "bg-green-50 text-green-600", head: "bg-green-600" },
   add_tag: { label: "Adicionar etiqueta", icon: (c = "w-3.5 h-3.5") => <Tag className={c} />, color: "bg-green-50 text-green-600", head: "bg-green-600" },
   notify: { label: "Avisar o time", icon: (c = "w-3.5 h-3.5") => <Bell className={c} />, color: "bg-amber-50 text-amber-700", head: "bg-amber-500" },
+  check_origin: { label: "Sabemos a origem?", icon: (c = "w-3.5 h-3.5") => <Compass className={c} />, color: "bg-teal-50 text-teal-700", head: "bg-teal-600" },
+  set_origin: { label: "Gravar origem", icon: (c = "w-3.5 h-3.5") => <MapPin className={c} />, color: "bg-teal-50 text-teal-700", head: "bg-teal-600" },
   goto: { label: "Ir para", icon: (c = "w-3.5 h-3.5") => <CornerDownRight className={c} />, color: "bg-purple-50 text-purple-600", head: "bg-purple-500" },
   end: { label: "Encerrar o bot", icon: (c = "w-3.5 h-3.5") => <StopCircle className={c} />, color: "bg-red-50 text-red-600", head: "bg-red-500" },
 };
@@ -32,6 +34,8 @@ export const NEW_STEP: Record<StepType, () => BotStep> = {
   move_stage: () => ({ type: "move_stage" }),
   add_tag: () => ({ type: "add_tag", tag: "" }),
   notify: () => ({ type: "notify", to: "Daniel", text: "{{primeiro_nome}} respondeu o bot:\n{{respostas}}" }),
+  check_origin: () => ({ type: "check_origin" }),
+  set_origin: () => ({ type: "set_origin", origin: "ORGANIC" }),
   goto: () => ({ type: "goto" }),
   end: () => ({ type: "end" }),
 };
@@ -46,7 +50,7 @@ export const RUN_STATUS: Record<string, { label: string; cls: string }> = {
   FAILED: { label: "Falhou", cls: "bg-red-50 text-red-700" },
 };
 
-export const VARS_HINT = "Use {{primeiro_nome}}, {{nome}}, {{canal_venda}} (ex.: \"pelo Instagram e WhatsApp\"), {{faturamento}} ou {{respostas}}. Linha com variável vazia some da mensagem.";
+export const VARS_HINT = "Use {{primeiro_nome}}, {{nome}}, {{canal_venda}} (ex.: \"pelo Instagram e WhatsApp\"), {{faturamento}}, {{origem}} ou {{respostas}}. Linha com variável vazia some da mensagem.";
 
 export const inp = "w-full px-3 py-2 text-sm text-gray-900 bg-white placeholder:text-gray-400 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-200";
 
@@ -71,6 +75,8 @@ export function stepSummary(s: BotStep): string {
     case "move_stage": return s.stageName ? `Etapa: ${s.stageName}` : "Etapa não escolhida";
     case "add_tag": return s.tag ? `Etiqueta: ${s.tag}` : "Etiqueta vazia";
     case "notify": return `${s.to ? `Para ${s.to}: ` : ""}${s.text}`;
+    case "check_origin": return "Anúncio, texto pronto do link ou origem já gravada no contato";
+    case "set_origin": return `Origem: ${ORIGIN_LABEL[s.origin]}${s.source ? ` (${s.source})` : ""}`;
     case "end": return "O bot termina aqui";
     default: return "";
   }
@@ -217,6 +223,23 @@ export function StepFields({ step, set, templates, tplError, stages, onAddButton
           <input value={step.to ?? ""} onChange={(e) => set({ to: e.target.value })} placeholder="Para (ex.: Daniel)" className={inp} />
           <textarea rows={5} value={step.text} onChange={(e) => set({ text: e.target.value })} className={inp} />
           <p className="text-[11px] text-gray-400">Vira uma nota interna na conversa e uma notificação nos aparelhos com o CRM instalado. {"{{respostas}}"} lista o que o contato escreveu.</p>
+        </>
+      )}
+
+      {step.type === "check_origin" && (
+        <p className="text-xs text-gray-500">
+          Segue por "Sabemos a origem" quando o contato veio de anúncio de clique para WhatsApp, mandou o texto pronto de um link
+          ("Vim pelo Instagram", "Vim pelo site", "Vi o anúncio", "Fui indicado") ou já tem origem gravada.
+        </p>
+      )}
+
+      {step.type === "set_origin" && (
+        <>
+          <select value={step.origin} onChange={(e) => set({ origin: e.target.value as LeadOrigin })} className={inp}>
+            {(Object.keys(ORIGIN_LABEL) as LeadOrigin[]).map((o) => <option key={o} value={o}>{ORIGIN_LABEL[o]}</option>)}
+          </select>
+          <input value={step.source ?? ""} onChange={(e) => set({ source: e.target.value })} placeholder="Fonte (opcional, ex.: instagram, google)" className={inp} />
+          <p className="text-[11px] text-gray-400">Grava a origem no contato (relatórios). A fonte só entra se o contato ainda não tiver UTM.</p>
         </>
       )}
 

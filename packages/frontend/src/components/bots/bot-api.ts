@@ -28,9 +28,15 @@ export type BotStep = { id?: string; name?: string; pos?: { x: number; y: number
   | { type: "move_stage"; stageId?: string; stageName?: string }
   | { type: "add_tag"; tag: string }
   | { type: "notify"; text: string; to?: string }
+  | { type: "check_origin"; onKnown?: string; onUnknown?: string }
+  | { type: "set_origin"; origin: LeadOrigin; source?: string }
   | { type: "goto"; target?: string }
   | { type: "end" }
 );
+
+/** Contact.leadOrigin */
+export type LeadOrigin = "ADS" | "ORGANIC" | "REFERRAL" | "OTHER";
+export const ORIGIN_LABEL: Record<LeadOrigin, string> = { ADS: "Anúncio", ORGANIC: "Orgânico (Instagram, site…)", REFERRAL: "Indicação", OTHER: "Outra" };
 
 export const newStepId = () => `s${Math.random().toString(36).slice(2, 8)}`;
 
@@ -145,28 +151,15 @@ const QUALIFY_BUTTONS = (existing: string, fresh: string) => [
 ];
 
 /**
- * Qualificação de quem preencheu o formulário, seguindo o roteiro da call do Dua Lab:
- * 1ª mensagem → follow-up se não responder → marca já vende ou está começando →
- * 2 perguntas de diagnóstico de cada caminho → convite para a call com o Daniel (Calendly).
- * O bot para sozinho quando alguém do time escreve na conversa.
+ * Roteiro de qualificação (do passo "momento" em diante), igual para o formulário e para o WhatsApp:
+ * já vende ou está começando → 2 perguntas de cada caminho → convite para a call (Calendly).
+ * Quem para no meio cai em "parou" (aviso para o Daniel).
  */
-export function formQualifyPreset(first: WaTemplate | undefined, followup: WaTemplate | undefined): Partial<Bot> {
-  const tpl = (t: WaTemplate | undefined): BotStep => (t ? templateStep(t) : { type: "send_template", templateName: "", language: "pt_BR", params: [] });
-  const steps: BotStep[] = [
-    { id: "inicio", type: "wait", seconds: 10 },
-    { id: "msg1", name: "1ª mensagem", ...tpl(first) } as BotStep,
-    { id: "espera1", type: "wait_reply", timeoutSeconds: 8 * H, alignTo: "10:00", onReply: "respondeu", onTimeout: "followup" },
-    { id: "followup", name: "Follow-up", ...tpl(followup) } as BotStep,
-    { id: "espera_fu", type: "wait_reply", timeoutSeconds: 3 * 24 * H, onReply: "respondeu", onTimeout: "sem_resposta" },
-    { id: "sem_resposta", name: "Não respondeu", type: "add_tag", tag: "sem resposta do bot" },
-    { id: "fim_sem_resposta", type: "end" },
-
-    { id: "respondeu", name: "Respondeu", type: "move_stage", stageName: "Qualificação" },
-    { id: "aviso1", type: "notify", to: "Daniel", text: "{{primeiro_nome}} respondeu o bot do site:\n{{respostas}}" },
-    { id: "pausa1", type: "wait", seconds: 40 },
+function qualifySteps(momentoText: string): BotStep[] {
+  return [
     {
       id: "momento", name: "Momento da marca", type: "send_buttons",
-      text: "Entendi, {{primeiro_nome}}, obrigada por me contar! 😊\n\nPra eu te direcionar certinho: a sua marca já está vendendo ou está começando agora?",
+      text: momentoText,
       buttons: QUALIFY_BUTTONS("existente", "nova"), onOther: "momento_de_novo", timeoutSeconds: 4 * H, onTimeout: "parou",
     },
     {
@@ -211,10 +204,75 @@ export function formQualifyPreset(first: WaTemplate | undefined, followup: WaTem
     { id: "parou", name: "Parou no meio", type: "notify", to: "Daniel", text: "{{primeiro_nome}} parou no meio da qualificação. O que respondeu até agora:\n{{respostas}}" },
     { id: "fim_parou", type: "end" },
   ];
+}
+
+/**
+ * Qualificação de quem preencheu o formulário, seguindo o roteiro da call do Dua Lab:
+ * 1ª mensagem → follow-up se não responder → marca já vende ou está começando →
+ * 2 perguntas de diagnóstico de cada caminho → convite para a call com o Daniel (Calendly).
+ * O bot para sozinho quando alguém do time escreve na conversa.
+ */
+export function formQualifyPreset(first: WaTemplate | undefined, followup: WaTemplate | undefined): Partial<Bot> {
+  const tpl = (t: WaTemplate | undefined): BotStep => (t ? templateStep(t) : { type: "send_template", templateName: "", language: "pt_BR", params: [] });
+  const steps: BotStep[] = [
+    { id: "inicio", type: "wait", seconds: 10 },
+    { id: "msg1", name: "1ª mensagem", ...tpl(first) } as BotStep,
+    { id: "espera1", type: "wait_reply", timeoutSeconds: 8 * H, alignTo: "10:00", onReply: "respondeu", onTimeout: "followup" },
+    { id: "followup", name: "Follow-up", ...tpl(followup) } as BotStep,
+    { id: "espera_fu", type: "wait_reply", timeoutSeconds: 3 * 24 * H, onReply: "respondeu", onTimeout: "sem_resposta" },
+    { id: "sem_resposta", name: "Não respondeu", type: "add_tag", tag: "sem resposta do bot" },
+    { id: "fim_sem_resposta", type: "end" },
+
+    { id: "respondeu", name: "Respondeu", type: "move_stage", stageName: "Qualificação" },
+    { id: "aviso1", type: "notify", to: "Daniel", text: "{{primeiro_nome}} respondeu o bot do site:\n{{respostas}}" },
+    { id: "pausa1", type: "wait", seconds: 40 },
+    ...qualifySteps("Entendi, {{primeiro_nome}}, obrigada por me contar! 😊\n\nPra eu te direcionar certinho: a sua marca já está vendendo ou está começando agora?"),
+  ];
   return {
     name: "Qualificação do cadastro no site",
     description: "1ª mensagem + follow-up, entende se a marca já vende ou está começando e convida para a call com o Daniel",
     trigger: "LEAD_FORM_SUBMITTED",
+    active: false,
+    actions: steps,
+  };
+}
+
+/**
+ * Pré-qualificação de quem chama direto no WhatsApp (bio do Instagram, botão do site, anúncio, indicação).
+ * A pessoa acabou de escrever, então a janela de 24h está aberta e a 1ª mensagem é texto livre.
+ * Origem: anúncio de clique para WhatsApp ou texto pronto do link; sem isso, pergunta com botões.
+ */
+export function whatsappQualifyPreset(): Partial<Bot> {
+  const steps: BotStep[] = [
+    { id: "inicio", type: "wait", seconds: 5 },
+    { id: "origem", name: "Sabemos a origem?", type: "check_origin", onUnknown: "pergunta_origem" },
+    { id: "saudacao", name: "Saudação", type: "send_text", text: "Oi, {{primeiro_nome}}! Aqui é a Duda, da Dua 💜 Que bom que você chamou por aqui!" },
+    { id: "registro", type: "move_stage", stageName: "Qualificação" },
+    { id: "aviso_inicio", type: "notify", to: "Daniel", text: "{{primeiro_nome}} chamou direto no WhatsApp e entrou no bot de pré-qualificação. Origem: {{origem}}." },
+    { id: "pausa1", type: "wait", seconds: 4 },
+    ...qualifySteps("Pra eu te direcionar certinho: a sua marca já está vendendo ou está começando agora?"),
+
+    {
+      id: "pergunta_origem", name: "Como conheceu a Dua", type: "send_buttons",
+      text: "Oi, {{primeiro_nome}}! Aqui é a Duda, da Dua 💜 Que bom que você chamou por aqui!\n\nAntes de tudo, me conta: como você conheceu a Dua?",
+      buttons: [
+        { title: "Instagram", goto: "origem_instagram" },
+        { title: "Indicação", goto: "origem_indicacao" },
+        { title: "Anúncio / Google", goto: "origem_anuncio" },
+      ],
+      onOther: "registro", timeoutSeconds: 4 * H, onTimeout: "parou",
+    },
+    { id: "origem_instagram", type: "set_origin", origin: "ORGANIC", source: "instagram" },
+    { id: "ir_registro_1", type: "goto", target: "registro" },
+    { id: "origem_indicacao", type: "set_origin", origin: "REFERRAL", source: "indicacao" },
+    { id: "ir_registro_2", type: "goto", target: "registro" },
+    { id: "origem_anuncio", type: "set_origin", origin: "ADS", source: "anuncio_google" },
+    { id: "ir_registro_3", type: "goto", target: "registro" },
+  ];
+  return {
+    name: "Pré-qualificação do WhatsApp",
+    description: "Quem chama direto no WhatsApp: descobre a origem (ou pergunta), entende se a marca já vende ou está começando e convida para a call",
+    trigger: "WHATSAPP_FIRST_MESSAGE",
     active: false,
     actions: steps,
   };
