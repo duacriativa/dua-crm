@@ -296,7 +296,7 @@ export class ContactsController {
 
   /**
    * POST /contacts/:id/analyze-instagram
-   * Usa Google Gemini 1.5 Flash (gratuito) para analisar o perfil do Instagram.
+   * Usa Claude (Anthropic) para analisar o perfil do Instagram.
    */
   @Post(':id/analyze-instagram')
   async analyzeInstagram(@Request() req: any, @Param('id') id: string) {
@@ -310,8 +310,8 @@ export class ContactsController {
     if (!contact) throw new BadRequestException('Contato não encontrado.');
     if (!contact.instagramHandle) throw new BadRequestException('Contato sem Instagram cadastrado.');
 
-    const apiKey = process.env.GROQ_API_KEY;
-    if (!apiKey) throw new InternalServerErrorException('GROQ_API_KEY não configurada.');
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) throw new InternalServerErrorException('IA não configurada: defina ANTHROPIC_API_KEY no servidor.');
 
     const instagram = contact.instagramHandle.replace('@', '');
     const prompt =
@@ -321,36 +321,38 @@ export class ContactsController {
       `alertas (array), estrategia_recomendada (parágrafo), mensagem_whatsapp (mensagem casual e personalizada, ` +
       `máx 4 linhas, assine como Equipe Dua Criativa).`;
 
-    let groqRes: any;
+    let aiRes: any;
     try {
-      groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      aiRes = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+          'content-type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'llama-3.3-70b-versatile',
+          model: process.env.ANTHROPIC_MODEL || 'claude-sonnet-5-5',
           max_tokens: 2048,
-          temperature: 0.7,
-          response_format: { type: 'json_object' },
-          messages: [
-            { role: 'system', content: 'Você é especialista em marketing digital para moda brasileira. Retorne sempre JSON válido, sem markdown.' },
-            { role: 'user', content: prompt },
-          ],
+          system: 'Você é especialista em marketing digital para moda brasileira. Retorne sempre JSON válido, sem markdown.',
+          messages: [{ role: 'user', content: prompt }],
         }),
+        signal: AbortSignal.timeout(60000),
       });
     } catch (err: any) {
-      throw new InternalServerErrorException(`Erro ao conectar no Groq: ${err.message}`);
+      throw new InternalServerErrorException(`Erro ao conectar na IA: ${err.message}`);
     }
 
-    if (!groqRes.ok) {
-      const errBody = await groqRes.text();
-      throw new InternalServerErrorException(`Groq retornou ${groqRes.status}: ${errBody.slice(0, 300)}`);
+    if (!aiRes.ok) {
+      const errBody = await aiRes.text();
+      throw new InternalServerErrorException(`IA retornou ${aiRes.status}: ${errBody.slice(0, 300)}`);
     }
 
-    const data: any = await groqRes.json();
-    const analysisText: string = data.choices?.[0]?.message?.content ?? '';
+    const data: any = await aiRes.json();
+    const analysisText: string = (data.content ?? [])
+      .filter((c: any) => c.type === 'text')
+      .map((c: any) => c.text)
+      .join('')
+      .trim();
 
     let parsed: any = null;
     try {
