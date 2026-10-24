@@ -38,7 +38,7 @@ interface Contact {
 }
 
 interface InstagramAnalysis {
-  score?: number;
+  score?: number | null;
   resumo?: string;
   pontos_fortes?: string[];
   oportunidades?: string[];
@@ -886,7 +886,7 @@ export default function ContactProfilePage() {
                       : "Nenhum Instagram cadastrado"}
                   </p>
                 </div>
-                {parsedAnalysis?.score !== undefined && (
+                {parsedAnalysis?.score != null && (
                   <div className="ml-auto flex items-center gap-2 px-4 py-2 rounded-xl bg-primary/10 border border-primary/20">
                     <Sparkles size={14} className="text-purple-600" />
                     <span className="text-sm font-bold text-primary">Score</span>
