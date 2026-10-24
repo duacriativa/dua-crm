@@ -7,7 +7,7 @@ import {
   Settings, ChevronLeft, ChevronRight, LogOut, Kanban,
   Menu, X, DollarSign, FileText, Plus,
   Bell, Calendar, Bot, Megaphone, Workflow,
-  ChevronUp, ChevronDown, User, CreditCard,
+  ChevronUp, ChevronDown, User, CreditCard, ClipboardList,
 } from "lucide-react";
 
 type Icon = ComponentType<{ className?: string }>;
@@ -33,6 +33,7 @@ const navItems: NavItem[] = [
   { icon: Calendar,        label: "Agenda",        href: "/dashboard/agenda" },
   { icon: Workflow,        label: "Automações",    group: automationItems },
   { icon: DollarSign,      label: "Financeiro",    href: "/dashboard/financeiro" },
+  { icon: ClipboardList,   label: "Planos 90 dias", href: "/dashboard/planos" },
   { icon: Settings,        label: "Configurações", href: "/dashboard/configuracoes" },
 ];
 

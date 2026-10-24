@@ -7,18 +7,26 @@ export class AsaasService {
 
   constructor(private config: ConfigService) {}
 
+  /** Produção por padrão; para testar use ASAAS_BASE_URL=https://api-sandbox.asaas.com/v3 com a chave do sandbox. */
   private get baseUrl() {
-    return 'https://api.asaas.com/v3';
+    return (this.config.get<string>('ASAAS_BASE_URL') || 'https://api.asaas.com/v3').replace(/\/$/, '');
+  }
+
+  get isSandbox() {
+    return this.baseUrl.includes('sandbox');
   }
 
   private get apiKey() {
     return this.config.get<string>('ASAAS_API_KEY') ?? '';
   }
 
-  private async fetch<T>(path: string): Promise<T> {
+  private async fetch<T>(path: string, init?: { method?: string; body?: unknown }): Promise<T> {
     const url = `${this.baseUrl}${path}`;
-    this.logger.debug(`Asaas GET ${url}`);
+    this.logger.debug(`Asaas ${init?.method ?? 'GET'} ${url}`);
     const res = await fetch(url, {
+      method: init?.method ?? 'GET',
+      body: init?.body !== undefined ? JSON.stringify(init.body) : undefined,
+      signal: AbortSignal.timeout(20000),
       headers: {
         access_token: this.apiKey,
         'Content-Type': 'application/json',
@@ -73,6 +81,32 @@ export class AsaasService {
     return this.fetch<{ data: AsaasSubscription[]; totalCount: number }>(
       `/subscriptions?limit=100`,
     );
+  }
+
+  /** Cliente pelo CPF/CNPJ; cria se não existir. O Asaas exige CPF/CNPJ para emitir cobrança. */
+  async findOrCreateCustomer(input: { name: string; cpfCnpj: string; email: string; mobilePhone: string; externalReference?: string }) {
+    const found = await this.fetch<{ data: AsaasCustomer[] }>(`/customers?cpfCnpj=${encodeURIComponent(input.cpfCnpj)}&limit=1`);
+    if (found.data?.[0]) return found.data[0];
+    // notificationDisabled: o Asaas não manda e-mail/SMS próprio, a comunicação é da Dua
+    return this.fetch<AsaasCustomer>('/customers', { method: 'POST', body: { ...input, notificationDisabled: true } });
+  }
+
+  async createPixPayment(input: { customer: string; value: number; dueDate: string; description: string; externalReference: string }) {
+    return this.fetch<AsaasPayment>('/payments', { method: 'POST', body: { ...input, billingType: 'PIX' } });
+  }
+
+  async getPayment(id: string) {
+    return this.fetch<AsaasPayment>(`/payments/${encodeURIComponent(id)}`);
+  }
+
+  /** QR Code (PNG em base64) e copia-e-cola do Pix da cobrança. */
+  async getPixQrCode(id: string) {
+    return this.fetch<{ encodedImage: string; payload: string; expirationDate?: string }>(`/payments/${encodeURIComponent(id)}/pixQrCode`);
+  }
+
+  /** Só no sandbox: simula o pagamento da cobrança (dispara o webhook PAYMENT_RECEIVED). */
+  async confirmSandboxPayment(id: string) {
+    return this.fetch<AsaasPayment>(`/sandbox/payment/${encodeURIComponent(id)}/confirm`, { method: 'POST', body: {} });
   }
 
   // Resumo financeiro do mês atual
@@ -148,6 +182,7 @@ export interface AsaasPayment {
   billingType: string;
   invoiceUrl?: string;
   subscription?: string;
+  externalReference?: string;
 }
 
 export interface AsaasSubscription {
