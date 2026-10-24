@@ -69,11 +69,21 @@ function strategySummary(p: Partial<PlanContent>) {
   return JSON.stringify({ estrategia: p.estrategia, pilares: p.pilares?.map((x) => ({ nome: x.nome, objetivo: x.objetivo, percentual: x.percentual })) }, null, 2);
 }
 
-async function ask(prompt: string, maxTokens: number) {
-  const text = await askClaude({ system: SYSTEM, prompt, maxTokens, timeoutMs: 240_000 });
-  const out = parseJsonObject(text);
-  if (!out) throw new BadRequestException('A IA não devolveu um JSON válido. Tente gerar de novo.');
-  return out;
+/**
+ * Pede uma parte do plano. Resposta cortada ou JSON quebrado: tenta mais uma vez pedindo
+ * textos mais curtos. `part` entra na mensagem de erro para a equipe saber o que falhou.
+ */
+async function ask(part: string, prompt: string, maxTokens: number) {
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    const extra = attempt > 1
+      ? '\n\nIMPORTANTE: a resposta anterior veio incompleta. Seja mais conciso em cada campo e feche o JSON corretamente.'
+      : '';
+    const text = await askClaude({ system: SYSTEM, prompt: prompt + extra, maxTokens, timeoutMs: 300_000 });
+    const out = parseJsonObject(text.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, ''));
+    if (out) return out;
+    console.warn(`[Plano] ${part}: JSON inválido na tentativa ${attempt} (${text.length} caracteres, fim: ${JSON.stringify(text.slice(-80))})`);
+  }
+  throw new BadRequestException(`A IA não devolveu um JSON válido (${part}). Tente gerar de novo.`);
 }
 
 const str = (v: any) => (typeof v === 'string' ? v.trim() : v === null || v === undefined ? '' : String(v));
@@ -82,6 +92,7 @@ const objList = (v: any, max = 50) => (Array.isArray(v) ? v.filter((x) => x && t
 
 async function genStrategy(i: PlanInput): Promise<Pick<PlanContent, 'estrategia' | 'pilares'>> {
   const out = await ask(
+    'estratégia',
     `${context(i)}\n\nEscreva a ESTRATÉGIA e os PILARES DE CONTEÚDO do plano.\n` +
       `Retorne JSON com:\n` +
       `estrategia: { resumo (3-4 frases: onde a marca está e aonde o plano leva em 90 dias), diagnostico (1 parágrafo sobre o Instagram hoje, ` +
@@ -90,7 +101,7 @@ async function genStrategy(i: PlanInput): Promise<Pick<PlanContent, 'estrategia'
       `tom_de_voz (1 parágrafo com exemplos de palavras/expressões a usar e evitar), frequencia (1-2 frases: quantos posts de feed por semana, ` +
       `quantos Reels, stories por dia, realista para quem posta hoje) },\n` +
       `pilares: array de 4 a 5 { nome (2-4 palavras), objetivo (1 frase), percentual (número inteiro; a soma dá 100), exemplos (array de 3 ideias curtas) }.`,
-    4000,
+    8000,
   );
   const e = out.estrategia ?? {};
   const pilares = objList(out.pilares, 6).map((p: any) => ({
@@ -108,14 +119,15 @@ async function genStrategy(i: PlanInput): Promise<Pick<PlanContent, 'estrategia'
 
 async function genWeeks(i: PlanInput, base: Partial<PlanContent>, from: number, to: number): Promise<PlanContent['calendario']> {
   const out = await ask(
+    `calendário semanas ${from}-${to}`,
     `${context(i)}\n\nEstratégia já definida:\n${strategySummary(base)}\n\n` +
       `Monte o CALENDÁRIO das semanas ${from} a ${to} (de 12). Semanas 1-4 constroem base e confiança, 5-8 aceleram alcance com Reels ` +
       `e prova social, 9-12 focam em conversão e venda. Respeite a frequência da estratégia e use os pilares na proporção definida. ` +
       `Considere datas sazonais do varejo de moda no Brasil quando fizer sentido, sem citar datas exatas.\n` +
       `Retorne JSON com calendario: array com uma entrada por semana { semana (número), tema (até 6 palavras), objetivo (1 frase), ` +
       `feed: array de posts { dia (ex.: "Segunda"), formato ("Reels", "Carrossel", "Foto" ou "Vídeo"), pilar (nome de um pilar), ideia (1-2 frases concretas) }, ` +
-      `stories: array de 3 a 5 ideias de stories da semana (1 frase cada) }.`,
-    9000,
+      `stories: array de 3 a 5 ideias de stories da semana (1 frase cada) }. Ideias objetivas, de 1 a 2 frases.`,
+    12000,
   );
   const weeks = objList(out.calendario, 12).map((w: any, k: number) => ({
     semana: Number(w.semana) || from + k,
@@ -130,11 +142,12 @@ async function genWeeks(i: PlanInput, base: Partial<PlanContent>, from: number, 
 
 async function genReels(i: PlanInput, base: Partial<PlanContent>): Promise<PlanContent['reels']> {
   const out = await ask(
+    'Reels',
     `${context(i)}\n\nEstratégia já definida:\n${strategySummary(base)}\n\n` +
       `Escreva 8 ROTEIROS DE REELS prontos para gravar com celular, cobrindo os pilares. Cada um com gancho forte nos 2 primeiros segundos.\n` +
       `Retorne JSON com reels: array de { titulo, objetivo (1 frase), gancho (fala ou texto dos primeiros 2s), roteiro (array de 4 a 7 cenas/falas, ` +
       `cada uma 1 frase com o que aparece e o que se fala), texto_na_tela, cta, audio (tipo de áudio ou trend, sem citar música específica protegida) }.`,
-    7000,
+    12000,
   );
   const reels = objList(out.reels, 12).map((r: any) => ({
     titulo: str(r.titulo), objetivo: str(r.objetivo), gancho: str(r.gancho), roteiro: strList(r.roteiro, 10),
@@ -146,12 +159,14 @@ async function genReels(i: PlanInput, base: Partial<PlanContent>): Promise<PlanC
 
 async function genCaptions(i: PlanInput, base: Partial<PlanContent>): Promise<Pick<PlanContent, 'legendas' | 'stories'>> {
   const out = await ask(
+    'legendas e stories',
     `${context(i)}\n\nEstratégia já definida:\n${strategySummary(base)}\n\n` +
       `Escreva 12 LEGENDAS PRONTAS para posts de feed (uma por semana, cobrindo os pilares), no tom de voz da marca, com quebra de linha, ` +
       `CTA no final e no máximo 2 emojis cada. E um BANCO DE IDEIAS DE STORIES organizado por objetivo.\n` +
       `Retorne JSON com legendas: array de { tema (até 6 palavras), legenda (texto completo, pode usar \\n), hashtags (5 a 8 hashtags numa string) } ` +
-      `e stories: array de 5 categorias { categoria (ex.: "Bastidores", "Prova social", "Venda", "Relacionamento", "Enquetes e caixinhas"), ideias (array de 4 ideias de 1 frase) }.`,
-    7000,
+      `e stories: array de 5 categorias { categoria (ex.: "Bastidores", "Prova social", "Venda", "Relacionamento", "Enquetes e caixinhas"), ideias (array de 4 ideias de 1 frase) }. ` +
+      `Cada legenda com no máximo 600 caracteres. Use \\n para quebra de linha dentro das strings.`,
+    12000,
   );
   const legendas = objList(out.legendas, 16).map((l: any) => ({ tema: str(l.tema), legenda: str(l.legenda), hashtags: str(l.hashtags) }));
   const stories = objList(out.stories, 8).map((s: any) => ({ categoria: str(s.categoria), ideias: strList(s.ideias, 8) }));
@@ -161,6 +176,7 @@ async function genCaptions(i: PlanInput, base: Partial<PlanContent>): Promise<Pi
 
 async function genInvestment(i: PlanInput, base: Partial<PlanContent>): Promise<Pick<PlanContent, 'contratar' | 'metas' | 'primeiros_passos'>> {
   const out = await ask(
+    'contratações e metas',
     `${context(i)}\n\nEstratégia já definida:\n${strategySummary(base)}\n\n` +
       `Escreva O QUE CONTRATAR para executar o plano dentro da verba informada (foto de produto/lookbook, modelo, edição de vídeo, ` +
       `tráfego pago, ferramentas como app de edição, agendador, banco de imagens), em ordem de prioridade, com faixa de investimento ` +
@@ -171,7 +187,7 @@ async function genInvestment(i: PlanInput, base: Partial<PlanContent>): Promise<
       `quando (ex.: "Semana 1", "Mês 2"), investimento (faixa em R$ ou "Grátis"), por_que (1 frase) }, ` +
       `metas: array de 3 { mes (1, 2, 3), foco (até 6 palavras), metas (array de 3 a 5 metas com número) }, ` +
       `primeiros_passos: array de 5 a 7 tarefas curtas para a primeira semana.`,
-    5000,
+    8000,
   );
   const contratar = objList(out.contratar, 10).map((c: any) => ({
     item: str(c.item), categoria: str(c.categoria), quando: str(c.quando), investimento: str(c.investimento), por_que: str(c.por_que),
@@ -183,7 +199,7 @@ async function genInvestment(i: PlanInput, base: Partial<PlanContent>): Promise<
 
 /**
  * Gera o plano em várias chamadas (para não estourar tokens): estratégia primeiro,
- * depois calendário (2 metades), Reels, legendas/stories e investimento/metas em paralelo.
+ * depois calendário (3 blocos), Reels, legendas/stories e investimento/metas em paralelo.
  * `only` gera de novo só uma parte, mantendo o resto de `current`.
  */
 export async function generatePlan(i: PlanInput, current?: Partial<PlanContent> | null, only?: PlanPart): Promise<PlanContent> {
@@ -196,8 +212,9 @@ export async function generatePlan(i: PlanInput, current?: Partial<PlanContent> 
   const jobs: Promise<void>[] = [];
   if (want('calendario')) {
     jobs.push(
-      Promise.all([genWeeks(i, plan, 1, 6), genWeeks(i, plan, 7, 12)]).then(([a, b]) => {
-        plan.calendario = [...a, ...b].sort((x, y) => x.semana - y.semana);
+      // 3 blocos de 4 semanas: cada resposta fica bem abaixo do limite de tokens
+      Promise.all([genWeeks(i, plan, 1, 4), genWeeks(i, plan, 5, 8), genWeeks(i, plan, 9, 12)]).then((parts) => {
+        plan.calendario = parts.flat().sort((x, y) => x.semana - y.semana);
       }),
     );
   }
