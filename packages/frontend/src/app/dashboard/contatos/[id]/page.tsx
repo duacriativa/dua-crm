@@ -8,7 +8,7 @@ import {
   DollarSign, MessageCircle, Edit, MoreVertical, Trash2,
   User, Clock, Globe, Filter, Briefcase, Search,
   Save, ChevronRight, Sparkles, AlertTriangle, TrendingUp,
-  Star, Zap, ChevronDown, Check, FileText, Plus, XCircle, CheckCircle2,
+  Star, Zap, ChevronDown, Check, FileText, Plus, XCircle, CheckCircle2, Copy,
 } from "lucide-react";
 import api from "@/lib/api";
 
@@ -583,6 +583,7 @@ export default function ContactProfilePage() {
   const [analysisSaving, setAnalysisSaving] = useState(false);
   const [analysisSaved, setAnalysisSaved] = useState(false);
   const [parsedAnalysis, setParsedAnalysis] = useState<InstagramAnalysis | null>(null);
+  const [messageCopied, setMessageCopied] = useState(false);
 
   // Additional fields parsed from notes — must be declared at top level (Rules of Hooks)
   const [aditionalFields, setAditionalFields] = useState<any>({});
@@ -1021,49 +1022,51 @@ export default function ContactProfilePage() {
                 </div>
               )}
 
-              {/* Textarea (raw/edit mode) */}
               {!analysisLoading && analysisText && (
                 <div className="mt-4 space-y-3">
-                  <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Texto bruto / editar</label>
-                  <textarea
-                    value={analysisText}
-                    onChange={(e) => {
-                      setAnalysisText(e.target.value);
-                      tryParseAnalysis(e.target.value);
-                    }}
-                    rows={6}
-                    className="w-full bg-muted/50 border border-border rounded-2xl p-4 text-sm text-foreground leading-relaxed resize-y focus:outline-none focus:border-purple-400 focus:ring-2 focus:ring-purple-500/20 transition-all"
-                  />
-                  <div className="flex items-center gap-3">
+                  {/* Texto bruto: aberto só quando não deu para montar os cards (ex.: erro) */}
+                  <details open={!parsedAnalysis} className="group">
+                    <summary className="cursor-pointer text-xs font-bold text-muted-foreground uppercase tracking-wider select-none">
+                      {parsedAnalysis ? "Editar texto da análise" : "Texto da análise"}
+                    </summary>
+                    <textarea
+                      value={analysisText}
+                      onChange={(e) => {
+                        setAnalysisText(e.target.value);
+                        tryParseAnalysis(e.target.value);
+                      }}
+                      rows={6}
+                      className="mt-3 w-full bg-muted/50 border border-border rounded-2xl p-4 text-sm text-foreground leading-relaxed resize-y focus:outline-none focus:border-purple-400 focus:ring-2 focus:ring-purple-500/20 transition-all"
+                    />
+                  </details>
+                  <div className="flex flex-wrap items-center gap-3">
                     <button
                       onClick={handleSaveAnalysis}
                       disabled={analysisSaving}
-                      className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm text-white bg-purple-600 hover:bg-purple-700 transition-colors disabled:opacity-50 shadow-none border border-border"
+                      className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm text-white bg-purple-600 hover:bg-purple-700 transition-colors disabled:opacity-50"
                     >
                       <Save size={14} />
                       {analysisSaving ? "Salvando..." : analysisSaved ? "✓ Salvo!" : "Salvar análise"}
                     </button>
+                    {parsedAnalysis?.mensagem_whatsapp && (
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(parsedAnalysis.mensagem_whatsapp!);
+                          setMessageCopied(true);
+                          setTimeout(() => setMessageCopied(false), 2000);
+                        }}
+                        className="flex items-center gap-2 px-4 py-2.5 rounded-xl font-semibold text-sm text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 transition-colors border border-emerald-500/20"
+                      >
+                        <Copy size={14} /> {messageCopied ? "✓ Copiada!" : "Copiar mensagem"}
+                      </button>
+                    )}
                     <button
                       onClick={handleGenerateAnalysis}
-                      className="flex items-center gap-2 px-4 py-2.5 rounded-xl font-semibold text-sm text-primary bg-primary/10 hover:bg-purple-100 transition-colors border border-primary/20"
+                      className="flex items-center gap-2 px-4 py-2.5 rounded-xl font-semibold text-sm text-muted-foreground hover:text-foreground transition-colors"
                     >
-                      <Search size={14} /> Regenerar
+                      <Search size={14} /> Gerar de novo
                     </button>
                   </div>
-                </div>
-              )}
-
-              {/* Gerar novamente se só mostra parsed sem text edit */}
-              {!analysisLoading && parsedAnalysis && !analysisText.trim() === false && (
-                <div className="mt-4 flex gap-3">
-                  <button
-                    onClick={handleSaveAnalysis}
-                    disabled={analysisSaving}
-                    className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm text-white bg-purple-600 hover:bg-purple-700 transition-colors disabled:opacity-50"
-                  >
-                    <Save size={14} />
-                    {analysisSaving ? "Salvando..." : analysisSaved ? "✓ Salvo!" : "Salvar análise"}
-                  </button>
                 </div>
               )}
             </div>
