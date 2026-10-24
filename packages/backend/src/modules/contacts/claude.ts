@@ -1,7 +1,7 @@
 import { InternalServerErrorException } from '@nestjs/common';
 
 /** Chama o Claude (Anthropic) e devolve o texto da resposta. Erros viram 500 com mensagem legível. */
-export async function askClaude(opts: { system: string; prompt: string; maxTokens: number }): Promise<string> {
+export async function askClaude(opts: { system: string; prompt: string; maxTokens: number; timeoutMs?: number }): Promise<string> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) throw new InternalServerErrorException('IA não configurada: defina ANTHROPIC_API_KEY no servidor.');
 
@@ -21,7 +21,7 @@ export async function askClaude(opts: { system: string; prompt: string; maxToken
         system: opts.system,
         messages: [{ role: 'user', content: opts.prompt }],
       }),
-      signal: AbortSignal.timeout(60000),
+      signal: AbortSignal.timeout(opts.timeoutMs ?? 60000),
     });
   } catch (err: any) {
     throw new InternalServerErrorException(`Erro ao conectar na IA: ${err.message}`);

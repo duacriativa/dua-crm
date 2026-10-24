@@ -1,9 +1,10 @@
-import { Controller, Post, Body, HttpCode, Logger } from '@nestjs/common';
+import { Controller, Post, Body, HttpCode, Logger, Headers } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { FunnelService } from '../pipelines/funnel.service';
 import { normalizePhone, phoneVariants } from '../../common/phone.util';
 import { kommoOffKey } from '../kommo/kommo.controller';
+import { PlanOrdersService } from '../plan-orders/plan-orders.service';
 
 @Controller('webhooks')
 export class WebhooksController {
@@ -13,11 +14,12 @@ export class WebhooksController {
     private readonly prisma: PrismaService,
     private readonly events: EventEmitter2,
     private readonly funnel: FunnelService,
+    private readonly planOrders: PlanOrdersService,
   ) {}
 
   @Post('asaas')
   @HttpCode(200)
-  async receiveAsaas(@Body() body: any) {
+  async receiveAsaas(@Body() body: any, @Headers('asaas-access-token') accessToken?: string) {
     const event = body?.event;
     const payment = body?.payment;
 
@@ -26,6 +28,9 @@ export class WebhooksController {
     if (!event || !payment) return { ok: true };
 
     try {
+      // Pedido do plano de 90 dias (Pix da página /plano-90-dias)
+      await this.planOrders.handleAsaasEvent(event, payment, accessToken);
+
       // Atualiza FinancialEntry se existir
       if (payment.id) {
         const entry = await this.prisma.financialEntry.findUnique({
