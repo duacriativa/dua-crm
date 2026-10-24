@@ -54,3 +54,7 @@ CREATE TABLE IF NOT EXISTS "Meeting" (
 CREATE UNIQUE INDEX IF NOT EXISTS "Meeting_manageToken_key" ON "Meeting"("manageToken");
 CREATE INDEX IF NOT EXISTS "Meeting_tenantId_startAt_idx" ON "Meeting"("tenantId", "startAt");
 CREATE INDEX IF NOT EXISTS "Meeting_contactId_idx" ON "Meeting"("contactId");
+
+-- O app acessa pelo dua_app; a API pública do Supabase (anon/authenticated) não precisa destas tabelas
+GRANT SELECT, INSERT, UPDATE, DELETE ON "BookingPage", "Meeting" TO dua_app;
+REVOKE ALL ON "BookingPage", "Meeting" FROM anon, authenticated;
