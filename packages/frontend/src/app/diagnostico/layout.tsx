@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 
 // Link privado de cada cliente: não indexar
 export const metadata: Metadata = {
-  title: "Diagnóstico gratuito de Instagram · Dua Criativa",
+  title: "Análise de Perfil · Dua Criativa",
   robots: { index: false, follow: false },
 };
 

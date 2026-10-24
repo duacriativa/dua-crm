@@ -1,82 +1,48 @@
-# Diagnóstico gratuito de Instagram
+# Análise de Perfil para o cliente (diagnóstico gratuito)
 
 Consultoria rápida e gratuita para nutrir leads que ainda não estão prontos para contratar
-(ex.: tag "Menos de R$ 50k/mês"). Parte da "Análise de Perfil Instagram" do contato.
+(ex.: tag "Menos de R$ 50k/mês"). O envio é **manual, pelo app WhatsApp Business no celular**:
+não passa pela API oficial, então não precisa de template nem de janela de 24h.
 
-## Como funciona
+## Fluxo
 
 1. **Contato → Análise de Perfil Instagram → Gerar análise** (Claude + Business Discovery).
-   A análise é interna: tem `alertas` e `estrategia_recomendada` que não vão para o cliente.
-2. Com a análise na tela (e com nota, ou seja, com dados reais do perfil), aparece o bloco
-   **"Diagnóstico gratuito para o cliente" → Gerar diagnóstico para o cliente**.
-   - `POST /contacts/:id/diagnosis` pede ao Claude para reescrever a análise no tom do cliente:
-     resumo, pontos fortes, oportunidades (os alertas viram oportunidades ditas com cuidado) e
-     exatamente 3 próximos passos. A nota é a mesma da análise.
-   - Grava em `InstagramDiagnosis` com um token aleatório de 192 bits (32 caracteres).
-   - Devolve o link `https://crm.duacriativa.com.br/diagnostico/<token>` e uma mensagem de WhatsApp pronta.
-3. A equipe **copia a mensagem** ou clica em **Enviar pelo chat**: abre a conversa do contato com o
-   texto já no campo (ou o modal "Nova conversa" com a primeira mensagem preenchida). Nada é enviado
-   sozinho: a pessoa revisa e envia.
-4. O cliente abre `/diagnostico/<token>` sem login: página com a marca da Dua, nota, resumo, pontos fortes,
-   oportunidades, 3 próximos passos e o CTA **Agendar conversa** → `/agendar/especialista`
-   (troque com `DIAGNOSIS_BOOKING_SLUG` no backend). A página tem `noindex`.
-5. O CRM mostra se o cliente abriu ("Cliente abriu 2× · última em …"). O ícone de abrir no CRM usa
-   `?preview=1`, que não conta como abertura.
+   A análise é interna: `alertas` e `estrategia_recomendada` não vão para o cliente.
+2. **Copiar mensagem curta** (a `mensagem_whatsapp` da análise) e mandar pelo WhatsApp Business.
+   Ela oferece uma análise rápida.
+3. Se o cliente topar, use uma das opções:
+   - **Baixar PDF da análise** (na barra, ao lado de "Copiar mensagem curta") e envie o arquivo
+     `analise-perfil-<@>.pdf`.
+   - **Copiar diagnóstico para WhatsApp** (bloco "Análise para o cliente"): texto completo com a formatação do
+     WhatsApp (*negrito*, listas), com nota, pontos fortes, pontos de melhoria, próximos passos, o link da página
+     e o link de agendamento.
+   - **Abrir no WhatsApp**: link `wa.me/<número>?text=...`, que abre o WhatsApp (Business, no celular) já com esse texto.
+4. O cliente pode abrir a página `/diagnostico/<token>` (mesmo conteúdo do PDF, com o botão **Agendar conversa** →
+   `/agendar/especialista` e um link para baixar o PDF). O CRM mostra quantas vezes a página ou o PDF público foi aberto.
+   O que a equipe abre pelo CRM usa `?preview=1` e não conta.
 
-Gerar de novo cria um link novo; os antigos continuam funcionando.
+Sem dados reais do perfil (análise sem nota: perfil pessoal, privado ou erro na API), o CRM não oferece PDF nem
+texto para o cliente, porque eles ficariam genéricos.
+
+## Como é gerado
+
+- `POST /contacts/:id/diagnosis` (body `{ analysis?, force? }`): o Claude reescreve a análise no tom do cliente
+  (resumo, explicação da nota, pontos fortes, pontos de melhoria e exatamente 3 próximos passos, sem emojis e sem
+  vender a agência). Também busca de novo os números reais do perfil (seguidores, engajamento médio, posts e o post
+  com mais interações). A nota é a mesma da análise.
+- Se a análise não mudou, reaproveita o último diagnóstico, sem chamar a IA de novo. **Reescrever texto** força uma versão nova.
+- Grava em `InstagramDiagnosis` com um token aleatório de 192 bits (link não adivinhável). Links antigos continuam valendo.
+- PDF: `GET /public/diagnostico/:token/pdf`, gerado no backend com `pdfkit` (A4, identidade da Dua, link de
+  agendamento clicável, WhatsApp e Instagram da Dua no rodapé do CTA).
+- Variáveis opcionais do backend: `DIAGNOSIS_BOOKING_SLUG` (padrão `especialista`) e `DIAGNOSIS_CONTACT_WHATSAPP`
+  (padrão `(85) 8901-1558`).
 
 ## Banco
 
-Tabela nova `InstagramDiagnosis` (migração `20261024000006_add_instagram_diagnosis`). O `ensureSchema`
-cria a tabela no start do backend (o `dua_app` tem permissão de REFERENCES em `Contact`/`Tenant`, conferido
-em 24/10/2026). Sem ALTER em tabelas existentes. Para alinhar com as outras tabelas novas, rode também via
-Supabase o `GRANT`/`REVOKE ... FROM anon, authenticated` do fim da migração.
+Tabela nova `InstagramDiagnosis` (migração `20261024000006_add_instagram_diagnosis`), criada pelo `ensureSchema` no start
+(o `dua_app` tem REFERENCES em `Contact`/`Tenant`, conferido em 24/10/2026). Sem ALTER em tabelas existentes. Para alinhar
+com as outras tabelas novas, rode via Supabase o `GRANT`/`REVOKE ... FROM anon, authenticated` do fim da migração.
 
-## Janela de 24h do WhatsApp oficial
+## Fora do escopo
 
-- Se o lead falou com a Dua nas últimas 24h, a mensagem com o link vai como texto livre (o fluxo acima).
-- Fora da janela (ex.: lead que veio do formulário do site e nunca escreveu no WhatsApp, ou conversa parada),
-  a Cloud API só aceita **template aprovado**. O chat já mostra "Fora da janela de 24h → Enviar template".
-
-### Template proposto (precisa ser criado e aprovado na Meta)
-
-- Nome: `diagnostico_instagram`, idioma `pt_BR`, categoria **MARKETING** (oferta de conteúdo gratuito para
-  nutrir lead; a Meta reclassifica como Marketing se for enviado como Utility).
-- Corpo (variáveis posicionais, que o passo `send_template` das automações já preenche):
-
-  > Oi, {{1}}! Aqui é da Dua Criativa 😊
-  > Preparamos um diagnóstico gratuito do Instagram da @{{2}}, com o que já está funcionando e 3 próximos passos para vender mais.
-  > Veja aqui: {{3}}
-  > Se quiser conversar sobre ele, é só responder esta mensagem.
-
-  Exemplos para a revisão: `{{1}}` = Maria, `{{2}}` = lojamaria, `{{3}}` = https://crm.duacriativa.com.br/diagnostico/exemplo
-- Rodapé: `Responda SAIR para não receber mais mensagens.`
-- Botão de resposta rápida opcional: `Quero conversar`.
-
-Alternativa melhor para conversão: o link num **botão de URL dinâmico**
-(`https://crm.duacriativa.com.br/diagnostico/{{1}}`) em vez do corpo. Hoje o motor de automações só envia
-parâmetros do corpo; seria preciso adicionar o componente `button` (`sub_type: url`) ao `send_template`.
-
-## Automação opcional (avaliação, NÃO implementada)
-
-Ideia: lead novo com Instagram e tag de baixo faturamento → gera o diagnóstico → entra numa sequência.
-
-Viável com o motor atual (`automations`), adicionando um passo novo `generate_diagnosis`:
-
-1. Gatilho `LEAD_FORM_SUBMITTED` (ou `WHATSAPP_FIRST_MESSAGE`) com condição "tag contém Menos de R$ 50k/mês"
-   e contato com `instagramHandle`.
-2. `generate_diagnosis`: roda a análise (Claude + Business Discovery) e o diagnóstico; grava o link em uma
-   variável (`{{diagnostico_link}}`). Se o perfil for pessoal/privado (sem nota), desvia para "notificar a equipe"
-   e encerra.
-3. `notify` à equipe com o link, para conferir o texto antes.
-4. Envio: dentro da janela de 24h → `send_text`; fora → `send_template diagnostico_instagram`.
-5. `wait_reply` 3 dias → se não respondeu e não abriu, um lembrete (outro template de Marketing) ou só
-   tarefa para a equipe; se respondeu, `move_stage`/`notify`.
-
-Cuidados antes de ligar:
-- Custo: cada lead gasta 2 chamadas ao Claude e conversas de Marketing pagas na Meta (há 158 contatos com essa
-  tag hoje; a automação seria só para leads novos).
-- Qualidade: a IA escreve sozinha para o cliente. Recomendo começar com o passo 3 exigindo revisão humana
-  (a equipe clica para enviar) e só automatizar o envio depois de ver uns 10 diagnósticos reais.
-- **Nada é enviado automaticamente sem o OK do usuário**: o template precisa ser aprovado e a automação ativada
-  manualmente.
+Template da API oficial e automação de envio: o usuário decidiu enviar à mão pelo WhatsApp Business (24/10/2026).
