@@ -1286,7 +1286,7 @@ function ConversasInner() {
             <input value={newTag} onChange={(e) => setNewTag(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addTag(); } if (e.key === "Escape") setNewTag(""); }}
               onBlur={addTag} placeholder="+ tag"
-              className="text-xs w-20 focus:w-full px-2 py-1 rounded-full border border-dashed border-gray-200 focus:border-brand-300 focus:outline-none bg-transparent transition-all" />
+              className="text-xs text-gray-900 placeholder:text-gray-400 w-20 focus:w-full px-2 py-1 rounded-full border border-dashed border-gray-200 focus:border-brand-300 focus:outline-none bg-transparent transition-all" />
           )}
         </div>
       </div>
@@ -1325,7 +1325,7 @@ function ConversasInner() {
                   type="text"
                   value={editName}
                   onChange={(e) => setEditName(e.target.value)}
-                  className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-500"
+                  className="w-full text-sm text-gray-900 bg-white border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-500"
                 />
               </div>
               <div>
@@ -1335,7 +1335,7 @@ function ConversasInner() {
                   value={editPhone}
                   onChange={(e) => setEditPhone(e.target.value)}
                   placeholder="+5585989011558"
-                  className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-500"
+                  className="w-full text-sm text-gray-900 bg-white border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-500"
                 />
                 {(editPhone.startsWith("lid:") || editPhone.includes("@lid")) && (
                   <p className="text-xs text-orange-600 mt-1">⚠️ Digite o número real para poder enviar mensagens</p>
@@ -1387,20 +1387,20 @@ function ConversasInner() {
                 <label className="text-xs font-medium text-gray-600 block mb-1">WhatsApp *</label>
                 <input value={newConvPhone} onChange={(e) => setNewConvPhone(e.target.value)}
                   placeholder="+55 85 99999-9999"
-                  className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500" />
+                  className="w-full px-3 py-2.5 text-sm text-gray-900 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500" />
               </div>
               <div>
                 <label className="text-xs font-medium text-gray-600 block mb-1">Nome (opcional)</label>
                 <input value={newConvName} onChange={(e) => setNewConvName(e.target.value)}
                   placeholder="Nome do contato"
-                  className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500" />
+                  className="w-full px-3 py-2.5 text-sm text-gray-900 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500" />
               </div>
               <div>
                 <label className="text-xs font-medium text-gray-600 block mb-1">Primeira mensagem (opcional)</label>
                 <textarea value={newConvMessage} onChange={(e) => setNewConvMessage(e.target.value)}
                   placeholder="Olá! Vi seu cadastro em nosso site..."
                   rows={3}
-                  className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500 resize-none" />
+                  className="w-full px-3 py-2.5 text-sm text-gray-900 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500 resize-none" />
               </div>
             </div>
             <div className="flex gap-3 mt-5">
