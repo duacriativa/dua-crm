@@ -12,6 +12,7 @@ import { useRouter } from "next/navigation";
 import { TemplatesManager } from "@/components/whatsapp/templates";
 import { BookingSettings, GoogleCalendarCard, startGoogleConnect } from "@/components/scheduling/booking-settings";
 import { MetaAdsCard, startMetaConnect } from "@/components/integrations/meta-ads-card";
+import { InstagramCard, startInstagramConnect } from "@/components/integrations/instagram-card";
 
 const API_URL = "";
 function getToken() { return typeof window !== "undefined" ? localStorage.getItem("access_token") : ""; }
@@ -473,12 +474,12 @@ function TabIntegracoes() {
   }, []);
 
   // Ativas × Disponíveis: o que está desconectado desce para os cards pequenos com "Ativar"
-  const [conn, setConn] = useState<{ google: boolean | null; meta: boolean | null; kommo: boolean | null }>({ google: null, meta: null, kommo: null });
+  const [conn, setConn] = useState<{ google: boolean | null; meta: boolean | null; kommo: boolean | null; instagram: boolean | null }>({ google: null, meta: null, kommo: null, instagram: null });
   const [activating, setActivating] = useState("");
   const loadConn = useCallback(async () => {
     const get = (path: string) => authFetch(`${API_URL}/api/v1/${path}`, { headers: authHeaders() }).then(r => r.ok ? r.json() : null).catch(() => null);
-    const [g, m, k] = await Promise.all([get("google/status"), get("meta-ads/status"), get("kommo/status")]);
-    setConn({ google: !!g?.connected, meta: !!m?.connected, kommo: k ? !!k.active : true });
+    const [g, m, k, ig] = await Promise.all([get("google/status"), get("meta-ads/status"), get("kommo/status"), get("instagram/status")]);
+    setConn({ google: !!g?.connected, meta: !!m?.connected, kommo: k ? !!k.active : true, instagram: !!ig?.connected });
   }, []);
   useEffect(() => { loadConn(); }, [loadConn]);
 
@@ -503,6 +504,11 @@ function TabIntegracoes() {
     waStatus === "disconnected" && { key: "wa", name: "WhatsApp", desc: "Atenda e automatize pelo WhatsApp", icon: "💬", onActivate: async () => router.push("/dashboard/whatsapp") },
     conn.google === false && { key: "google", name: "Google Agenda", desc: "Agendamentos com Google Meet", icon: "📅", onActivate: activateWith("google", startGoogleConnect) },
     conn.meta === false && { key: "meta", name: "Meta Ads", desc: "Investimento e leads dos anúncios", icon: "📣", onActivate: activateWith("meta", startMetaConnect) },
+    conn.instagram === false && { key: "instagram", name: "Instagram", desc: "DMs, comentários e stories no CRM", icon: "📸", onActivate: async () => {
+      // Sem token no servidor (ou token sem acesso): abre o card para colar o token do usuário de sistema
+      setActivating("instagram");
+      try { await startInstagramConnect(); await loadConn(); } catch { setConn((c) => ({ ...c, instagram: true })); } finally { setActivating(""); }
+    } },
     conn.kommo === false && { key: "kommo", name: "Kommo CRM", desc: "Receba leads do funil do Kommo", icon: "🎯", onActivate: () => setKommo(true) },
   ].filter(Boolean) as { key: string; name: string; desc: string; icon: string; onActivate: () => void | Promise<void> }[];
 
@@ -513,7 +519,6 @@ function TabIntegracoes() {
   };
 
   const comingSoon = [
-    { name: "Instagram", desc: "Mensagens diretas e comentários", icon: "📸" },
     { name: "OpenAI / IA", desc: "Potencialize bots e análises", icon: "✨" },
     { name: "Google Drive", desc: "Anexe arquivos da nuvem", icon: "📁" },
     { name: "Zapier", desc: "Conecte +5000 apps", icon: "⚡" },
@@ -578,6 +583,8 @@ function TabIntegracoes() {
           {conn.google && <GoogleCalendarCard onChange={loadConn} />}
 
           {conn.meta && <MetaAdsCard onChange={loadConn} />}
+
+          {conn.instagram && <InstagramCard onChange={loadConn} />}
 
           {/* Card do Kommo */}
           {conn.kommo && <div className="surface-card p-5 flex flex-col md:col-span-2">

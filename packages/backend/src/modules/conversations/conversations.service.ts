@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { ConversationStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { WhatsAppCloudService } from '../whatsapp-cloud/whatsapp-cloud.service';
+import { InstagramService } from '../instagram/instagram.service';
 import { PushService } from '../notifications/push.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import axios from 'axios';
@@ -11,6 +12,7 @@ export class ConversationsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly cloud: WhatsAppCloudService,
+    private readonly instagram: InstagramService,
     private readonly push: PushService,
     private readonly events: EventEmitter2,
   ) {}
@@ -54,6 +56,7 @@ export class ConversationsService {
         OR: [
           { name: { contains: filters.search, mode: 'insensitive' } },
           { phone: { contains: filters.search } },
+          { instagramHandle: { contains: filters.search.replace(/^@/, ''), mode: 'insensitive' } },
         ],
       };
     }
@@ -66,7 +69,7 @@ export class ConversationsService {
         orderBy: { updatedAt: 'desc' },
         include: {
           contact: {
-            select: { id: true, name: true, phone: true, email: true, tags: true, segment: true, profilePicUrl: true, qualification: true, type: true },
+            select: { id: true, name: true, phone: true, instagramHandle: true, email: true, tags: true, segment: true, profilePicUrl: true, qualification: true, type: true },
           },
           messages: {
             orderBy: { sentAt: 'desc' },
@@ -173,8 +176,15 @@ export class ConversationsService {
     });
     if (!conv) throw new NotFoundException('Conversa não encontrada.');
 
-    await this.ensureCloudConnected(tenantId);
-    const { externalId } = await this.cloud.sendText(tenantId, this.cloudRecipient(conv), content, quotedExternalId);
+    // Instagram: janela de 24h e, até 7 dias, a tag de atendimento humano (sem citação de mensagem)
+    let externalId: string | null;
+    if (conv.channel === 'INSTAGRAM') {
+      ({ externalId } = await this.instagram.sendFromInbox(tenantId, conv, content));
+      quotedExternalId = quotedContent = quotedType = undefined;
+    } else {
+      await this.ensureCloudConnected(tenantId);
+      ({ externalId } = await this.cloud.sendText(tenantId, this.cloudRecipient(conv), content, quotedExternalId));
+    }
     const message = await this.prisma.message.create({
       data: {
         conversationId,
@@ -207,6 +217,7 @@ export class ConversationsService {
     });
     if (!conv) throw new NotFoundException('Conversa não encontrada.');
     if (!name) throw new BadRequestException('Escolha um template.');
+    if (conv.channel === 'INSTAGRAM') throw new BadRequestException('Templates são só do WhatsApp: no Instagram, responda em até 7 dias depois da última mensagem do contato.');
 
     await this.ensureCloudConnected(tenantId);
     const { externalId } = await this.cloud.sendTemplate(tenantId, this.cloudRecipient(conv), name, language || 'pt_BR', components);
@@ -239,6 +250,7 @@ export class ConversationsService {
       include: { contact: { select: { phone: true } } },
     });
     if (!conv) throw new NotFoundException('Conversa não encontrada.');
+    if (conv.channel === 'INSTAGRAM') throw new BadRequestException('Envio de arquivos pelo Instagram ainda não está disponível no CRM: mande pelo app do Instagram.');
 
     const msgTypeOf = (t: string) => (t === 'image' ? 'IMAGE' : t === 'video' ? 'VIDEO' : t === 'audio' ? 'AUDIO' : 'DOCUMENT');
 

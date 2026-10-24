@@ -23,6 +23,7 @@ import {
   ChevronLeft,
 } from "lucide-react";
 import { fetchTemplates } from "@/components/whatsapp/templates";
+import { InstagramRules } from "@/components/instagram/instagram-rules";
 import { Bot as BotFlow, botsApi, findFollowupTemplate, findFormTemplate, formBotPreset, formQualifyPreset, meetingRemindersPreset, whatsappQualifyPreset } from "@/components/bots/bot-api";
 
 // Os prontos já funcionam; os outros entram conforme forem migrados do Kommo
@@ -329,6 +330,8 @@ export default function BotsPage() {
             </button>
           </div>
         )}
+
+        <InstagramRules />
       </div>
 
       {/* New bot modal */}
