@@ -24,6 +24,14 @@ não passa pela API oficial, então não precisa de template nem de janela de 24
 Sem dados reais do perfil (análise sem nota: perfil pessoal, privado ou erro na API), o CRM não oferece PDF nem
 texto para o cliente, porque eles ficariam genéricos.
 
+## Oferta do plano pago
+
+O PDF, a página e o texto do WhatsApp terminam com o produto pago em destaque (plano de 3 meses, página
+`/plano-90-dias`, PR #5). O link leva `?d=<token do diagnóstico>` para a página de venda preencher os dados do contato.
+O convite para agendar conversa continua, como segunda opção ("Prefere conversar antes?").
+Nome, preço e prazo vêm das mesmas variáveis do backend que o módulo de planos usa: `PLAN_PRODUCT_NAME`
+(padrão "Plano de Conteúdo 90 Dias"), `PLAN_PRICE` (297) e `PLAN_DELIVERY_HOURS` (24).
+
 ## Como é gerado
 
 - `POST /contacts/:id/diagnosis` (body `{ analysis?, force? }`): o Claude reescreve a análise no tom do cliente

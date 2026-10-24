@@ -39,6 +39,24 @@ export function scoreLabel(score: number) {
 export const bookingUrl = () => `${appUrl()}/agendar/${BOOKING_SLUG}`;
 
 /**
+ * Oferta do produto pago (plano de 3 meses, página /plano-90-dias). Mesmas variáveis e padrões do
+ * plan.config.ts do módulo de planos, para trocar nome, preço e prazo sem mexer no código.
+ * `?d=<token>` faz a página de venda preencher os dados do contato.
+ */
+export function planOffer(token: string) {
+  const price = Number(process.env.PLAN_PRICE || 297);
+  const path = `/plano-90-dias?d=${encodeURIComponent(token)}`;
+  return {
+    name: process.env.PLAN_PRODUCT_NAME || 'Plano de Conteúdo 90 Dias',
+    priceLabel: price.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: Number.isInteger(price) ? 0 : 2 }),
+    deliveryHours: Number(process.env.PLAN_DELIVERY_HOURS || 24),
+    pitch: 'Um plano de 3 meses só para a sua marca: o que postar, roteiros, stories e o que contratar.',
+    path,
+    url: `${appUrl()}${path}`,
+  };
+}
+
+/**
  * "Diagnóstico gratuito" do Instagram para nutrir leads: reescreve a análise interna
  * (que tem alertas duros e estratégia de venda) num texto para o próprio cliente ler.
  * Sai como página pública /diagnostico/[token], PDF e texto para colar no WhatsApp Business.
@@ -123,6 +141,7 @@ export class DiagnosisService {
       ...content,
       createdAt: d.createdAt,
       bookingUrl: `/agendar/${BOOKING_SLUG}`,
+      plan: (({ url, ...p }) => p)(planOffer(d.token)),
       pdfUrl: `/api/v1/public/diagnostico/${d.token}/pdf`,
     };
   }
@@ -162,7 +181,9 @@ export class DiagnosisService {
     }
     lines.push('*Próximos passos*', ...c.proximos_passos.map((p, i) => `${i + 1}. *${p.titulo}*: ${p.descricao}`), '');
     lines.push(`Análise completa: ${url}`, '');
-    lines.push(`Quer ajuda para colocar isso em prática? Agende uma conversa gratuita com um especialista: ${bookingUrl()}`);
+    lines.push(`Quer ajuda para colocar isso em prática? Agende uma conversa gratuita com um especialista: ${bookingUrl()}`, '');
+    const plan = planOffer(d.token);
+    lines.push(`*Quer o passo a passo pronto?* O *${plan.name}* é um plano de 3 meses só para a sua marca (o que postar, roteiros, stories e o que contratar), por ${plan.priceLabel}, entregue em ${plan.deliveryHours}h: ${plan.url}`);
     return lines.join('\n');
   }
 

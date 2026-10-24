@@ -21,6 +21,8 @@ interface Diagnosis {
   createdAt: string;
   bookingUrl: string;
   pdfUrl: string;
+  /** Produto pago (plano de 3 meses); nome, preço e prazo vêm do env do backend */
+  plan: { name: string; priceLabel: string; deliveryHours: number; pitch: string; path: string };
 }
 
 const LIME = "#B5FB3D";
@@ -209,18 +211,34 @@ export default function DiagnosticoPage({ params }: { params: { token: string } 
           </ol>
         </section>
 
-        {/* CTA */}
-        <section className="rounded-2xl p-6 sm:p-8 bg-neutral-950 text-white flex flex-col sm:flex-row sm:items-center gap-5">
+        {/* Oferta do plano pago: destaque principal */}
+        <section className="rounded-2xl p-6 sm:p-8 text-neutral-950" style={{ background: LIME }}>
+          <p className="text-xs font-black uppercase tracking-wider">Quer o passo a passo pronto?</p>
+          <h2 className="text-2xl sm:text-3xl font-black leading-tight mt-2">{d.plan.name}</h2>
+          <p className="text-sm sm:text-base mt-2 leading-relaxed text-neutral-800">{d.plan.pitch}</p>
+          <div className="mt-5 flex flex-col sm:flex-row sm:items-center gap-4">
+            <a href={d.plan.path}
+              className="inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-full font-bold bg-neutral-950 hover:bg-black transition-colors"
+              style={{ color: LIME }}>
+              Quero meu plano <ArrowRight className="w-4 h-4" />
+            </a>
+            <div>
+              <p className="text-xl font-black leading-none">{d.plan.priceLabel}</p>
+              <p className="text-xs text-neutral-800 mt-1">no Pix, entregue em até {d.plan.deliveryHours}h</p>
+            </div>
+          </div>
+        </section>
+
+        {/* Conversa com especialista */}
+        <section className="rounded-2xl p-6 sm:p-7 bg-neutral-950 text-white flex flex-col sm:flex-row sm:items-center gap-4">
           <div className="flex-1">
-            <h2 className="text-xl font-black leading-tight">Quer ajuda para colocar isso em prática?</h2>
-            <p className="text-sm text-white/70 mt-2 leading-relaxed">
-              Agende uma conversa gratuita com um especialista da Dua. A gente olha a análise junto com você e mostra por onde começar.
-            </p>
+            <h2 className="text-lg font-bold leading-tight">Prefere conversar antes?</h2>
+            <p className="text-sm text-white/70 mt-1">Agende uma conversa gratuita com um especialista da Dua.</p>
           </div>
           <a href={d.bookingUrl}
-            className="inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-full font-bold text-neutral-950 hover:opacity-90 transition-opacity shrink-0"
-            style={{ background: LIME }}>
-            <CalendarCheck className="w-4 h-4" /> Agendar conversa <ArrowRight className="w-4 h-4" />
+            className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-full font-semibold border hover:bg-white/5 transition-colors shrink-0"
+            style={{ borderColor: LIME, color: LIME }}>
+            <CalendarCheck className="w-4 h-4" /> Agendar conversa
           </a>
         </section>
 

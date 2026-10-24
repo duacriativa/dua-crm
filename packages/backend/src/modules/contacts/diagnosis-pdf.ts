@@ -1,6 +1,6 @@
 import PDFDocument = require('pdfkit');
 import { InstagramDiagnosis } from '@prisma/client';
-import { DiagnosisContent, DUA_WHATSAPP, bookingUrl, scoreLabel } from './diagnosis.service';
+import { DiagnosisContent, DUA_WHATSAPP, bookingUrl, planOffer, scoreLabel } from './diagnosis.service';
 
 const INK = '#0A0A0A';
 const LIME = '#B5FB3D';
@@ -182,21 +182,40 @@ export function renderDiagnosisPdf(d: InstagramDiagnosis): Promise<Buffer> {
   });
   doc.moveDown(0.8);
 
-  // ── CTA ───────────────────────────────────────────────────────────────
+  // ── Oferta do plano pago (destaque principal) ─────────────────────────
+  const plan = planOffer(d.token);
+  {
+    need(176);
+    const y = doc.y;
+    const h = 160;
+    doc.roundedRect(M, y, CW, h, 14).fill(LIME);
+    doc.font('Helvetica-Bold').fontSize(9).fillColor(INK).text('QUER O PASSO A PASSO PRONTO?', M + 22, y + 20, { characterSpacing: 0.8 });
+    doc.font('Helvetica-Bold').fontSize(19).fillColor(INK).text(clean(plan.name), M + 22, y + 36, { width: CW - 44 });
+    doc.font('Helvetica').fontSize(10.5).fillColor('#1F1F1F').text(plan.pitch, M + 22, y + 64, { width: CW - 44, lineGap: 1.5 });
+    doc.roundedRect(M + 22, y + 106, 170, 32, 16).fill(INK);
+    doc.font('Helvetica-Bold').fontSize(11).fillColor(LIME).text('Quero meu plano', M + 22, y + 116.5, { width: 170, align: 'center' });
+    doc.link(M + 22, y + 106, 170, 32, plan.url);
+    doc.font('Helvetica-Bold').fontSize(15).fillColor(INK).text(plan.priceLabel, M + 210, y + 104, { width: CW - 232, lineBreak: false });
+    doc.font('Helvetica').fontSize(9).fillColor('#1F1F1F')
+      .text(`no Pix, entregue em até ${plan.deliveryHours}h`, M + 210, y + 123, { width: CW - 232, lineBreak: false });
+    doc.y = y + h + 14;
+  }
+
+  // ── Conversa com especialista ─────────────────────────────────────────
   const link = bookingUrl();
-  need(150);
+  need(100);
   const y = doc.y;
-  const ctaH = 132;
+  const ctaH = 92;
   doc.roundedRect(M, y, CW, ctaH, 14).fill(INK);
-  doc.font('Helvetica-Bold').fontSize(16).fillColor('#FFFFFF').text('Quer ajuda para colocar isso em prática?', M + 22, y + 20, { width: CW - 44 });
-  doc.font('Helvetica').fontSize(10).fillColor('#D4D4D4')
-    .text('Agende uma conversa gratuita com um especialista da Dua. A gente olha a análise junto com você e mostra por onde começar.', M + 22, y + 44, { width: CW - 44, lineGap: 1.5 });
-  doc.roundedRect(M + 22, y + 82, 150, 28, 14).fill(LIME);
-  doc.font('Helvetica-Bold').fontSize(10.5).fillColor(INK).text('Agendar conversa', M + 22, y + 91, { width: 150, align: 'center', link });
+  doc.font('Helvetica-Bold').fontSize(13).fillColor('#FFFFFF').text('Prefere conversar antes?', M + 22, y + 18, { width: CW - 44 });
+  doc.font('Helvetica').fontSize(9.5).fillColor('#D4D4D4')
+    .text('Agende uma conversa gratuita com um especialista da Dua.', M + 22, y + 37, { width: CW - 44 });
+  doc.roundedRect(M + 22, y + 54, 150, 24, 12).lineWidth(1).stroke(LIME);
+  doc.font('Helvetica-Bold').fontSize(10).fillColor(LIME).text('Agendar conversa', M + 22, y + 61, { width: 150, align: 'center' });
+  doc.link(M + 22, y + 54, 150, 24, link);
   doc.font('Helvetica').fontSize(8.5).fillColor('#A3A3A3')
-    .text(link.replace(/^https?:\/\//, ''), M + 186, y + 86, { width: CW - 208, link, lineBreak: false })
-    .text(`WhatsApp ${DUA_WHATSAPP}  ·  Instagram @duacriativa`, M + 186, y + 99, { width: CW - 208, lineBreak: false });
-  doc.link(M + 22, y + 82, 150, 28, link);
+    .text(link.replace(/^https?:\/\//, ''), M + 186, y + 56, { width: CW - 208, link, lineBreak: false })
+    .text(`WhatsApp ${DUA_WHATSAPP}  ·  Instagram @duacriativa`, M + 186, y + 69, { width: CW - 208, lineBreak: false });
   doc.y = y + ctaH;
 
   // ── Rodapé em todas as páginas ────────────────────────────────────────
