@@ -28,6 +28,8 @@ export type PlanStatus = (typeof PLAN_STATUSES)[number];
 
 /** Opções dos campos de escolha do formulário (o frontend recebe daqui). */
 export const PLAN_FORM_OPTIONS = {
+  objetivo: ['Vender mais', 'Crescer seguidores', 'Lançar coleção', 'Fortalecer a marca'],
+  ondeVende: ['Loja física', 'Site / e-commerce', 'WhatsApp', 'Instagram', 'Marketplace'],
   quemPosta: ['Eu mesma(o)', 'Alguém da equipe', 'Freelancer', 'Agência', 'Ninguém posta com frequência'],
   verba: ['Até R$ 500/mês', 'R$ 500 a R$ 1.500/mês', 'R$ 1.500 a R$ 3.000/mês', 'Acima de R$ 3.000/mês', 'Ainda não tenho verba'],
 };
@@ -38,5 +40,8 @@ export interface PlanAnswers {
   publico: string;
   quemPosta: string;
   verba: string;
+  objetivo: string;
+  ondeVende: string; // canais separados por vírgula
+  referencias?: string;
   observacoes?: string;
 }
