@@ -157,7 +157,7 @@ export function formQualifyPreset(first: WaTemplate | undefined, followup: WaTem
 
     { id: "respondeu", name: "Respondeu", type: "move_stage", stageName: "Qualificação" },
     { id: "aviso1", type: "notify", to: "Daniel", text: "{{primeiro_nome}} respondeu o bot do site:\n{{respostas}}" },
-    { id: "pausa1", type: "wait", seconds: 120 },
+    { id: "pausa1", type: "wait", seconds: 20 },
     {
       id: "momento", name: "Momento da marca", type: "send_buttons",
       text: "Entendi, {{primeiro_nome}}, obrigada por me contar! 😊\n\nPra eu te direcionar certinho: a sua marca já está vendendo ou está começando agora?",
@@ -175,7 +175,7 @@ export function formQualifyPreset(first: WaTemplate | undefined, followup: WaTem
       text: "Vi aqui que vocês vendem {{canal_venda}}.\nHoje a maior parte dos clientes chega como: indicação, Instagram orgânico ou anúncio? E vocês já investem em tráfego pago?",
     },
     { id: "espera_aquisicao", type: "wait_reply", timeoutSeconds: 4 * H, onTimeout: "parou" },
-    { id: "pausa_ex", type: "wait", seconds: 60 },
+    { id: "pausa_ex", type: "wait", seconds: 15 },
     {
       id: "followup_pergunta", type: "send_text",
       text: "Faz sentido!\n\nÚltima pergunta: quando alguém chama no WhatsApp, pergunta preço ou produto e não compra, vocês costumam fazer algum acompanhamento depois?",
@@ -185,7 +185,7 @@ export function formQualifyPreset(first: WaTemplate | undefined, followup: WaTem
     { id: "nova", name: "Marca nova", type: "add_tag", tag: "marca nova" },
     { id: "produto", type: "send_text", text: "Que legal, adoro acompanhar marca nascendo! ✨\n\nMe conta: o produto já está pronto ou vocês ainda estão desenvolvendo?" },
     { id: "espera_produto", type: "wait_reply", timeoutSeconds: 4 * H, onTimeout: "parou" },
-    { id: "pausa_nova", type: "wait", seconds: 60 },
+    { id: "pausa_nova", type: "wait", seconds: 15 },
     {
       id: "orcamento", name: "Orçamento", type: "send_buttons",
       text: "Ótimo! E vocês já separaram um orçamento pra colocar a marca no mercado e investir em marketing?",
@@ -194,7 +194,7 @@ export function formQualifyPreset(first: WaTemplate | undefined, followup: WaTem
     },
     { id: "sem_orcamento", type: "add_tag", tag: "sem orçamento definido" },
 
-    { id: "pausa_convite", name: "Convite", type: "wait", seconds: 45 },
+    { id: "pausa_convite", name: "Convite", type: "wait", seconds: 15 },
     {
       id: "convite", type: "send_text",
       text: "Perfeito, {{primeiro_nome}}! Com o que você me contou já dá pra preparar uma conversa bem direcionada pro momento da sua marca 💜\n\nQuem vai conversar com você é o *Daniel*, que cuida da estratégia aqui na Dua. São 45 min por vídeo: ele entende seu cenário com calma, te mostra como a gente trabalha e, se fizer sentido pros dois lados, vocês veem os próximos passos.\n\nEscolhe o melhor horário aqui: https://calendly.com/duacriativa/45min",
