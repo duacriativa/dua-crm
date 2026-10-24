@@ -363,13 +363,17 @@ function ConversasInner() {
     const match = conversations.find((c) =>
       c.contact.phone?.replace(/\D/g, "") === digits
     );
+    // ?text= deixa uma mensagem pronta para revisar e enviar (ex.: diagnóstico gratuito)
+    const textParam = searchParams.get("text");
     if (match) {
       phoneParamUsed.current = true;
       selectConversation(match);
+      if (textParam) setNewMessage(textParam);
     } else if (!loading) {
       phoneParamUsed.current = true;
       setNewConvPhone(phoneParam);
       if (nameParam) setNewConvName(nameParam);
+      if (textParam) setNewConvMessage(textParam);
       setShowNewConv(true);
     }
   }, [phoneParam, conversations, loading, searchParams]);

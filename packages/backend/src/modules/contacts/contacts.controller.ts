@@ -2,10 +2,13 @@ import {
   Controller, Get, Post, Patch, Delete, Param, Body, Query,
   UseGuards, Request, BadRequestException, InternalServerErrorException,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { ContactsService } from './contacts.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AsaasService } from '../asaas/asaas.service';
+import { askClaude, parseJsonObject } from './claude';
+import { DiagnosisService } from './diagnosis.service';
 
 @Controller('contacts')
 @UseGuards(JwtAuthGuard)
@@ -14,6 +17,7 @@ export class ContactsController {
     private readonly contactsService: ContactsService,
     private readonly prisma: PrismaService,
     private readonly asaas: AsaasService,
+    private readonly diagnosis: DiagnosisService,
   ) {}
 
   /** GET /contacts/stats — stats para o dashboard de Clientes */
@@ -310,8 +314,7 @@ export class ContactsController {
     if (!contact) throw new BadRequestException('Contato não encontrado.');
     if (!contact.instagramHandle) throw new BadRequestException('Contato sem Instagram cadastrado.');
 
-    const apiKey = process.env.ANTHROPIC_API_KEY;
-    if (!apiKey) throw new InternalServerErrorException('IA não configurada: defina ANTHROPIC_API_KEY no servidor.');
+    if (!process.env.ANTHROPIC_API_KEY) throw new InternalServerErrorException('IA não configurada: defina ANTHROPIC_API_KEY no servidor.');
 
     const instagram = this.normalizeInstagramHandle(contact.instagramHandle);
     const profile = await this.fetchInstagramProfile(instagram);
@@ -331,49 +334,31 @@ export class ContactsController {
       `alertas (array, até 4 itens de 1 frase), estrategia_recomendada (1 parágrafo), mensagem_whatsapp (mensagem casual e personalizada, ` +
       `máx 4 linhas, assine como Equipe Dua Criativa).`;
 
-    let aiRes: any;
-    try {
-      aiRes = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'x-api-key': apiKey,
-          'anthropic-version': '2023-06-01',
-          'content-type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: process.env.ANTHROPIC_MODEL || 'claude-sonnet-5-5',
-          // Com dados reais do perfil a análise fica mais longa; 2048 cortava o JSON no meio
-          max_tokens: 4096,
-          system: 'Você é especialista em marketing digital para moda brasileira. Retorne sempre JSON válido, sem markdown.',
-          messages: [{ role: 'user', content: prompt }],
-        }),
-        signal: AbortSignal.timeout(60000),
-      });
-    } catch (err: any) {
-      throw new InternalServerErrorException(`Erro ao conectar na IA: ${err.message}`);
-    }
-
-    if (!aiRes.ok) {
-      const errBody = await aiRes.text();
-      throw new InternalServerErrorException(`IA retornou ${aiRes.status}: ${errBody.slice(0, 300)}`);
-    }
-
-    const data: any = await aiRes.json();
-    const analysisText: string = (data.content ?? [])
-      .filter((c: any) => c.type === 'text')
-      .map((c: any) => c.text)
-      .join('')
-      .trim();
-
-    let parsed: any = null;
-    try {
-      const jsonMatch = analysisText.match(/\{[\s\S]*\}/);
-      if (jsonMatch) parsed = JSON.parse(jsonMatch[0]);
-    } catch {
-      // retorna texto bruto se o parse falhar
-    }
+    const analysisText = await askClaude({
+      system: 'Você é especialista em marketing digital para moda brasileira. Retorne sempre JSON válido, sem markdown.',
+      prompt,
+      // Com dados reais do perfil a análise fica mais longa; 2048 cortava o JSON no meio
+      maxTokens: 4096,
+    });
+    const parsed = parseJsonObject(analysisText);
 
     return { analysis: analysisText, parsed, profileFetched: !!profile.data, profileError: profile.reason };
+  }
+
+  /**
+   * POST /contacts/:id/diagnosis — gera o "diagnóstico gratuito" (página pública para o cliente)
+   * a partir da análise do Instagram. Body opcional: { analysis } (texto atual da tela, mesmo sem salvar).
+   */
+  @Post(':id/diagnosis')
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  createDiagnosis(@Request() req: any, @Param('id') id: string, @Body() body: { analysis?: string }) {
+    return this.diagnosis.create(req.user.tenantId, id, typeof body?.analysis === 'string' ? body.analysis : undefined);
+  }
+
+  /** GET /contacts/:id/diagnosis — último diagnóstico gerado (link, mensagem e se o cliente abriu) */
+  @Get(':id/diagnosis')
+  latestDiagnosis(@Request() req: any, @Param('id') id: string) {
+    return this.diagnosis.latest(req.user.tenantId, id);
   }
 
   /** Aceita "@loja", "loja" ou URL do perfil e devolve só o username. */
