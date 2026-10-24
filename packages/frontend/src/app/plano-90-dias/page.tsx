@@ -12,7 +12,7 @@ interface Info {
   productName: string;
   price: number;
   deliveryHours: number;
-  options: { quemPosta: string[]; verba: string[] };
+  options: { quemPosta: string[]; verba: string[]; objetivo: string[]; ondeVende: string[] };
   prefill: { name: string; phone: string; email: string; instagramHandle: string } | null;
 }
 
@@ -58,8 +58,9 @@ function PlanoPage() {
   const [error, setError] = useState("");
   const [f, setF] = useState({
     name: "", phone: "", email: "", cpfCnpj: "", instagramHandle: "",
-    nicho: "", ticket: "", publico: "", quemPosta: "", verba: "", observacoes: "",
+    nicho: "", ticket: "", publico: "", quemPosta: "", verba: "", objetivo: "", referencias: "", observacoes: "",
   });
+  const [ondeVende, setOndeVende] = useState<string[]>([]);
   const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
     setF((s) => ({ ...s, [k]: e.target.value }));
 
@@ -83,12 +84,13 @@ function PlanoPage() {
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!ondeVende.length) { setError("Marque onde a marca vende hoje."); return; }
     setSending(true); setError("");
     try {
       const res = await fetch("/api/v1/public/plano/pedido", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...f, diagnosisToken: diagnosisToken || undefined }),
+        body: JSON.stringify({ ...f, ondeVende, diagnosisToken: diagnosisToken || undefined }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -234,6 +236,34 @@ function PlanoPage() {
                   </select>
                 </Field>
               </div>
+
+              <Field label="Objetivo principal nos próximos 3 meses">
+                <select required className={inp} value={f.objetivo} onChange={set("objetivo")}>
+                  <option value="">Escolha</option>
+                  {info.options.objetivo.map((o) => <option key={o}>{o}</option>)}
+                </select>
+              </Field>
+
+              <div>
+                <span className="text-sm font-semibold">Onde vende hoje?</span>
+                <span className="block text-xs text-neutral-500 mt-0.5">Pode marcar mais de um.</span>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {info.options.ondeVende.map((o) => {
+                    const on = ondeVende.includes(o);
+                    return (
+                      <button key={o} type="button" aria-pressed={on}
+                        onClick={() => setOndeVende((v) => (on ? v.filter((x) => x !== o) : [...v, o]))}
+                        className={`px-3 py-2 text-sm rounded-full border transition-colors ${on ? "bg-neutral-950 text-white border-neutral-950" : "bg-white border-neutral-300 hover:border-neutral-900"}`}>
+                        {o}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <Field label="Marcas que você admira ou concorrentes (opcional)">
+                <input className={inp} value={f.referencias} placeholder="Ex.: @marca1, @marca2" onChange={set("referencias")} />
+              </Field>
 
               <Field label="Algo mais que a gente deve saber? (opcional)">
                 <textarea rows={2} className={inp} value={f.observacoes} placeholder="Lançamentos previstos, loja física, o que já tentou..." onChange={set("observacoes")} />

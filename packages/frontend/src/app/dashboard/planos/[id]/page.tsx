@@ -21,7 +21,8 @@ interface Order {
 
 const ANSWERS: [string, string][] = [
   ["nicho", "Produto / nicho"], ["ticket", "Ticket médio"], ["publico", "Público"],
-  ["quemPosta", "Quem posta hoje"], ["verba", "Verba mensal"], ["observacoes", "Observações"],
+  ["quemPosta", "Quem posta hoje"], ["verba", "Verba mensal"], ["objetivo", "Objetivo principal"],
+  ["ondeVende", "Onde vende"], ["referencias", "Marcas de referência"], ["observacoes", "Observações"],
 ];
 
 const btn = "inline-flex items-center justify-center gap-2 px-3 py-2 text-sm font-semibold rounded-xl border border-border hover:bg-muted/50 disabled:opacity-50";

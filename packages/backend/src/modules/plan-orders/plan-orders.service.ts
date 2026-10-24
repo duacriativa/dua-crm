@@ -106,7 +106,10 @@ export class PlanOrdersService {
     const instagramHandle = normalizeInstagramHandle(s(body?.instagramHandle, 120));
     const answers: PlanAnswers = {
       nicho: s(body?.nicho, 300), ticket: s(body?.ticket, 60), publico: s(body?.publico, 500),
-      quemPosta: s(body?.quemPosta, 80), verba: s(body?.verba, 80), observacoes: s(body?.observacoes, 1000) || undefined,
+      quemPosta: s(body?.quemPosta, 80), verba: s(body?.verba, 80), objetivo: s(body?.objetivo, 80),
+      ondeVende: (Array.isArray(body?.ondeVende) ? body.ondeVende : [body?.ondeVende])
+        .map((v: any) => s(v, 40)).filter((v: string) => PLAN_FORM_OPTIONS.ondeVende.includes(v)).join(', '),
+      referencias: s(body?.referencias, 500) || undefined, observacoes: s(body?.observacoes, 1000) || undefined,
     };
     const diagnosisToken = s(body?.diagnosisToken, 64) || null;
 
@@ -120,6 +123,8 @@ export class PlanOrdersService {
     if (answers.publico.length < 2) throw new BadRequestException('Conte quem é o seu público.');
     if (!answers.quemPosta) throw new BadRequestException('Diga quem posta hoje.');
     if (!answers.verba) throw new BadRequestException('Escolha a verba mensal.');
+    if (!answers.objetivo) throw new BadRequestException('Escolha o objetivo principal.');
+    if (!answers.ondeVende) throw new BadRequestException('Marque onde a marca vende hoje.');
 
     const tenantId = await this.tenantId();
     const contact = await this.upsertContact(tenantId, { name, phone, email, instagramHandle });
