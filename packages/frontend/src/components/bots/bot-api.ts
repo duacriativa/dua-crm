@@ -4,7 +4,7 @@ import type { WaTemplate } from "@/components/whatsapp/templates";
 /* Bots (backend: /automations). Os passos ficam em `actions` e rodam em ordem;
    desvios ("ir para") apontam para o `id` do passo. Destino vazio = próximo passo, "end" = encerra. */
 
-export type BotStep = { id?: string; name?: string } & (
+export type BotStep = { id?: string; name?: string; pos?: { x: number; y: number } } & (
   | { type: "wait"; seconds: number; alignTo?: string }
   | { type: "wait_reply"; timeoutSeconds?: number; alignTo?: string; onReply?: string; onTimeout?: string }
   | { type: "send_text"; text: string }
@@ -49,6 +49,9 @@ export interface Bot {
   stats: BotStats;
 }
 
+/** Sessões (sem as de teste) por passo do array salvo: onde estão agora ou onde terminaram. */
+export interface BotStepStat { stepIndex: number; status: string; count: number }
+
 export interface BotRun {
   id: string;
   status: string;
@@ -76,6 +79,7 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
 export const botsApi = {
   list: () => req<Bot[]>(""),
   runs: (id: string) => req<BotRun[]>(`/${id}/runs`),
+  stepStats: (id: string) => req<BotStepStat[]>(`/${id}/step-stats`),
   create: (body: Partial<Bot>) => req<Bot>("", { method: "POST", body: JSON.stringify(body) }),
   update: (id: string, body: Partial<Bot>) => req<Bot>(`/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   remove: (id: string) => req<{ ok: true }>(`/${id}`, { method: "DELETE" }),

@@ -8,7 +8,10 @@ export type StepTarget = string | undefined;
 /** Espera que termina no próximo dia útil (seg–sex) nesse horário de Brasília, ex.: "10:00". */
 type Align = { alignTo?: string };
 
-export type AutomationStep = { id?: string; name?: string } & (
+/** Posição do cartão no editor visual (não afeta a execução). */
+export type StepPos = { x: number; y: number };
+
+export type AutomationStep = { id?: string; name?: string; pos?: StepPos } & (
   | ({ type: 'wait'; seconds: number } & Align)
   | ({ type: 'wait_reply'; timeoutSeconds?: number; onReply?: StepTarget; onTimeout?: StepTarget } & Align) // sem onTimeout → encerra
   | { type: 'send_text'; text: string }
@@ -97,9 +100,11 @@ export function sanitizeSteps(input: any, strict = true): AutomationStep[] {
   };
 
   return input.map((s: any, i: number): AutomationStep => {
-    const base: { id: string; name?: string } = { id: ids[i] };
+    const base: { id: string; name?: string; pos?: StepPos } = { id: ids[i] };
     const name = String(s?.name ?? '').trim().slice(0, 60);
     if (name) base.name = name;
+    const x = Number(s?.pos?.x), y = Number(s?.pos?.y);
+    if (Number.isFinite(x) && Number.isFinite(y) && Math.abs(x) < 1e6 && Math.abs(y) < 1e6) base.pos = { x: Math.round(x), y: Math.round(y) };
     switch (s?.type) {
       case 'wait':
         return { ...base, type: 'wait', seconds: secs(s.seconds, 30 * 24 * 3600), ...align(s.alignTo) };

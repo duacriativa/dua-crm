@@ -77,6 +77,20 @@ export class AutomationsController {
     return runs.map((r) => ({ ...r, contact: contacts.find((c) => c.id === r.contactId) ?? null }));
   }
 
+  /**
+   * Onde as sessões estão agora e onde terminaram, por passo (índice em `actions`).
+   * O histórico completo do caminho não é guardado: só o passo atual de cada sessão.
+   */
+  @Get(':id/step-stats')
+  async stepStats(@Request() req: any, @Param('id') id: string) {
+    const groups = await this.prisma.automationRun.groupBy({
+      by: ['stepIndex', 'status'],
+      where: { tenantId: req.user.tenantId, automationId: id, isTest: false },
+      _count: { _all: true },
+    });
+    return groups.map((g) => ({ stepIndex: g.stepIndex, status: g.status, count: g._count._all }));
+  }
+
   @Post()
   async create(@Request() req: any, @Body() body: any) {
     const name = String(body?.name ?? '').trim();

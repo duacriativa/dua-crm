@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   Plus,
   Bot,
@@ -20,7 +21,6 @@ import {
 } from "lucide-react";
 import { fetchTemplates } from "@/components/whatsapp/templates";
 import { Bot as BotFlow, botsApi, findFollowupTemplate, findFormTemplate, formBotPreset, formQualifyPreset } from "@/components/bots/bot-api";
-import { BotConfigModal } from "@/components/bots/bot-config";
 
 // Os prontos já funcionam; os outros entram conforme forem migrados do Kommo
 const TEMPLATES = [
@@ -45,7 +45,8 @@ export default function BotsPage() {
   const [showNew, setShowNew] = useState(false);
   const [creating, setCreating] = useState(false);
   const [openMenu, setOpenMenu] = useState<string | null>(null);
-  const [editing, setEditing] = useState<BotFlow | null>(null);
+  const router = useRouter();
+  const openEditor = (id: string) => router.push(`/dashboard/bots/editor?id=${id}`);
 
   const load = useCallback(() => {
     botsApi.list()
@@ -95,9 +96,7 @@ export default function BotsPage() {
         : formQualifyPreset(findFormTemplate(templates), findFollowupTemplate(templates));
       const bot = await botsApi.create(preset);
       setShowNew(false);
-      const all = await botsApi.list();
-      setBots(all);
-      setEditing(all.find((b) => b.id === bot.id) ?? null);
+      openEditor(bot.id);
     } catch (e: any) {
       alert(e.message);
     } finally {
@@ -213,7 +212,7 @@ export default function BotsPage() {
                         {bot.active ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
                       </button>
                       <button
-                        onClick={() => setEditing(bot)}
+                        onClick={() => openEditor(bot.id)}
                         className="p-2 rounded-xl bg-gray-50 text-gray-500 hover:bg-gray-100 transition-colors"
                         title="Configurar"
                       >
@@ -268,8 +267,6 @@ export default function BotsPage() {
           </div>
         )}
       </div>
-
-      {editing && <BotConfigModal bot={editing} onClose={() => setEditing(null)} onSaved={load} />}
 
       {/* New bot modal */}
       {showNew && (
