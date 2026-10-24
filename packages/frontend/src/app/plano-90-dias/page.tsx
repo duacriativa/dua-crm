@@ -167,7 +167,7 @@ function PlanoPage() {
             {[
               ["Conte sobre a marca", "Preencha o formulário abaixo em 2 minutos."],
               ["Pague no Pix", `${price}, confirmação na hora.`],
-              ["A gente monta", "Lemos seu Instagram, usamos IA e a equipe da Dua revisa tudo."],
+              ["A equipe Dua monta", "Analisamos seu Instagram e montamos o plano no DUA LAB, nosso sistema com a mais alta tecnologia de IA. A equipe revisa tudo antes de enviar."],
               ["Receba no WhatsApp", `O PDF chega em até ${info.deliveryHours}h depois do pagamento.`],
             ].map(([t, d], i) => (
               <li key={t} className="flex sm:flex-col gap-4">
