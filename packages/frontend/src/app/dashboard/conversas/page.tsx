@@ -1,7 +1,7 @@
 "use client";
 import { authFetch } from "@/lib/auth-fetch";
 
-import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo, Suspense, type ReactNode } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo, Suspense, type ReactNode, type TouchEvent as ReactTouchEvent } from "react";
 import { useSearchParams } from "next/navigation";
 
 // Converte *negrito* do WhatsApp em <strong>
@@ -111,6 +111,8 @@ const tabs: { label: string; value: string }[] = [
   { label: "Ignoradas", value: "ARCHIVED" },
 ];
 
+const QUOTED_LABEL: Record<string, string> = { IMAGE: "📷 Imagem", VIDEO: "🎥 Vídeo", AUDIO: "🎵 Áudio", DOCUMENT: "📄 Documento" };
+
 function ConversasInner() {
   const searchParams = useSearchParams();
   const phoneParam = searchParams.get("phone");
@@ -177,6 +179,24 @@ function ConversasInner() {
   };
   const [sending, setSending] = useState(false);
   const [mobileView, setMobileView] = useState<MobileView>("list");
+  // Celular: arrastar o dedo para a direita volta uma tela (chat → lista, info → chat)
+  const swipeStart = useRef<{ x: number; y: number } | null>(null);
+  const onSwipeStart = (e: ReactTouchEvent) => {
+    const t = e.touches[0];
+    const el = e.target as HTMLElement;
+    swipeStart.current = el.closest("input, textarea, select, [data-no-swipe]") ? null : { x: t.clientX, y: t.clientY };
+  };
+  const onSwipeEnd = (e: ReactTouchEvent) => {
+    const start = swipeStart.current;
+    swipeStart.current = null;
+    if (!start) return;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - start.x;
+    const dy = Math.abs(t.clientY - start.y);
+    if (dx < 80 || dy > dx / 2) return;
+    if (mobileView === "chat") setMobileView("list");
+    else if (mobileView === "info") setMobileView("chat");
+  };
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const isInitialLoadRef = useRef(false);
@@ -956,7 +976,7 @@ function ConversasInner() {
                       <div className={`mx-2 mt-2 px-3 py-2 rounded-xl text-xs border-l-4 ${isOut ? "bg-white/20 border-white/60 text-white/90" : "bg-gray-50 border-brand-400 text-gray-600"}`}>
                         <p className={`font-semibold mb-0.5 text-[11px] ${isOut ? "text-white" : "text-brand-600"}`}>
                           {msg.quotedFromMe === undefined ? "Mensagem" : msg.quotedFromMe ? "Você" : selected.contact.name}
-                          {msg.quotedType && msg.quotedType !== "TEXT" && <span className="font-normal opacity-80"> · {msg.quotedType === "IMAGE" ? "📷 Imagem" : msg.quotedType === "VIDEO" ? "🎥 Vídeo" : msg.quotedType === "AUDIO" ? "🎵 Áudio" : "📄 Documento"}</span>}
+                          {msg.quotedType && QUOTED_LABEL[msg.quotedType] && <span className="font-normal opacity-80"> · {QUOTED_LABEL[msg.quotedType]}</span>}
                         </p>
                         <p className="line-clamp-3 whitespace-pre-wrap">{formatWhatsApp(msg.quotedContent)}</p>
                       </div>
@@ -1009,6 +1029,25 @@ function ConversasInner() {
                     {/* Conteúdo/legenda */}
                     <div className="px-4 py-2.5">
                       {msg.type === "TEXT" && <p className="leading-relaxed whitespace-pre-wrap">{formatWhatsApp(msg.content)}</p>}
+                      {msg.type === "INTERACTIVE" && (() => {
+                        // Bot: "texto\n\n[ Botão 1 ]  [ Botão 2 ]" · Cliente: título do botão que tocou
+                        const m = msg.content.match(/^([\s\S]*?)\n*((?:\[ [^\]]+ \]\s*)+)$/);
+                        const body = m ? m[1] : msg.content;
+                        const buttons = m ? [...m[2].matchAll(/\[ ([^\]]+) \]/g)].map((b) => b[1]) : [];
+                        return (
+                          <>
+                            {!isOut && <p className="text-[10px] font-semibold uppercase tracking-wide mb-1 text-gray-400">Tocou no botão</p>}
+                            {body && <p className="leading-relaxed whitespace-pre-wrap">{formatWhatsApp(body)}</p>}
+                            {buttons.length > 0 && (
+                              <div className="flex flex-col gap-1 mt-2">
+                                {buttons.map((b) => (
+                                  <span key={b} className={`text-center text-xs font-medium rounded-lg py-1.5 ${isOut ? "bg-white/15" : "bg-gray-100"}`}>{b}</span>
+                                ))}
+                              </div>
+                            )}
+                          </>
+                        );
+                      })()}
                       {msg.type === "TEMPLATE" && (
                         <>
                           <p className={`text-[10px] font-semibold uppercase tracking-wide mb-1 ${isOut ? "text-white/70" : "text-gray-400"}`}>Template</p>
@@ -1310,7 +1349,7 @@ function ConversasInner() {
         {selected && InfoPanel}
       </div>
       {/* Mobile: 1 coluna por vez */}
-      <div className="lg:hidden flex flex-col w-full h-full">
+      <div className="lg:hidden flex flex-col w-full h-full" onTouchStart={onSwipeStart} onTouchEnd={onSwipeEnd}>
         {mobileView === "list" && ConvList}
         {mobileView === "chat" && ChatPanel}
         {mobileView === "info" && InfoPanel}
