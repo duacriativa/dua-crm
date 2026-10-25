@@ -1013,23 +1013,23 @@ function ConversasInner() {
                       </div>
                     )}
                     {/* Thumbnail de imagem/vídeo */}
-                    {(msg.type === "IMAGE" || msg.type === "VIDEO") && msg.mediaUrl && (
-                      <div className="relative">
-                        <img
-                          src={msg.mediaUrl} alt="mídia"
-                          className="w-full max-w-[280px] object-cover rounded-t-2xl cursor-pointer hover:opacity-90 transition-opacity"
-                          style={{ maxHeight: 200 }}
-                          onLoad={handleMediaLoad}
-                          onClick={() => setLightboxUrl(msg.mediaUrl!)}
-                        />
-                        {msg.type === "VIDEO" && (
-                          <div className="absolute inset-0 flex items-center justify-center bg-black/30 rounded-t-2xl pointer-events-none">
-                            <div className="w-10 h-10 rounded-full bg-white/80 flex items-center justify-center">
-                              <svg className="w-5 h-5 text-gray-800 ml-0.5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
-                            </div>
-                          </div>
-                        )}
-                      </div>
+                    {msg.type === "IMAGE" && msg.mediaUrl && (
+                      <img
+                        src={msg.mediaUrl} alt="mídia"
+                        className="w-full max-w-[280px] object-cover rounded-t-2xl cursor-pointer hover:opacity-90 transition-opacity"
+                        style={{ maxHeight: 200 }}
+                        onLoad={handleMediaLoad}
+                        onClick={() => setLightboxUrl(msg.mediaUrl!)}
+                      />
+                    )}
+                    {/* Vídeo toca no próprio balão (reel compartilhado no Instagram, vídeo do WhatsApp) */}
+                    {msg.type === "VIDEO" && msg.mediaUrl && (
+                      <video
+                        src={msg.mediaUrl} controls playsInline preload="metadata"
+                        className="w-full max-w-[280px] rounded-t-2xl bg-black"
+                        style={{ maxHeight: 360 }}
+                        onLoadedMetadata={handleMediaLoad}
+                      />
                     )}
                     {/* Ícone para tipos sem thumbnail */}
                     {(msg.type === "IMAGE" || msg.type === "VIDEO") && !msg.mediaUrl && (
