@@ -285,7 +285,7 @@ function RuleEditor({ rule, onClose, onSaved }: {
           <div>
             <span className="text-xs font-semibold text-gray-600">Funil</span>
             <select value={form.stageId ?? ""} onChange={(e) => set({ stageId: e.target.value || null })} className={`${input} mt-1`}>
-              <option value="">Padrão: 1ª etapa do funil de vendas</option>
+              <option value="">Padrão: funil Instagram → 1ª etapa (sem ele, funil de vendas)</option>
               {(funnels ?? []).map((f) => (
                 <optgroup key={f.id} label={f.name}>
                   {f.stages.filter((st) => st.kind === "OPEN").map((st) => <option key={st.id} value={st.id}>{f.name} → {st.name}</option>)}
@@ -294,10 +294,10 @@ function RuleEditor({ rule, onClose, onSaved }: {
             </select>
             {funnels && !hasIgFunnel && (
               <button type="button" onClick={createFunnel} disabled={creatingFunnel} className="text-xs font-semibold text-brand-600 hover:underline mt-1 disabled:opacity-50">
-                {creatingFunnel ? "Criando…" : "+ Criar funil Instagram (para leads dos brindes)"}
+                {creatingFunnel ? "Criando…" : "+ Criar funil Instagram (para os leads do Instagram)"}
               </button>
             )}
-            <p className="text-[11px] text-gray-400 mt-1">Quem já tem card nesse funil fica onde está. Leads do funil Instagram não entram em Vendas sozinhos: mova o card quando esquentar.</p>
+            <p className="text-[11px] text-gray-400 mt-1">Quem já tem card nesse funil fica onde está. Leads do funil Instagram não entram em Vendas sozinhos: quando esquentar, mova para "Enviado para Vendas" e crie o card em Vendas.</p>
           </div>
 
           <label className="block">

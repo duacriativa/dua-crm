@@ -36,7 +36,17 @@ export type IgTrigger = (typeof IG_TRIGGERS)[number];
 export type RuleButton = { title: string; url?: string };
 
 /** Funil das regras de brinde/conteúdo: lead frio, separado do funil de vendas. */
-const INSTAGRAM_FUNNEL = { name: 'Instagram', stages: ['Recebeu o brinde', 'Respondeu', 'Qualificado', 'Enviado para Vendas'] };
+/** Funil dos leads do Instagram (DMs, comentários e stories), separado do funil de vendas. */
+const INSTAGRAM_FUNNEL = {
+  name: 'Instagram',
+  stages: [
+    { name: 'Entrou pelo Instagram', color: '#EC4899' },
+    { name: 'Conversando', color: '#F59E0B' },
+    { name: 'Qualificado', color: '#8B5CF6' },
+    { name: 'Enviado para Vendas', color: '#10B981' },
+    { name: 'Sem interesse', color: '#EF4444', kind: 'LOST' },
+  ],
+};
 
 type MsgType = 'TEXT' | 'IMAGE' | 'VIDEO' | 'AUDIO' | 'DOCUMENT' | 'INTERACTIVE';
 
@@ -559,10 +569,10 @@ export class InstagramService {
     // Primeira DM de quem nunca falou com a gente e não caiu em palavra-chave: boas-vindas
     if (!rule && isNew && trigger === 'DM_KEYWORD') rule = await this.runDmRule(acc, 'FIRST_DM', parsed.content, contact, conv.id, igsid);
 
-    // Funil: a regra pode mandar para uma etapa própria (ex.: funil Instagram); senão, quem ainda
-    // não tem card em nenhum funil entra no principal (quem veio de um brinde não vai para Vendas sozinho)
+    // Funil: a regra pode mandar para uma etapa própria; senão, quem ainda não tem card em nenhum
+    // funil entra no funil Instagram (quem já está em Vendas, por ex. veio do WhatsApp, fica onde está)
     if (!rule?.stageId && !(await this.prisma.pipelineLead.findFirst({ where: { contactId: contact.id }, select: { id: true } }))) {
-      await this.funnel.ensureLead(acc.tenantId, contact.id, isNew ? 'Origem: Instagram — Direct' : undefined);
+      await this.toDefaultFunnel(acc.tenantId, contact.id, isNew ? 'Origem: Instagram — Direct' : undefined);
     }
   }
 
@@ -648,7 +658,7 @@ export class InstagramService {
       const { contact, conv, isNew } = await this.ensureContact(acc, recipientId || fromId, { username });
       await this.recordBotMessage(conv.id, this.withButtons(dm, buttons), externalId, `Comentário: "${text.slice(0, 300)}"`);
       const origin = `Origem: Instagram — comentário "${text.slice(0, 80)}"`;
-      if (!rule.stageId) await this.funnel.ensureLead(acc.tenantId, contact.id, isNew ? origin : undefined);
+      if (!rule.stageId) await this.toDefaultFunnel(acc.tenantId, contact.id, isNew ? origin : undefined);
       await this.afterRule(rule, contact, origin);
 
       if (rule.publicReplies.length) {
@@ -688,6 +698,17 @@ export class InstagramService {
 
   // ── Funis ──────────────────────────────────────────────────────────────────
 
+  /** Lead do Instagram sem etapa escolhida na regra: 1ª etapa do funil "Instagram" ou, sem ele, do funil principal. */
+  private async toDefaultFunnel(tenantId: string, contactId: string, notes?: string) {
+    const stage = await this.prisma.pipelineStage.findFirst({
+      where: { kind: 'OPEN', pipeline: { tenantId, name: { equals: INSTAGRAM_FUNNEL.name, mode: 'insensitive' } } },
+      orderBy: { position: 'asc' },
+      select: { id: true },
+    });
+    if (stage) await this.funnel.ensureLeadAt(tenantId, contactId, stage.id, notes);
+    else await this.funnel.ensureLead(tenantId, contactId, notes);
+  }
+
   /** Funis e etapas (sem os cards), para escolher onde a regra coloca o contato. */
   listFunnels(tenantId: string) {
     return this.prisma.pipeline.findMany({
@@ -706,7 +727,7 @@ export class InstagramService {
         data: {
           tenantId,
           name: INSTAGRAM_FUNNEL.name,
-          stages: { create: INSTAGRAM_FUNNEL.stages.map((name, position) => ({ name, position, color: '#EC4899' })) },
+          stages: { create: INSTAGRAM_FUNNEL.stages.map((st, position) => ({ ...st, position })) },
         },
       });
     }
