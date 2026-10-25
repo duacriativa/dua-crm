@@ -31,13 +31,12 @@ empresa Dua Marketing de Moda, usuário de sistema **CRM Dua**.
     sem link, o toque volta como mensagem com o título do botão, e uma regra "Palavra-chave na
     DM" com esse texto continua a conversa. Se o Instagram recusar o modelo com botões, a
     mensagem vai como texto com os links.
-  - **Funil por regra**: cada regra escolhe a etapa onde o contato entra. Há dois funis:
-    **Vendas** (o principal: LP, WhatsApp, DMs diretas) e **Instagram** (leads frios dos
-    brindes e conteúdos), criado pelo botão "Criar funil Instagram" no editor da regra, com as
-    etapas Recebeu o brinde → Respondeu → Qualificado → Enviado para Vendas. Quem está no
-    funil Instagram não entra em Vendas sozinho quando responde: o time move o card quando
-    o lead esquentar. Regra sem funil escolhido = 1ª etapa de Vendas. O funil de creators
-    fica para depois (o processo ainda está sendo montado no lab de creators).
+  - **Funil**: os leads do Instagram (DMs, comentários e stories) caem no funil **Instagram**,
+    etapa "Entrou pelo Instagram"; se esse funil não existir, vão para a 1ª etapa de Vendas.
+    Etapas: Entrou pelo Instagram → Conversando → Qualificado → Enviado para Vendas → Sem
+    interesse (perdido). Cada regra pode escolher outra etapa. Quem já tem card em algum funil
+    (ex.: veio do WhatsApp e está em Vendas) fica onde está. Quando o lead esquentar, o time move
+    para "Enviado para Vendas" e cria o card em Vendas. O funil de creators fica para depois (o processo ainda está sendo montado no lab de creators).
   - Textos aceitam `{{primeiro_nome}}`, `{{nome}}` e `{{usuario}}` (o @). A regra pode
     colocar uma etiqueta no contato. A mesma regra não responde o mesmo contato duas vezes
     em 1h; um comentário nunca é respondido duas vezes (tabela `InstagramCommentReply`).
