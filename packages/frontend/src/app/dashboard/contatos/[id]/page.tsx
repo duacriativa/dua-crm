@@ -8,7 +8,8 @@ import {
   DollarSign, MessageCircle, Edit, MoreVertical, Trash2,
   User, Clock, Globe, Filter, Briefcase, Search,
   Save, ChevronRight, Sparkles, AlertTriangle, TrendingUp,
-  Star, Zap, ChevronDown, Check, FileText, Plus, XCircle, CheckCircle2,
+  Star, Zap, ChevronDown, Check, FileText, Plus, XCircle, CheckCircle2, Copy,
+  Gift, ExternalLink, Eye, Download,
 } from "lucide-react";
 import api from "@/lib/api";
 
@@ -35,6 +36,19 @@ interface Contact {
   createdAt: string;
   updatedAt: string;
   pipelineLeads?: any[];
+}
+
+/** Análise para o cliente (página pública, PDF e texto de WhatsApp), ver POST /contacts/:id/diagnosis */
+interface ClientDiagnosis {
+  url: string;
+  pdfUrl: string;
+  instagramHandle: string;
+  whatsappText: string;
+  phone: string | null;
+  score: number | null;
+  viewCount: number;
+  lastViewedAt: string | null;
+  createdAt: string;
 }
 
 interface InstagramAnalysis {
@@ -583,6 +597,12 @@ export default function ContactProfilePage() {
   const [analysisSaving, setAnalysisSaving] = useState(false);
   const [analysisSaved, setAnalysisSaved] = useState(false);
   const [parsedAnalysis, setParsedAnalysis] = useState<InstagramAnalysis | null>(null);
+  const [messageCopied, setMessageCopied] = useState(false);
+  const [diagnosis, setDiagnosis] = useState<ClientDiagnosis | null>(null);
+  const [diagnosisLoading, setDiagnosisLoading] = useState(false);
+  const [diagnosisError, setDiagnosisError] = useState("");
+  const [diagnosisCopied, setDiagnosisCopied] = useState<"" | "link" | "text">("");
+  const [pdfLoading, setPdfLoading] = useState(false);
 
   // Additional fields parsed from notes — must be declared at top level (Rules of Hooks)
   const [aditionalFields, setAditionalFields] = useState<any>({});
@@ -619,6 +639,14 @@ export default function ContactProfilePage() {
   useEffect(() => {
     if (id) fetchContact();
   }, [id, fetchContact]);
+
+  useEffect(() => {
+    if (!id) return;
+    authFetch(`${API_URL}/api/v1/contacts/${id}/diagnosis`, { headers: authHeaders() })
+      .then((r) => (r.ok ? r.text() : ""))
+      .then((t) => { if (t) setDiagnosis(JSON.parse(t)); })
+      .catch(() => {});
+  }, [id]);
 
   useEffect(() => {
     if (contact) {
@@ -676,6 +704,7 @@ export default function ContactProfilePage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Erro ao gerar análise.");
       setAnalysisText(data.analysis || "");
+      setDiagnosis(null); // análise nova: a versão para o cliente precisa ser preparada de novo
       if (data.parsed) setParsedAnalysis(data.parsed);
       else tryParseAnalysis(data.analysis || "");
     } catch (err: any) {
@@ -684,6 +713,57 @@ export default function ContactProfilePage() {
       clearInterval(stepInterval);
       setAnalysisLoading(false);
     }
+  }
+
+  /** Gera (ou reaproveita, se a análise não mudou) a análise no tom do cliente. */
+  async function ensureDiagnosis(force = false): Promise<ClientDiagnosis | null> {
+    setDiagnosisLoading(true);
+    setDiagnosisError("");
+    try {
+      const res = await authFetch(`${API_URL}/api/v1/contacts/${id}/diagnosis`, {
+        method: "POST",
+        headers: authHeaders(),
+        body: JSON.stringify({ analysis: analysisText, force }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Erro ao preparar a análise para o cliente.");
+      setDiagnosis(data);
+      return data;
+    } catch (err: any) {
+      setDiagnosisError(err.message);
+      return null;
+    } finally {
+      setDiagnosisLoading(false);
+    }
+  }
+
+  async function handleDownloadPdf() {
+    setPdfLoading(true);
+    try {
+      const d = await ensureDiagnosis();
+      if (!d) return;
+      const a = document.createElement("a");
+      a.href = d.pdfUrl;
+      a.download = `analise-perfil-${d.instagramHandle.toLowerCase()}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    } finally {
+      setPdfLoading(false);
+    }
+  }
+
+  function copyDiagnosis(kind: "link" | "text") {
+    if (!diagnosis) return;
+    navigator.clipboard.writeText(kind === "link" ? diagnosis.url : diagnosis.whatsappText);
+    setDiagnosisCopied(kind);
+    setTimeout(() => setDiagnosisCopied(""), 2000);
+  }
+
+  /** wa.me abre o WhatsApp (Business, no celular) já com o texto; sem telefone, a pessoa escolhe o contato. */
+  function whatsappLink(d: ClientDiagnosis) {
+    const digits = (d.phone || "").replace(/\D/g, "");
+    return `https://wa.me/${digits}?text=${encodeURIComponent(d.whatsappText)}`;
   }
 
   async function handleSaveAnalysis() {
@@ -1021,49 +1101,144 @@ export default function ContactProfilePage() {
                 </div>
               )}
 
-              {/* Textarea (raw/edit mode) */}
               {!analysisLoading && analysisText && (
                 <div className="mt-4 space-y-3">
-                  <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Texto bruto / editar</label>
-                  <textarea
-                    value={analysisText}
-                    onChange={(e) => {
-                      setAnalysisText(e.target.value);
-                      tryParseAnalysis(e.target.value);
-                    }}
-                    rows={6}
-                    className="w-full bg-muted/50 border border-border rounded-2xl p-4 text-sm text-foreground leading-relaxed resize-y focus:outline-none focus:border-purple-400 focus:ring-2 focus:ring-purple-500/20 transition-all"
-                  />
-                  <div className="flex items-center gap-3">
+                  {/* Texto bruto: aberto só quando não deu para montar os cards (ex.: erro) */}
+                  <details open={!parsedAnalysis} className="group">
+                    <summary className="cursor-pointer text-xs font-bold text-muted-foreground uppercase tracking-wider select-none">
+                      {parsedAnalysis ? "Editar texto da análise" : "Texto da análise"}
+                    </summary>
+                    <textarea
+                      value={analysisText}
+                      onChange={(e) => {
+                        setAnalysisText(e.target.value);
+                        tryParseAnalysis(e.target.value);
+                      }}
+                      rows={6}
+                      className="mt-3 w-full bg-muted/50 border border-border rounded-2xl p-4 text-sm text-foreground leading-relaxed resize-y focus:outline-none focus:border-purple-400 focus:ring-2 focus:ring-purple-500/20 transition-all"
+                    />
+                  </details>
+                  <div className="flex flex-wrap items-center gap-3">
                     <button
                       onClick={handleSaveAnalysis}
                       disabled={analysisSaving}
-                      className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm text-white bg-purple-600 hover:bg-purple-700 transition-colors disabled:opacity-50 shadow-none border border-border"
+                      className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm text-white bg-purple-600 hover:bg-purple-700 transition-colors disabled:opacity-50"
                     >
                       <Save size={14} />
                       {analysisSaving ? "Salvando..." : analysisSaved ? "✓ Salvo!" : "Salvar análise"}
                     </button>
+                    {parsedAnalysis?.mensagem_whatsapp && (
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(parsedAnalysis.mensagem_whatsapp!);
+                          setMessageCopied(true);
+                          setTimeout(() => setMessageCopied(false), 2000);
+                        }}
+                        className="flex items-center gap-2 px-4 py-2.5 rounded-xl font-semibold text-sm text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 transition-colors border border-emerald-500/20"
+                      >
+                        <Copy size={14} /> {messageCopied ? "✓ Copiada!" : "Copiar mensagem curta"}
+                      </button>
+                    )}
+                    {typeof parsedAnalysis?.score === "number" && (
+                      <button
+                        onClick={handleDownloadPdf}
+                        disabled={pdfLoading}
+                        title="PDF com a marca da Dua, no tom do cliente (sem os alertas internos)"
+                        className="flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-sm bg-[#B5FB3D] text-black hover:opacity-90 transition-opacity disabled:opacity-60"
+                      >
+                        {pdfLoading ? <div className="w-3.5 h-3.5 border-2 border-black/30 border-t-black rounded-full animate-spin" /> : <Download size={14} />}
+                        {pdfLoading ? "Preparando PDF..." : "Baixar PDF da análise"}
+                      </button>
+                    )}
                     <button
                       onClick={handleGenerateAnalysis}
-                      className="flex items-center gap-2 px-4 py-2.5 rounded-xl font-semibold text-sm text-primary bg-primary/10 hover:bg-purple-100 transition-colors border border-primary/20"
+                      className="flex items-center gap-2 px-4 py-2.5 rounded-xl font-semibold text-sm text-muted-foreground hover:text-foreground transition-colors"
                     >
-                      <Search size={14} /> Regenerar
+                      <Search size={14} /> Gerar de novo
                     </button>
                   </div>
-                </div>
-              )}
 
-              {/* Gerar novamente se só mostra parsed sem text edit */}
-              {!analysisLoading && parsedAnalysis && !analysisText.trim() === false && (
-                <div className="mt-4 flex gap-3">
-                  <button
-                    onClick={handleSaveAnalysis}
-                    disabled={analysisSaving}
-                    className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm text-white bg-purple-600 hover:bg-purple-700 transition-colors disabled:opacity-50"
-                  >
-                    <Save size={14} />
-                    {analysisSaving ? "Salvando..." : analysisSaved ? "✓ Salvo!" : "Salvar análise"}
-                  </button>
+                  {parsedAnalysis && typeof parsedAnalysis.score !== "number" && (
+                    <p className="text-xs text-amber-400 flex items-center gap-1.5">
+                      <AlertTriangle size={12} /> Sem dados reais do perfil: o PDF e a análise para o cliente ficariam genéricos, por isso não aparecem.
+                    </p>
+                  )}
+
+                  {/* Análise para o cliente: enviada à mão pelo WhatsApp Business (PDF ou texto) */}
+                  {typeof parsedAnalysis?.score === "number" && (
+                    <div className="rounded-2xl border border-lime-500/30 bg-lime-500/5 p-4 space-y-3">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div className="flex items-center gap-2">
+                          <Gift size={16} className="text-lime-500" />
+                          <span className="text-sm font-bold text-foreground">Análise para o cliente</span>
+                        </div>
+                        {diagnosis && (
+                          <button
+                            onClick={() => ensureDiagnosis(true)}
+                            disabled={diagnosisLoading}
+                            className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground disabled:opacity-50"
+                          >
+                            <Sparkles size={12} /> {diagnosisLoading ? "Reescrevendo..." : "Reescrever texto"}
+                          </button>
+                        )}
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        1) Mande a mensagem curta. 2) Se o cliente topar, envie o PDF ou o diagnóstico em texto pelo WhatsApp Business.
+                        Os alertas internos não aparecem: o texto é reescrito no tom do cliente.
+                      </p>
+                      {diagnosisError && <p className="text-xs text-red-400">{diagnosisError}</p>}
+                      {!diagnosis && (
+                        <button
+                          onClick={() => ensureDiagnosis()}
+                          disabled={diagnosisLoading}
+                          className="flex items-center gap-2 px-4 py-2 rounded-xl font-bold text-sm bg-[#B5FB3D] text-black hover:opacity-90 transition-opacity disabled:opacity-60"
+                        >
+                          {diagnosisLoading ? <div className="w-3.5 h-3.5 border-2 border-black/30 border-t-black rounded-full animate-spin" /> : <Sparkles size={14} />}
+                          {diagnosisLoading ? "Preparando..." : "Preparar diagnóstico para WhatsApp"}
+                        </button>
+                      )}
+                      {diagnosis && (
+                        <>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <button
+                              onClick={() => copyDiagnosis("text")}
+                              className="flex items-center gap-2 px-4 py-2 rounded-xl font-bold text-sm bg-[#B5FB3D] text-black hover:opacity-90 transition-opacity"
+                            >
+                              <Copy size={14} /> {diagnosisCopied === "text" ? "✓ Copiado!" : "Copiar diagnóstico para WhatsApp"}
+                            </button>
+                            <a
+                              href={whatsappLink(diagnosis)}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="flex items-center gap-2 px-4 py-2 rounded-xl font-semibold text-sm text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 transition-colors border border-emerald-500/20"
+                            >
+                              <MessageCircle size={14} /> Abrir no WhatsApp
+                            </a>
+                          </div>
+                          <details>
+                            <summary className="cursor-pointer text-xs font-bold text-muted-foreground uppercase tracking-wider select-none">Ver texto</summary>
+                            <p className="mt-2 text-sm text-foreground leading-relaxed whitespace-pre-wrap bg-muted/30 rounded-xl p-3 border border-border">{diagnosis.whatsappText}</p>
+                          </details>
+                          <div className="flex items-center gap-2 bg-muted/50 border border-border rounded-xl px-3 py-2">
+                            <span className="text-xs text-foreground truncate flex-1">{diagnosis.url}</span>
+                            <a href={`${diagnosis.url.replace(/^https?:\/\/[^/]+/, "")}?preview=1`} target="_blank" rel="noreferrer"
+                              className="text-muted-foreground hover:text-foreground" title="Ver página (não conta como aberto)">
+                              <ExternalLink size={14} />
+                            </a>
+                            <button onClick={() => copyDiagnosis("link")} className="text-muted-foreground hover:text-foreground" title="Copiar link da página">
+                              {diagnosisCopied === "link" ? <Check size={14} /> : <Copy size={14} />}
+                            </button>
+                          </div>
+                          <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                            <Eye size={12} />
+                            {diagnosis.viewCount > 0
+                              ? `Cliente abriu a página ou o PDF ${diagnosis.viewCount}× · última em ${new Date(diagnosis.lastViewedAt!).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}`
+                              : `Página ainda não aberta pelo cliente · preparado em ${new Date(diagnosis.createdAt).toLocaleDateString("pt-BR")}`}
+                          </p>
+                        </>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
             </div>

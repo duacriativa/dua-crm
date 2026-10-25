@@ -13,14 +13,14 @@ self.addEventListener("push", (event) => {
       badge: "/icons/icon-192.png",
       tag: data.tag,
       renotify: !!data.tag,
-      data: { url: data.url || "/dashboard/whatsapp" },
+      data: { url: data.url || "/dashboard/conversas" },
     }),
   );
 });
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  const url = (event.notification.data && event.notification.data.url) || "/dashboard/whatsapp";
+  const url = (event.notification.data && event.notification.data.url) || "/dashboard/conversas";
   event.waitUntil(
     self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((list) => {
       for (const client of list) {

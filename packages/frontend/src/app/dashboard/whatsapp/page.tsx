@@ -636,15 +636,11 @@ export default function WhatsAppPage() {
     setMobileView("chat");
   };
 
-  // Abre a conversa vinda da notificação push (?conv=<id>)
-  const openedFromLink = useRef(false);
+  // Notificações antigas apontavam para cá (?conv=<id>): a conversa abre no inbox principal
   useEffect(() => {
-    if (openedFromLink.current || conversations.length === 0) return;
     const convId = new URLSearchParams(window.location.search).get("conv");
-    if (!convId) { openedFromLink.current = true; return; }
-    const conv = conversations.find(c => c.id === convId);
-    if (conv) { openedFromLink.current = true; selectConv(conv); }
-  }, [conversations]);
+    if (convId) window.location.replace(`/dashboard/conversas?conv=${encodeURIComponent(convId)}`);
+  }, []);
 
   const updateMessage = useCallback((msgId: string, updates: Partial<Message>) => {
     setMessages(prev => prev.map(m => m.id === msgId ? { ...m, ...updates } : m));

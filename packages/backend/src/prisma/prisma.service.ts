@@ -121,6 +121,26 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
       `CREATE INDEX IF NOT EXISTS "AutomationRun_status_nextRunAt_idx" ON "AutomationRun"("status", "nextRunAt")`,
       `CREATE INDEX IF NOT EXISTS "AutomationRun_automationId_idx" ON "AutomationRun"("automationId")`,
       `CREATE INDEX IF NOT EXISTS "AutomationRun_contactId_status_idx" ON "AutomationRun"("contactId", "status")`,
+      // 20261024000006_add_instagram_diagnosis
+      `CREATE TABLE IF NOT EXISTS "InstagramDiagnosis" (
+        "id" TEXT NOT NULL,
+        "tenantId" TEXT NOT NULL,
+        "contactId" TEXT NOT NULL,
+        "token" TEXT NOT NULL,
+        "instagramHandle" TEXT NOT NULL,
+        "score" INTEGER,
+        "content" JSONB NOT NULL,
+        "viewCount" INTEGER NOT NULL DEFAULT 0,
+        "firstViewedAt" TIMESTAMP(3),
+        "lastViewedAt" TIMESTAMP(3),
+        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT "InstagramDiagnosis_pkey" PRIMARY KEY ("id"),
+        CONSTRAINT "InstagramDiagnosis_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id") ON DELETE CASCADE ON UPDATE CASCADE,
+        CONSTRAINT "InstagramDiagnosis_contactId_fkey" FOREIGN KEY ("contactId") REFERENCES "Contact"("id") ON DELETE CASCADE ON UPDATE CASCADE
+      )`,
+      `CREATE UNIQUE INDEX IF NOT EXISTS "InstagramDiagnosis_token_key" ON "InstagramDiagnosis"("token")`,
+      `CREATE INDEX IF NOT EXISTS "InstagramDiagnosis_contactId_createdAt_idx" ON "InstagramDiagnosis"("contactId", "createdAt")`,
+      `CREATE INDEX IF NOT EXISTS "InstagramDiagnosis_tenantId_idx" ON "InstagramDiagnosis"("tenantId")`,
       // 20261024000003_add_meeting_automations (tabela/enum do postgres: aplicado pelo Supabase; aqui só não quebra)
       `ALTER TYPE "AutomationTrigger" ADD VALUE IF NOT EXISTS 'MEETING_SCHEDULED'`,
       `ALTER TABLE "AutomationRun" ADD COLUMN IF NOT EXISTS "meetingId" TEXT`,
@@ -179,7 +199,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
       `CREATE UNIQUE INDEX IF NOT EXISTS "Meeting_manageToken_key" ON "Meeting"("manageToken")`,
       `CREATE INDEX IF NOT EXISTS "Meeting_tenantId_startAt_idx" ON "Meeting"("tenantId", "startAt")`,
       `CREATE INDEX IF NOT EXISTS "Meeting_contactId_idx" ON "Meeting"("contactId")`,
-      // 20261024000006_add_instagram (tabelas novas: o dua_app é o dono)
+      // 20261024000008_add_instagram (tabelas novas: o dua_app é o dono)
       `CREATE TABLE IF NOT EXISTS "InstagramAccount" (
         "id" TEXT NOT NULL,
         "tenantId" TEXT NOT NULL,
@@ -228,6 +248,49 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
       `CREATE INDEX IF NOT EXISTS "InstagramCommentReply_tenantId_createdAt_idx" ON "InstagramCommentReply"("tenantId", "createdAt")`,
       // Tokens da Página ficam aqui: fora do alcance da chave pública do Supabase (sem esses papéis, só loga o erro)
       `REVOKE ALL ON TABLE "InstagramAccount", "InstagramAutomation", "InstagramCommentReply" FROM anon, authenticated`,
+      // 20261024000007_add_plan_orders
+      `CREATE TABLE IF NOT EXISTS "PlanOrder" (
+        "id" TEXT NOT NULL,
+        "tenantId" TEXT NOT NULL,
+        "contactId" TEXT NOT NULL,
+        "token" TEXT NOT NULL,
+        "status" TEXT NOT NULL DEFAULT 'AWAITING_PAYMENT',
+        "productName" TEXT NOT NULL,
+        "value" DOUBLE PRECISION NOT NULL,
+        "name" TEXT NOT NULL,
+        "phone" TEXT NOT NULL,
+        "email" TEXT NOT NULL,
+        "cpfCnpj" TEXT NOT NULL,
+        "instagramHandle" TEXT NOT NULL,
+        "answers" JSONB NOT NULL,
+        "diagnosisToken" TEXT,
+        "asaasCustomerId" TEXT,
+        "asaasPaymentId" TEXT,
+        "pixPayload" TEXT,
+        "pixQrImage" TEXT,
+        "pixExpiresAt" TIMESTAMP(3),
+        "paymentCheckedAt" TIMESTAMP(3),
+        "paidAt" TIMESTAMP(3),
+        "dueAt" TIMESTAMP(3),
+        "plan" JSONB,
+        "generationState" TEXT,
+        "generationError" TEXT,
+        "generationStartedAt" TIMESTAMP(3),
+        "generatedAt" TIMESTAMP(3),
+        "reviewedAt" TIMESTAMP(3),
+        "reviewedBy" TEXT,
+        "deliveredAt" TIMESTAMP(3),
+        "notes" TEXT,
+        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updatedAt" TIMESTAMP(3) NOT NULL,
+        CONSTRAINT "PlanOrder_pkey" PRIMARY KEY ("id"),
+        CONSTRAINT "PlanOrder_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id") ON DELETE CASCADE ON UPDATE CASCADE,
+        CONSTRAINT "PlanOrder_contactId_fkey" FOREIGN KEY ("contactId") REFERENCES "Contact"("id") ON DELETE CASCADE ON UPDATE CASCADE
+      )`,
+      `CREATE UNIQUE INDEX IF NOT EXISTS "PlanOrder_token_key" ON "PlanOrder"("token")`,
+      `CREATE UNIQUE INDEX IF NOT EXISTS "PlanOrder_asaasPaymentId_key" ON "PlanOrder"("asaasPaymentId")`,
+      `CREATE INDEX IF NOT EXISTS "PlanOrder_tenantId_status_idx" ON "PlanOrder"("tenantId", "status")`,
+      `CREATE INDEX IF NOT EXISTS "PlanOrder_contactId_idx" ON "PlanOrder"("contactId")`,
     ];
     for (const sql of statements) {
       try {

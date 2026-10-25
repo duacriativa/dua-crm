@@ -658,7 +658,7 @@ export class WhatsAppCloudService {
       this.push.sendToTenant(tenantId, {
         title: contact.name || phone,
         body: parsed.content.slice(0, 140),
-        url: `/dashboard/whatsapp?conv=${conv.id}`,
+        url: `/dashboard/conversas?conv=${conv.id}&phone=${encodeURIComponent(phone)}`,
         tag: conv.id,
       });
     }

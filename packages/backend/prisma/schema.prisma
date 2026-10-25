@@ -157,6 +157,8 @@ model Tenant {
   automations      Automation[]
   integrations     Integration[]
   bookingPages     BookingPage[]
+  instagramDiagnoses InstagramDiagnosis[]
+  planOrders       PlanOrder[]
   meetings         Meeting[]
   metaCredential   MetaCredential?
   auditLogs        AuditLog[]
@@ -244,6 +246,8 @@ model Contact {
   contracts      Contract[]
   activities     Activity[]
   meetings       Meeting[]
+  instagramDiagnoses InstagramDiagnosis[]
+  planOrders     PlanOrder[]
 
   @@unique([tenantId, phone])
   @@unique([tenantId, instagramId])
@@ -719,4 +723,66 @@ model InstagramCommentReply {
   createdAt    DateTime @default(now())
 
   @@index([tenantId, createdAt])
+}
+
+// "Diagnóstico gratuito" do Instagram: página pública /diagnostico/[token] para nutrir leads
+model InstagramDiagnosis {
+  id              String    @id @default(cuid())
+  tenantId        String
+  tenant          Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  contactId       String
+  contact         Contact   @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  token           String    @unique // link público, não adivinhável
+  instagramHandle String
+  score           Int?
+  content         Json      // { resumo, pontos_fortes, oportunidades, proximos_passos[] } já no tom do cliente
+  viewCount       Int       @default(0)
+  firstViewedAt   DateTime?
+  lastViewedAt    DateTime?
+  createdAt       DateTime  @default(now())
+
+  @@index([contactId, createdAt])
+  @@index([tenantId])
+}
+
+/// Produto pago de entrada: plano de conteúdo de 3 meses gerado com IA, pago no Pix (Asaas)
+model PlanOrder {
+  id                  String    @id @default(cuid())
+  tenantId            String
+  tenant              Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  contactId           String
+  contact             Contact   @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  token               String    @unique // link do cliente para acompanhar o pedido (não adivinhável)
+  status              String    @default("AWAITING_PAYMENT") // AWAITING_PAYMENT | PAID | IN_PRODUCTION | IN_REVIEW | DELIVERED | CANCELED
+  productName         String
+  value               Float
+  name                String
+  phone               String
+  email               String
+  cpfCnpj             String
+  instagramHandle     String
+  answers             Json      // respostas do formulário (nicho, ticket, público, quem posta, verba)
+  diagnosisToken      String?   // veio do diagnóstico gratuito
+  asaasCustomerId     String?
+  asaasPaymentId      String?   @unique
+  pixPayload          String?
+  pixQrImage          String?   // PNG em base64
+  pixExpiresAt        DateTime?
+  paymentCheckedAt    DateTime?
+  paidAt              DateTime?
+  dueAt               DateTime? // paidAt + prazo de entrega
+  plan                Json?     // plano gerado (editável na revisão)
+  generationState     String?   // RUNNING | DONE | ERROR
+  generationError     String?
+  generationStartedAt DateTime?
+  generatedAt         DateTime?
+  reviewedAt          DateTime?
+  reviewedBy          String?
+  deliveredAt         DateTime?
+  notes               String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  @@index([tenantId, status])
+  @@index([contactId])
 }
