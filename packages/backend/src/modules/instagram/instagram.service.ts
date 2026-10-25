@@ -58,6 +58,7 @@ interface ParsedIgMessage {
   quotedType: string | null;
   quotedExternalId: string | null;
   story: 'reply' | 'mention' | null;
+  sharedMedia?: boolean; // post compartilhado: o link pode ser foto ou vídeo (descobre ao gravar)
 }
 
 type Account = { tenantId: string; pageId: string; pageName: string | null; igUserId: string; username: string | null; pageToken: string };
@@ -458,20 +459,32 @@ export class InstagramService {
         case 'video':
         case 'ig_reel':
         case 'reel':
-          return { ...base, type: 'VIDEO', content: m.text || (att.type === 'video' ? '[vídeo]' : `[reel] ${url ?? ''}`.trim()), mediaUrl: att.type === 'video' ? url : null };
+          return { ...base, type: 'VIDEO', content: m.text || att.payload?.title || (att.type === 'video' ? '[vídeo]' : '[reel compartilhado]'), mediaUrl: url };
         case 'audio':
           return { ...base, type: 'AUDIO', content: '[áudio]', mediaUrl: url };
         case 'file':
           return { ...base, type: 'DOCUMENT', content: '[arquivo]', mediaUrl: url };
         case 'share':
         case 'ig_post':
-          return { ...base, content: `${m.text ? `${m.text}\n` : ''}[post compartilhado] ${url ?? ''}`.trim() };
+          return url
+            ? { ...base, type: 'IMAGE', content: m.text || att.payload?.title || '[post compartilhado]', mediaUrl: url, sharedMedia: true }
+            : { ...base, content: m.text || '[post compartilhado]' };
         default:
           return { ...base, content: m.text || `[${att.type || 'anexo'}]` };
       }
     }
     if (m.is_unsupported) return { ...base, content: '[mensagem não suportada pela API]' };
     return base;
+  }
+
+  /** O link do post compartilhado é um vídeo (reel) ou uma foto? Pergunta o tipo ao CDN da Meta. */
+  private async isVideo(url: string) {
+    try {
+      const res = await axios.head(url, { timeout: 5000, maxRedirects: 3 });
+      return String(res.headers['content-type'] ?? '').startsWith('video/');
+    } catch {
+      return false;
+    }
   }
 
   private findConversation(tenantId: string, igsid: string) {
@@ -525,6 +538,8 @@ export class InstagramService {
     if (direction === 'OUTBOUND') await new Promise((r) => setTimeout(r, ECHO_DELAY_MS));
     const already = await this.prisma.message.findFirst({ where: { externalId: mid }, select: { id: true } });
     if (already) return;
+
+    if (parsed.sharedMedia && parsed.mediaUrl && (await this.isVideo(parsed.mediaUrl))) parsed = { ...parsed, type: 'VIDEO' };
 
     const { contact, conv, isNew } = await this.ensureContact(acc, igsid);
     const quoted = parsed.quotedExternalId && !parsed.quotedContent
