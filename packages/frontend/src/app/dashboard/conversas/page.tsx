@@ -202,6 +202,7 @@ function ConversasInner() {
   const isInitialLoadRef = useRef(false);
   const forceScrollRef = useRef(false);   // rola até o fim após enviar
   const prevScrollHeightRef = useRef(0);  // altura antes da última atualização
+  const stickUntilRef = useRef(0);        // até quando a conversa recém-aberta fica presa no fim (fotos carregando)
   const scrollToBottom = () => requestAnimationFrame(() => messagesEndRef.current?.scrollIntoView({ block: "end" }));
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const selectedRef = useRef<Conversation | null>(null);
@@ -503,6 +504,7 @@ function ConversasInner() {
     if (isInitialLoadRef.current) {
       isInitialLoadRef.current = false;
       // setTimeout garante que o browser terminou o layout antes de scrollar
+      stickUntilRef.current = Date.now() + 10_000;
       setTimeout(() => {
         const container = messagesContainerRef.current;
         if (container) { container.scrollTop = container.scrollHeight; prevScrollHeightRef.current = container.scrollHeight; }
@@ -520,6 +522,30 @@ function ConversasInner() {
     }
     prevScrollHeightRef.current = container.scrollHeight;
   }, [timeline]);
+
+  // Fotos e vídeos carregam depois da rolagem inicial e empurram o fim para baixo:
+  // enquanto a conversa acabou de abrir, volta para o fim a cada mídia carregada,
+  // até a pessoa rolar por conta própria
+  useEffect(() => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+    const onMediaLoad = () => {
+      if (Date.now() > stickUntilRef.current) return;
+      container.scrollTop = container.scrollHeight;
+      prevScrollHeightRef.current = container.scrollHeight;
+    };
+    const release = () => { stickUntilRef.current = 0; };
+    container.addEventListener("load", onMediaLoad, true);
+    container.addEventListener("loadedmetadata", onMediaLoad, true);
+    container.addEventListener("wheel", release, { passive: true });
+    container.addEventListener("touchmove", release, { passive: true });
+    return () => {
+      container.removeEventListener("load", onMediaLoad, true);
+      container.removeEventListener("loadedmetadata", onMediaLoad, true);
+      container.removeEventListener("wheel", release);
+      container.removeEventListener("touchmove", release);
+    };
+  }, [selected?.id]);
 
   // ── Enviar mensagem ───────────────────────────────────────────────────────
   const sendMessage = useCallback(async () => {
