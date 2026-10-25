@@ -2,11 +2,12 @@
 
 import { useState, useEffect, useRef, type ComponentType } from "react";
 import { usePathname, useRouter } from "next/navigation";
+import { NotificationsBell } from "@/components/notifications/notifications-bell";
 import {
   LayoutDashboard, MessageCircle, Users,
   Settings, ChevronLeft, ChevronRight, LogOut, Kanban,
   Menu, X, DollarSign, FileText, Plus,
-  Bell, Calendar, Bot, Megaphone, Workflow,
+  Calendar, Bot, Megaphone, Workflow,
   ChevronUp, ChevronDown, User, CreditCard, ClipboardList,
 } from "lucide-react";
 
@@ -320,10 +321,7 @@ function MobileNav() {
           <img src="/brand/logo-dua-crm-branco.png" alt="dua.crm" className="h-6 w-auto" />
         </div>
         <div className="flex items-center gap-1">
-          <button className="relative p-2 rounded-xl hover:bg-sidebar-accent transition-colors">
-            <Bell className="w-5 h-5 text-foreground" />
-            <span className="absolute top-2 right-2 h-2 w-2 rounded-full bg-primary animate-pulse-glow" />
-          </button>
+          <NotificationsBell />
           <button onClick={() => setOpen(true)} className="p-2 rounded-xl hover:bg-sidebar-accent transition-colors">
             <Menu className="w-5 h-5 text-foreground" />
           </button>
