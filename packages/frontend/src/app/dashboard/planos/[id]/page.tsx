@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import api from "@/lib/api";
 import { authFetch } from "@/lib/auth-fetch";
+import { copyText } from "@/lib/utils";
 import { StatusBadge, dueLabel, errMsg, fmtDateTime } from "@/components/plans/plan-status";
 import { PlanEditor } from "@/components/plans/plan-editor";
 
@@ -61,7 +62,10 @@ export default function PlanoPedidoPage({ params }: { params: { id: string } }) 
   };
 
   const copy = async (key: string, text: string) => {
-    await navigator.clipboard.writeText(text).catch(() => {});
+    if (!(await copyText(text))) {
+      setError("O navegador não deixou copiar. Selecione o texto e copie com Ctrl/Cmd + C.");
+      return;
+    }
     setCopied(key); setTimeout(() => setCopied(""), 2000);
   };
 
