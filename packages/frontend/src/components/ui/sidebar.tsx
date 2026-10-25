@@ -29,7 +29,7 @@ const navItems: NavItem[] = [
   { icon: LayoutDashboard, label: "Dashboard",     href: "/dashboard" },
   { icon: Users,           label: "Clientes",      href: "/dashboard/contatos" },
   { icon: Kanban,          label: "Funil",         href: "/dashboard/funil" },
-  { icon: MessageCircle,   label: "WhatsApp",      href: "/dashboard/conversas", badge: 12 },
+  { icon: MessageCircle,   label: "Conversas",     href: "/dashboard/conversas", badge: 12 },
   { icon: Calendar,        label: "Agenda",        href: "/dashboard/agenda" },
   { icon: Workflow,        label: "Automações",    group: automationItems },
   { icon: DollarSign,      label: "Financeiro",    href: "/dashboard/financeiro" },
