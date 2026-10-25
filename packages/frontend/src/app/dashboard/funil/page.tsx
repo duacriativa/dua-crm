@@ -218,6 +218,7 @@ export default function FunilPage() {
       if (!res.ok) { alert(data?.message || "Não foi possível criar o funil."); return; }
       const created: Pipeline = { ...data, stages: (data.stages || []).map((s: Stage) => ({ ...s, leads: s.leads || [] })) };
       setPipelines((prev) => [...prev, created]);
+      setActivePipeline(created);
       setNewPipelineName("");
       setShowNewPipeline(false);
     } finally { setSaving(false); }
@@ -409,6 +410,29 @@ export default function FunilPage() {
     if (dragged) requestMove(dragged.lead, dragged.fromStageId, toStageId);
   };
 
+  const newPipelineModal = showNewPipeline && (
+          <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-card border border-border rounded-3xl shadow-2xl w-full max-w-md p-6">
+              <div className="flex items-center justify-between mb-5">
+                <h2 className="text-lg font-bold text-foreground">Novo Funil</h2>
+                <button onClick={() => setShowNewPipeline(false)} className="p-1.5 rounded-xl hover:bg-muted/40"><X className="w-4 h-4 text-muted-foreground" /></button>
+              </div>
+              <label className="text-sm font-medium text-foreground/80 block mb-1.5">Nome do Funil *</label>
+              <input value={newPipelineName} onChange={(e) => setNewPipelineName(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && createPipeline()}
+                placeholder="Ex: Vendas Varejo, Atacado Premium..." autoFocus
+                className="w-full px-4 py-2.5 text-sm border border-border rounded-xl bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-brand-500" />
+              <p className="text-xs text-muted-foreground mt-2">Serão criadas 3 etapas padrão: Novo Lead, Em Andamento, Fechado</p>
+              <div className="flex gap-3 mt-5">
+                <button onClick={() => setShowNewPipeline(false)} className="flex-1 py-2.5 text-sm font-medium text-muted-foreground border border-border rounded-xl hover:bg-muted/20">Cancelar</button>
+                <button onClick={createPipeline} disabled={saving} className="flex-1 py-2.5 text-sm font-semibold text-white bg-gradient-primary rounded-xl hover:opacity-90 disabled:opacity-50">
+                  {saving ? "Criando..." : "Criar Funil"}
+                </button>
+              </div>
+            </div>
+          </div>
+  );
+
   // ── Pipeline list ──
   if (!activePipeline) {
     return (
@@ -473,28 +497,7 @@ export default function FunilPage() {
           </div>
         )}
 
-        {showNewPipeline && (
-          <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className="bg-card border border-border rounded-3xl shadow-2xl w-full max-w-md p-6">
-              <div className="flex items-center justify-between mb-5">
-                <h2 className="text-lg font-bold text-foreground">Novo Funil</h2>
-                <button onClick={() => setShowNewPipeline(false)} className="p-1.5 rounded-xl hover:bg-muted/40"><X className="w-4 h-4 text-muted-foreground" /></button>
-              </div>
-              <label className="text-sm font-medium text-foreground/80 block mb-1.5">Nome do Funil *</label>
-              <input value={newPipelineName} onChange={(e) => setNewPipelineName(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && createPipeline()}
-                placeholder="Ex: Vendas Varejo, Atacado Premium..." autoFocus
-                className="w-full px-4 py-2.5 text-sm border border-border rounded-xl bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-brand-500" />
-              <p className="text-xs text-muted-foreground mt-2">Serão criadas 3 etapas padrão: Novo Lead, Em Andamento, Fechado</p>
-              <div className="flex gap-3 mt-5">
-                <button onClick={() => setShowNewPipeline(false)} className="flex-1 py-2.5 text-sm font-medium text-muted-foreground border border-border rounded-xl hover:bg-muted/20">Cancelar</button>
-                <button onClick={createPipeline} disabled={saving} className="flex-1 py-2.5 text-sm font-semibold text-white bg-gradient-primary rounded-xl hover:opacity-90 disabled:opacity-50">
-                  {saving ? "Criando..." : "Criar Funil"}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
+        {newPipelineModal}
       </div>
     );
   }
@@ -516,7 +519,17 @@ export default function FunilPage() {
           <div className="flex items-center gap-2 min-w-0">
             <button onClick={() => setActivePipeline(null)} className="text-xs text-muted-foreground hover:text-foreground/80 shrink-0">Funis</button>
             <ChevronRight className="w-3.5 h-3.5 text-gray-300 shrink-0" />
-            <h1 className="text-sm font-bold text-foreground truncate">{activePipeline.name}</h1>
+            {/* Troca de funil (Vendas, Instagram…) e criação de um novo direto daqui */}
+            <select value={activePipeline.id} title="Trocar de funil"
+              onChange={(e) => {
+                if (e.target.value === "__new") { setShowNewPipeline(true); return; }
+                const next = pipelines.find((p) => p.id === e.target.value);
+                if (next) setActivePipeline(next);
+              }}
+              className="text-sm font-bold text-foreground bg-transparent border border-border rounded-lg px-2 py-1 max-w-[220px] truncate focus:outline-none focus:ring-2 focus:ring-primary/50">
+              {pipelines.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              <option value="__new">+ Novo funil</option>
+            </select>
           </div>
           <div className="flex items-center gap-2 shrink-0">
             <span className="hidden sm:flex items-center gap-1 text-xs text-muted-foreground" title="Leads no funil"><Users className="w-3.5 h-3.5" />{totalLeads}</span>
@@ -1151,6 +1164,7 @@ export default function FunilPage() {
           </div>
         </div>
       )}
+    {newPipelineModal}
     </>
   );
 }
