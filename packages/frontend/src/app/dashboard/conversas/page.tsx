@@ -128,12 +128,17 @@ function ConversasInner() {
   const [newMessage, setNewMessage] = useState("");
   // Campo de mensagem cresce até mostrar o texto todo (limite max-h-60)
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  // O painel da conversa é montado duas vezes (computador e celular) e a ref fica com a última:
+  // ajusta a altura de todos os campos marcados, não só o da ref
   useLayoutEffect(() => {
-    const el = textareaRef.current;
-    if (!el) return;
-    el.style.height = "auto";
-    el.style.height = `${el.scrollHeight}px`;
+    document.querySelectorAll<HTMLTextAreaElement>("textarea[data-autogrow]").forEach((el) => {
+      el.style.height = "auto";
+      el.style.height = `${el.scrollHeight}px`;
+    });
   }, [newMessage]);
+  // Foca o campo que está na tela (o da ref pode ser o da versão escondida)
+  const focusInput = () =>
+    Array.from(document.querySelectorAll<HTMLTextAreaElement>("textarea[data-autogrow]")).find((el) => el.offsetParent)?.focus();
   // Assinatura: nome que aparece em negrito acima da mensagem (ex: "Financeiro")
   const [signatures, setSignatures] = useState<string[]>([]);
   const [signature, setSignature] = useState("");
@@ -673,7 +678,7 @@ function ConversasInner() {
     if (!suggestion) return;
     setNewMessage(suggestion);
     setSuggestion(null);
-    requestAnimationFrame(() => textareaRef.current?.focus());
+    requestAnimationFrame(() => focusInput());
   };
 
   // ── Notas internas ────────────────────────────────────────────────────────
@@ -1155,7 +1160,7 @@ function ConversasInner() {
               className={`flex items-center gap-1 px-3 py-1 rounded-full ${!noteMode ? "bg-brand-50 text-brand-700 border border-brand-200" : "text-gray-500 hover:bg-gray-100 border border-transparent"}`}>
               <MessageCircle className="w-3.5 h-3.5" />Mensagem
             </button>
-            <button onClick={() => { setNoteMode(true); setReplyingTo(null); textareaRef.current?.focus(); }}
+            <button onClick={() => { setNoteMode(true); setReplyingTo(null); focusInput(); }}
               title="Só a equipe vê. Não vai para o WhatsApp."
               className={`flex items-center gap-1 px-3 py-1 rounded-full ${noteMode ? "bg-amber-50 text-amber-800 border border-amber-200" : "text-gray-500 hover:bg-gray-100 border border-transparent"}`}>
               <StickyNote className="w-3.5 h-3.5" />Nota interna
@@ -1258,7 +1263,7 @@ function ConversasInner() {
           </select>
           <textarea value={newMessage} onChange={handleMessageChange} onKeyDown={handleKeyDown} onPaste={handlePaste}
             placeholder={noteMode ? (noteRecipient ? `Mensagem para ${noteRecipient}: o cliente não vê` : "Nota interna: só a equipe vê, não vai para o WhatsApp") : replyingTo ? "Digite sua resposta..." : "Digite uma mensagem..."}
-            ref={textareaRef} rows={1} className={`flex-1 resize-none text-gray-900 placeholder:text-gray-400 border rounded-2xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 max-h-60 overflow-y-auto ${noteMode ? "bg-amber-50 border-amber-200 focus:ring-amber-400" : "bg-gray-50 border-gray-200 focus:ring-brand-500"}`} style={{ minHeight: "42px" }} />
+            ref={textareaRef} data-autogrow rows={1} className={`flex-1 resize-none text-gray-900 placeholder:text-gray-400 border rounded-2xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 max-h-60 overflow-y-auto ${noteMode ? "bg-amber-50 border-amber-200 focus:ring-amber-400" : "bg-gray-50 border-gray-200 focus:ring-brand-500"}`} style={{ minHeight: "42px" }} />
           {noteMode ? (
             <button onClick={saveNote} disabled={!newMessage.trim() || savingNote} title={noteRecipient ? `Avisar ${noteRecipient}` : "Salvar nota"}
               className="flex items-center gap-1.5 px-3 py-2.5 bg-amber-500 text-white text-xs font-semibold rounded-2xl hover:bg-amber-600 disabled:opacity-40 transition-colors">
