@@ -586,6 +586,23 @@ model PushSubscription {
   @@index([tenantId])
 }
 
+// Sino do CRM: histórico de avisos (lead novo, mensagens, reuniões, cobranças...)
+model Notification {
+  id        String    @id @default(cuid())
+  tenantId  String
+  event     String    // ver NOTIFY_EVENTS em modules/notifications/notify.events.ts
+  title     String
+  body      String
+  url       String?
+  groupKey  String?   // avisos não lidos com a mesma chave se juntam (ex.: várias mensagens da mesma conversa)
+  count     Int       @default(1)
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, groupKey])
+}
+
 // Configurações internas do sistema (ex.: chaves VAPID geradas automaticamente)
 model AppSetting {
   key       String   @id

@@ -3,9 +3,10 @@ import { WebhooksController } from './webhooks.controller';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { PipelinesModule } from '../pipelines/pipelines.module';
 import { PlanOrdersModule } from '../plan-orders/plan-orders.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
-  imports: [PrismaModule, PipelinesModule, PlanOrdersModule],
+  imports: [PrismaModule, PipelinesModule, PlanOrdersModule, NotificationsModule],
   controllers: [WebhooksController],
 })
 export class WebhooksModule {}

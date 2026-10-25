@@ -4,7 +4,7 @@ import * as crypto from 'crypto';
 import { BookingPage, Meeting } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { FunnelService } from '../pipelines/funnel.service';
-import { PushService } from '../notifications/push.service';
+import { NotifyService } from '../notifications/notify.service';
 import { normalizePhone, phoneVariants } from '../../common/phone.util';
 import { GoogleCalendarService } from './google-calendar.service';
 import {
@@ -61,7 +61,7 @@ export class SchedulingService {
     private readonly prisma: PrismaService,
     private readonly google: GoogleCalendarService,
     private readonly funnel: FunnelService,
-    private readonly push: PushService,
+    private readonly notify: NotifyService,
     private readonly events: EventEmitter2,
   ) {}
 
@@ -275,7 +275,7 @@ export class SchedulingService {
       },
     }).catch(() => {});
     await this.funnel.advanceTo(page.tenantId, contact.id, 'Reunião agendada', 'Origem: Agendamento de reunião');
-    this.push.sendToTenant(page.tenantId, {
+    this.notify.send(page.tenantId, 'meeting', {
       title: 'Nova reunião agendada',
       body: `${name} — ${when}${withGoogle.meetLink ? '' : ' (sem Meet: confira o Google)'}`,
       url: '/dashboard/agenda',
@@ -353,7 +353,7 @@ export class SchedulingService {
       },
     }).catch(() => {});
     if (by === 'CLIENT') {
-      this.push.sendToTenant(m.tenantId, { title: 'Reunião cancelada', body: `${m.name} cancelou ${formatWhen(m.startAt, tz)}`, url: '/dashboard/agenda', tag: `meeting-${m.id}` });
+      this.notify.send(m.tenantId, 'meeting', { title: 'Reunião cancelada', body: `${m.name} cancelou ${formatWhen(m.startAt, tz)}`, url: '/dashboard/agenda', tag: `meeting-${m.id}` });
     }
     this.events.emit(MEETING_EVENTS.cancelled, { tenantId: m.tenantId, meetingId: m.id, contactId: m.contactId, startAt: m.startAt, by });
     return updated;
@@ -385,7 +385,7 @@ export class SchedulingService {
       },
     }).catch(() => {});
     if (by === 'CLIENT') {
-      this.push.sendToTenant(m.tenantId, { title: 'Reunião remarcada', body: `${m.name}: ${from} → ${to}`, url: '/dashboard/agenda', tag: `meeting-${m.id}` });
+      this.notify.send(m.tenantId, 'meeting', { title: 'Reunião remarcada', body: `${m.name}: ${from} → ${to}`, url: '/dashboard/agenda', tag: `meeting-${m.id}` });
     }
     this.events.emit(MEETING_EVENTS.rescheduled, { tenantId: m.tenantId, meetingId: m.id, contactId: m.contactId, startAt: start, previousStartAt: m.startAt, by });
     return synced;

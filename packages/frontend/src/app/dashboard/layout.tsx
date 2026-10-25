@@ -3,7 +3,8 @@ import { authFetch } from "@/lib/auth-fetch";
 
 import { Sidebar } from "@/components/ui/sidebar";
 import { PushPrompt } from "@/components/notifications/push-prompt";
-import { Bell, Search, Globe, Headphones, Trophy, X, UserPlus, TrendingUp, ChevronRight, Eye, EyeOff } from "lucide-react";
+import { NotificationsBell } from "@/components/notifications/notifications-bell";
+import { Search, Globe, Headphones, Trophy, X, TrendingUp, ChevronRight, Eye, EyeOff } from "lucide-react";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 
@@ -74,88 +75,6 @@ function GlobalSearch() {
               <ChevronRight className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
             </button>
           ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* ── Notificações ── */
-function NotificationsDropdown() {
-  const [open, setOpen] = useState(false);
-  const [notifs, setNotifs] = useState<any[]>([]);
-  const [unread, setUnread] = useState(0);
-  const router = useRouter();
-  const ref = useRef<HTMLDivElement>(null);
-
-  const fetchNotifs = useCallback(async () => {
-    try {
-      const res = await authFetch(`${API_URL}/api/v1/contacts?limit=10&sort=createdAt`, { headers: authHeaders() });
-      if (!res.ok) return;
-      const data = await res.json();
-      const contacts = (data.contacts ?? []).slice(0, 8).map((c: any) => ({
-        id: c.id,
-        name: c.name,
-        origem: c.tags?.includes("formulario") ? "Formulário" : "WhatsApp",
-        date: c.createdAt,
-        read: false,
-        href: `/dashboard/funil`,
-      }));
-      setNotifs(contacts);
-      setUnread(contacts.length);
-    } catch {}
-  }, []);
-
-  useEffect(() => { fetchNotifs(); }, [fetchNotifs]);
-
-  useEffect(() => {
-    function handle(e: MouseEvent) { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); }
-    document.addEventListener("mousedown", handle);
-    return () => document.removeEventListener("mousedown", handle);
-  }, []);
-
-  const markAllRead = () => { setNotifs(n => n.map(x => ({ ...x, read: true }))); setUnread(0); };
-
-  return (
-    <div ref={ref} className="relative">
-      <button onClick={() => { setOpen(!open); if (!open) setUnread(0); }}
-        className={`relative p-2 rounded-xl transition-colors ${open ? "bg-primary/10 text-primary" : "hover:bg-muted/60 text-muted-foreground hover:text-foreground"}`}>
-        <Bell className="h-5 w-5" />
-        {unread > 0 && (
-          <span className="absolute top-1 right-1 h-4 w-4 rounded-full bg-primary text-white text-[9px] font-bold flex items-center justify-center">
-            {unread > 9 ? "9+" : unread}
-          </span>
-        )}
-      </button>
-
-      {open && (
-        <div className="absolute right-0 top-full mt-2 w-80 bg-card border border-border rounded-2xl shadow-2xl z-50 overflow-hidden">
-          <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-            <p className="font-semibold text-foreground text-sm">Notificações</p>
-            <button onClick={markAllRead} className="p-1 rounded-lg hover:bg-muted/60 text-muted-foreground" title="Limpar tudo">
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-          <div className="max-h-80 overflow-y-auto scrollbar-none">
-            {notifs.length === 0 && <p className="text-sm text-muted-foreground text-center py-6">Nenhuma notificação</p>}
-            {notifs.map(n => (
-              <button key={n.id} onClick={() => { router.push(n.href); setOpen(false); }}
-                className={`w-full flex items-start gap-3 px-4 py-3 border-b border-border/50 last:border-0 text-left hover:bg-muted/30 transition-colors ${n.read ? "opacity-60" : ""}`}>
-                <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
-                  <UserPlus className="w-3.5 h-3.5 text-primary" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-foreground leading-tight">Nova oportunidade: {n.name}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">Origem: {n.origem}</p>
-                  <p className="text-xs text-muted-foreground">{new Date(n.date).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}</p>
-                </div>
-                {!n.read && <span className="w-2 h-2 rounded-full bg-primary shrink-0 mt-2" />}
-              </button>
-            ))}
-          </div>
-          <div className="px-4 py-2 border-t border-border">
-            <p className="text-xs text-muted-foreground text-center">Mostrando últimos leads captados</p>
-          </div>
         </div>
       )}
     </div>
@@ -381,7 +300,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <button className="p-2 rounded-xl hover:bg-muted/60 transition-colors text-muted-foreground hover:text-foreground">
               <Headphones className="h-5 w-5" />
             </button>
-            <NotificationsDropdown />
+            <NotificationsBell />
           </div>
         </header>
         <main className="flex-1 overflow-auto pt-[calc(3.5rem+env(safe-area-inset-top))] pb-[calc(4rem+env(safe-area-inset-bottom))] lg:pt-0 lg:pb-0">

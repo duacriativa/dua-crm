@@ -3,7 +3,7 @@ import { ConversationStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { WhatsAppCloudService } from '../whatsapp-cloud/whatsapp-cloud.service';
 import { InstagramService } from '../instagram/instagram.service';
-import { PushService } from '../notifications/push.service';
+import { NotifyService } from '../notifications/notify.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import axios from 'axios';
 
@@ -13,7 +13,7 @@ export class ConversationsService {
     private readonly prisma: PrismaService,
     private readonly cloud: WhatsAppCloudService,
     private readonly instagram: InstagramService,
-    private readonly push: PushService,
+    private readonly notify: NotifyService,
     private readonly events: EventEmitter2,
   ) {}
 
@@ -411,7 +411,7 @@ export class ConversationsService {
     // Mensagem para um colega: avisa os aparelhos (o login é compartilhado, então vai para todos)
     if (recipient) {
       const from = note.authorName || note.author?.name || 'Equipe';
-      this.push.sendToTenant(tenantId, {
+      this.notify.send(tenantId, 'team_note', {
         title: `Para ${recipient} — de ${from}`,
         body: `${conv.contact.name || conv.contact.phone || 'Contato'}: ${text.slice(0, 120)}`,
         url: conv.contact.phone ? `/dashboard/conversas?phone=${encodeURIComponent(conv.contact.phone)}` : '/dashboard/conversas',

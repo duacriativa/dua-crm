@@ -2,7 +2,7 @@ import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/commo
 import { OnEvent } from '@nestjs/event-emitter';
 import { PrismaService } from '../../prisma/prisma.service';
 import { WhatsAppCloudService } from '../whatsapp-cloud/whatsapp-cloud.service';
-import { PushService } from '../notifications/push.service';
+import { NotifyService } from '../notifications/notify.service';
 import { phoneVariants, toBrDigits } from '../../common/phone.util';
 import { MEETING_EVENTS, appUrl } from '../scheduling/scheduling.service';
 import {
@@ -66,7 +66,7 @@ export class AutomationRunner implements OnModuleInit, OnModuleDestroy {
   constructor(
     private readonly prisma: PrismaService,
     private readonly cloud: WhatsAppCloudService,
-    private readonly push: PushService,
+    private readonly notifier: NotifyService,
   ) {}
 
   onModuleInit() {
@@ -606,7 +606,7 @@ export class AutomationRunner implements OnModuleInit, OnModuleDestroy {
     await this.prisma.activity.create({
       data: { tenantId: run.tenantId, contactId: contact.id, conversationId, type: 'NOTE', content: text, authorName: 'Bot', recipientName: to ?? null },
     });
-    this.push.sendToTenant(run.tenantId, {
+    this.notifier.send(run.tenantId, 'team_note', {
       title: to ? `Para ${to} — do Bot` : 'Aviso do Bot',
       body: `${contact.name || contact.phone || 'Contato'}: ${text.replace(/\s+/g, ' ').slice(0, 140)}`,
       url: contact.phone ? `/dashboard/conversas?phone=${encodeURIComponent(contact.phone)}` : '/dashboard/conversas',

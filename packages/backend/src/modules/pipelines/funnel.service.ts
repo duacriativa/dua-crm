@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../../prisma/prisma.service';
 
 /**
@@ -10,7 +11,15 @@ import { PrismaService } from '../../prisma/prisma.service';
 export class FunnelService {
   private readonly logger = new Logger(FunnelService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly events: EventEmitter2,
+  ) {}
+
+  /** Card novo no funil: vira aviso de "Novo lead" (NotifyService) */
+  private leadCreated(tenantId: string, contactId: string, notes?: string) {
+    this.events.emit('funnel.lead_created', { tenantId, contactId, notes: notes ?? null });
+  }
 
   /**
    * Funil principal do tenant = o mais antigo. Se não existir nenhum,
@@ -67,6 +76,7 @@ export class FunnelService {
       await this.prisma.pipelineLead.create({
         data: { stageId: firstStage.id, contactId, position: count, notes: notes ?? null },
       });
+      this.leadCreated(tenantId, contactId, notes);
       this.logger.log(`[Funnel] Contato ${contactId} adicionado em "${pipeline.name}" → "${firstStage.name}"`);
     } catch (err: any) {
       this.logger.warn(`[Funnel] Falha ao adicionar contato ${contactId}: ${err.message}`);
@@ -94,6 +104,7 @@ export class FunnelService {
       if (existing) return;
       const count = await this.prisma.pipelineLead.count({ where: { stageId: stage.id } });
       await this.prisma.pipelineLead.create({ data: { stageId: stage.id, contactId, position: count, notes: notes ?? null } });
+      this.leadCreated(tenantId, contactId, notes);
       this.logger.log(`[Funnel] Contato ${contactId} adicionado em "${stage.pipeline.name}" → "${stage.name}"`);
     } catch (err: any) {
       this.logger.warn(`[Funnel] Falha ao adicionar contato ${contactId} na etapa ${stageId}: ${err.message}`);
@@ -134,6 +145,7 @@ export class FunnelService {
         await this.prisma.pipelineLead.create({
           data: { stageId: stage.id, contactId, position: count, notes: notes ?? null },
         });
+        this.leadCreated(tenantId, contactId, notes);
       }
       this.logger.log(`[Funnel] Contato ${contactId} → "${pipeline.name}" / "${stage.name}"`);
     } catch (err: any) {

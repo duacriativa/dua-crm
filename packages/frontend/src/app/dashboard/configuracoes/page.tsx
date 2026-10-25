@@ -403,43 +403,139 @@ function TabAparencia() {
 }
 
 /* ── NOTIFICAÇÕES ── */
-function TabNotificacoes() {
-  const [notifs, setNotifs] = useState(() => {
-    if (typeof window !== "undefined") {
-      const saved = localStorage.getItem("dua-crm-notifs");
-      if (saved) try { return JSON.parse(saved); } catch {}
-    }
-    return { novoLead: true, contratoVencendo: true, pagamentoPendente: true, mensagemWhatsapp: false, relatorioSemanal: true };
-  });
+type NotifChannel = "push" | "bell";
+interface NotifPrefs {
+  events: Record<string, Record<NotifChannel, boolean>>;
+  quiet: { enabled: boolean; start: string; end: string };
+}
 
-  const toggleNotif = (key: string) => {
-    setNotifs((n: any) => {
-      const updated = { ...n, [key]: !n[key] };
-      localStorage.setItem("dua-crm-notifs", JSON.stringify(updated));
-      return updated;
-    });
+function Switch({ on, onClick, label }: { on: boolean; onClick: () => void; label: string }) {
+  return (
+    <button onClick={onClick} aria-label={label} aria-pressed={on}
+      className={`w-11 h-6 rounded-full transition-colors relative shrink-0 ${on ? "bg-primary" : "bg-muted"}`}>
+      <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all ${on ? "left-5" : "left-0.5"}`} />
+    </button>
+  );
+}
+
+function TabNotificacoes() {
+  const [catalog, setCatalog] = useState<{ key: string; label: string; sub: string }[]>([]);
+  const [prefs, setPrefs] = useState<NotifPrefs | null>(null);
+  const [error, setError] = useState("");
+  const [saved, setSaved] = useState(false);
+  const [testState, setTestState] = useState<"idle" | "sending" | "sent">("idle");
+
+  useEffect(() => {
+    authFetch(`${API_URL}/api/v1/notifications/preferences`, { headers: authHeaders() })
+      .then((r) => r.ok ? r.json() : Promise.reject())
+      .then((d) => { setCatalog(d.catalog ?? []); setPrefs(d.prefs); })
+      .catch(() => setError("Não foi possível carregar as preferências."));
+  }, []);
+
+  const save = async (next: NotifPrefs) => {
+    const prev = prefs;
+    setPrefs(next);
+    setError("");
+    try {
+      const r = await authFetch(`${API_URL}/api/v1/notifications/preferences`, { method: "PUT", headers: authHeaders(), body: JSON.stringify(next) });
+      if (!r.ok) throw new Error();
+      setPrefs(await r.json());
+      setSaved(true);
+      setTimeout(() => setSaved(false), 1500);
+    } catch {
+      setPrefs(prev);
+      setError("Não foi possível salvar. Tente de novo.");
+    }
   };
+
+  const toggle = (key: string, ch: NotifChannel) => {
+    if (!prefs) return;
+    const cur = prefs.events[key] ?? { push: true, bell: true };
+    save({ ...prefs, events: { ...prefs.events, [key]: { ...cur, [ch]: !cur[ch] } } });
+  };
+
+  const sendTest = async () => {
+    setTestState("sending");
+    try { await authFetch(`${API_URL}/api/v1/push/test`, { method: "POST", headers: authHeaders() }); } catch {}
+    setTestState("sent");
+    setTimeout(() => setTestState("idle"), 3000);
+  };
+
   return (
     <div className="max-w-2xl space-y-3">
-      <h2 className="text-base font-bold text-foreground mb-4">Notificações</h2>
-      {[
-        { key: "novoLead", label: "Novo lead captado", sub: "Quando um novo lead entrar no funil" },
-        { key: "contratoVencendo", label: "Contrato vencendo", sub: "30 dias antes do fim do contrato" },
-        { key: "pagamentoPendente", label: "Pagamento pendente", sub: "Cobranças em atraso no Asaas" },
-        { key: "mensagemWhatsapp", label: "Nova mensagem WhatsApp", sub: "Notificação de mensagens não lidas" },
-        { key: "relatorioSemanal", label: "Relatório semanal", sub: "Resumo dos resultados da semana" },
-      ].map(({ key, label, sub }) => (
-        <div key={key} className="surface-card flex items-center justify-between p-4">
-          <div>
-            <p className="text-sm font-medium text-foreground">{label}</p>
-            <p className="text-xs text-muted-foreground mt-0.5">{sub}</p>
+      <div className="flex items-center justify-between mb-1">
+        <h2 className="text-base font-bold text-foreground">Notificações</h2>
+        {saved && <span className="flex items-center gap-1 text-xs text-emerald-500"><Check className="w-3.5 h-3.5" /> Salvo</span>}
+      </div>
+      <p className="text-xs text-muted-foreground mb-4">
+        Escolha o que avisa no celular/computador (push do app instalado) e o que entra no sino do CRM. Vale para toda a conta.
+      </p>
+      {error && <p className="flex items-center gap-1.5 text-xs text-red-500"><AlertCircle className="w-3.5 h-3.5" /> {error}</p>}
+      {!prefs && !error && <p className="text-sm text-muted-foreground">Carregando…</p>}
+
+      {prefs && (
+        <>
+          <div className="hidden sm:flex justify-end gap-6 pr-4 text-[11px] font-medium text-muted-foreground">
+            <span className="w-11 text-center">Push</span>
+            <span className="w-11 text-center">Sino</span>
           </div>
-          <button onClick={() => toggleNotif(key)}
-            className={`w-11 h-6 rounded-full transition-colors relative shrink-0 ${(notifs as any)[key] ? "bg-primary" : "bg-muted"}`}>
-            <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all ${(notifs as any)[key] ? "left-5" : "left-0.5"}`} />
-          </button>
-        </div>
-      ))}
+          {catalog.map(({ key, label, sub }) => {
+            const e = prefs.events[key] ?? { push: true, bell: true };
+            return (
+              <div key={key} className="surface-card flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-foreground">{label}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">{sub}</p>
+                </div>
+                <div className="flex items-center gap-6 shrink-0">
+                  <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <span className="sm:hidden">Push</span>
+                    <Switch on={e.push} onClick={() => toggle(key, "push")} label={`${label}: push`} />
+                  </label>
+                  <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <span className="sm:hidden">Sino</span>
+                    <Switch on={e.bell} onClick={() => toggle(key, "bell")} label={`${label}: sino`} />
+                  </label>
+                </div>
+              </div>
+            );
+          })}
+
+          <h3 className="text-sm font-bold text-foreground pt-4">Horário de silêncio</h3>
+          <div className="surface-card p-4 space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-medium text-foreground">Pausar push no celular/computador</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Os avisos continuam chegando no sino. Horário de Brasília.</p>
+              </div>
+              <Switch on={prefs.quiet.enabled} onClick={() => save({ ...prefs, quiet: { ...prefs.quiet, enabled: !prefs.quiet.enabled } })} label="Horário de silêncio" />
+            </div>
+            {prefs.quiet.enabled && (
+              <div className="flex flex-wrap items-center gap-2 text-sm text-foreground">
+                <span className="text-muted-foreground">Das</span>
+                <input type="time" value={prefs.quiet.start}
+                  onChange={(ev) => ev.target.value && save({ ...prefs, quiet: { ...prefs.quiet, start: ev.target.value } })}
+                  className="bg-muted/40 border border-border rounded-lg px-2 py-1 text-sm" />
+                <span className="text-muted-foreground">às</span>
+                <input type="time" value={prefs.quiet.end}
+                  onChange={(ev) => ev.target.value && save({ ...prefs, quiet: { ...prefs.quiet, end: ev.target.value } })}
+                  className="bg-muted/40 border border-border rounded-lg px-2 py-1 text-sm" />
+              </div>
+            )}
+          </div>
+
+          <div className="surface-card flex items-center justify-between gap-3 p-4">
+            <div>
+              <p className="text-sm font-medium text-foreground">Testar push</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Manda um aviso para todos os aparelhos com notificações ativadas.</p>
+            </div>
+            <button onClick={sendTest} disabled={testState === "sending"}
+              className="px-3 py-1.5 rounded-lg bg-primary/10 text-primary text-xs font-semibold hover:bg-primary/20 disabled:opacity-50 shrink-0">
+              {testState === "sent" ? "Enviado" : testState === "sending" ? "Enviando…" : "Enviar teste"}
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 }
