@@ -4,7 +4,7 @@ import { PlanOrder } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AsaasService } from '../asaas/asaas.service';
 import { FunnelService } from '../pipelines/funnel.service';
-import { PushService } from '../notifications/push.service';
+import { NotifyService } from '../notifications/notify.service';
 import { InstagramProfileService, normalizeInstagramHandle } from '../contacts/instagram-profile.service';
 import { normalizePhone, phoneVariants } from '../../common/phone.util';
 import {
@@ -60,7 +60,7 @@ export class PlanOrdersService {
     private readonly prisma: PrismaService,
     private readonly asaas: AsaasService,
     private readonly funnel: FunnelService,
-    private readonly push: PushService,
+    private readonly notify: NotifyService,
     private readonly instagramProfile: InstagramProfileService,
   ) {}
 
@@ -254,7 +254,7 @@ export class PlanOrdersService {
     if (stage) await this.funnel.advanceTo(order.tenantId, order.contactId, stage, `Comprou o ${order.productName}`);
     else await this.funnel.ensureLead(order.tenantId, order.contactId, `Comprou o ${order.productName}`);
     await this.note(order, `💰 Pix de R$ ${order.value} confirmado. Entrega até ${fmtWhen(due)}.`);
-    this.push.sendToTenant(order.tenantId, {
+    this.notify.send(order.tenantId, 'plan_order', {
       title: `${order.productName}: pagamento confirmado`,
       body: `${order.name} (@${order.instagramHandle}) — entregar até ${fmtWhen(due)}`,
       url: `/dashboard/planos/${order.id}`,
@@ -303,7 +303,7 @@ export class PlanOrdersService {
           status: 'IN_REVIEW',
         },
       });
-      this.push.sendToTenant(order.tenantId, {
+      this.notify.send(order.tenantId, 'plan_order', {
         title: `${order.productName} pronto para revisão`,
         body: `${order.name} (@${order.instagramHandle})`,
         url: `/dashboard/planos/${order.id}`,

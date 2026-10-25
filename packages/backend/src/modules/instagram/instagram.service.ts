@@ -5,7 +5,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../../prisma/prisma.service';
 import { EncryptionService } from '../../common/services/encryption.service';
 import { FunnelService } from '../pipelines/funnel.service';
-import { PushService } from '../notifications/push.service';
+import { NotifyService } from '../notifications/notify.service';
 import { fillVars, varsOf } from '../automations/automation-runner.service';
 
 /** Permissões que o token do usuário de sistema precisa ter para a caixa de entrada e as regras. */
@@ -92,7 +92,7 @@ export class InstagramService {
     private readonly prisma: PrismaService,
     private readonly encryption: EncryptionService,
     private readonly funnel: FunnelService,
-    private readonly push: PushService,
+    private readonly notify: NotifyService,
     private readonly events: EventEmitter2,
   ) {}
 
@@ -572,7 +572,7 @@ export class InstagramService {
     }
 
     this.events.emit('instagram.inbound', { tenantId: acc.tenantId, contactId: contact.id, conversationId: conv.id, firstMessage: isNew });
-    this.push.sendToTenant(acc.tenantId, {
+    this.notify.send(acc.tenantId, 'message_instagram', {
       title: `${contact.name} · Instagram`,
       body: parsed.content.slice(0, 140),
       url: `/dashboard/conversas?conv=${conv.id}`,

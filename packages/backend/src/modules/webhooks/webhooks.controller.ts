@@ -5,6 +5,7 @@ import { FunnelService } from '../pipelines/funnel.service';
 import { normalizePhone, phoneVariants } from '../../common/phone.util';
 import { kommoOffKey } from '../kommo/kommo.controller';
 import { PlanOrdersService } from '../plan-orders/plan-orders.service';
+import { NotifyService } from '../notifications/notify.service';
 
 @Controller('webhooks')
 export class WebhooksController {
@@ -15,6 +16,7 @@ export class WebhooksController {
     private readonly events: EventEmitter2,
     private readonly funnel: FunnelService,
     private readonly planOrders: PlanOrdersService,
+    private readonly notify: NotifyService,
   ) {}
 
   @Post('asaas')
@@ -72,11 +74,42 @@ export class WebhooksController {
         });
       }
 
+      await this.notifyPayment(event, payment, accessToken);
+
     } catch (err: any) {
       this.logger.error('Asaas webhook error: ' + err.message);
     }
 
     return { ok: true };
+  }
+
+  /** Cobrança paga/atrasada → sino + push (Configurações → Notificações). Pedidos do Plano 90 dias avisam por conta própria. */
+  private async notifyPayment(event: string, payment: any, accessToken?: string) {
+    const paid = event === 'PAYMENT_RECEIVED' || event === 'PAYMENT_CONFIRMED';
+    if ((!paid && event !== 'PAYMENT_OVERDUE') || !payment?.id) return;
+    const expected = process.env.ASAAS_WEBHOOK_TOKEN;
+    if (expected && accessToken !== expected) return;
+    const id = String(payment.id);
+    if (await this.prisma.planOrder.findUnique({ where: { asaasPaymentId: id }, select: { id: true } })) return;
+
+    const entry = await this.prisma.financialEntry.findUnique({ where: { asaasPaymentId: id }, select: { tenantId: true, clientName: true } });
+    const contract = !entry && payment.customer
+      ? await this.prisma.contract.findFirst({ where: { asaasCustomerId: String(payment.customer) }, select: { tenantId: true, clientName: true } })
+      : null;
+    const tenantId = entry?.tenantId ?? contract?.tenantId
+      ?? (await this.prisma.tenant.findUnique({ where: { slug: 'dua-criativa' }, select: { id: true } }))?.id;
+    if (!tenantId) return;
+
+    const who = entry?.clientName ?? contract?.clientName ?? payment.description ?? 'Cliente';
+    const value = Number(payment.value ?? 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    const due = payment.dueDate ? ` (venceu em ${String(payment.dueDate).split('-').reverse().join('/')})` : '';
+    await this.notify.send(tenantId, paid ? 'payment_received' : 'payment_overdue', {
+      title: paid ? 'Pagamento recebido' : 'Pagamento atrasado',
+      body: paid ? `${who} — ${value}` : `${who} — ${value}${due}`,
+      url: '/dashboard/financeiro',
+      tag: `payment-${id}`,
+      once: `${paid ? 'payment-paid' : 'payment-overdue'}:${id}`,
+    });
   }
 
   @Post('kommo')
