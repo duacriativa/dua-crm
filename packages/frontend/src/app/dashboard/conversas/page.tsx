@@ -27,7 +27,7 @@ type ConversationStatus = "OPEN" | "IN_PROGRESS" | "RESOLVED" | "ARCHIVED";
 type MobileView = "list" | "chat" | "info";
 
 interface Contact {
-  id: string; name: string; phone?: string; email?: string;
+  id: string; name: string; phone?: string; email?: string; instagramHandle?: string | null;
   tags?: string[]; segment?: string;
 }
 interface Message {
@@ -264,6 +264,7 @@ function ConversasInner() {
   // Limpa LID e formatos estranhos para exibição
   const displayPhone = (phone?: string | null) => {
     if (!phone) return "";
+    if (phone.startsWith("ig:")) return "Instagram";
     if (phone.startsWith("lid:")) return "LID: " + phone.replace("lid:", "").substring(0, 8) + "…";
     if (phone.includes("@lid")) return "LID";
     // Formata número BR: +55 (DD) 9XXXX-XXXX
@@ -611,10 +612,14 @@ function ConversasInner() {
   // Janela de 24h da Meta: sem mensagem do contato nesse período, só template aprovado
   const [showTemplate, setShowTemplate] = useState(false);
   const [writeAnyway, setWriteAnyway] = useState(false);
-  const windowClosed = useMemo(() => {
+  // Instagram: sem template; até 7 dias vai com a tag de atendimento humano, depois só quando o contato escrever
+  const isInstagram = selected?.channel === "INSTAGRAM";
+  const sinceInbound = useMemo(() => {
     const last = messages.reduce((max, m) => (m.direction === "INBOUND" ? Math.max(max, new Date(m.sentAt).getTime()) : max), 0);
-    return Date.now() - last > 24 * 60 * 60 * 1000;
+    return Date.now() - last;
   }, [messages]);
+  const windowClosed = isInstagram ? sinceInbound > 7 * 24 * 60 * 60 * 1000 : sinceInbound > 24 * 60 * 60 * 1000;
+  const humanAgentWindow = isInstagram && !windowClosed && sinceInbound > 24 * 60 * 60 * 1000;
   useEffect(() => { setWriteAnyway(false); setShowTemplate(false); }, [selected?.id]);
 
   const [suggestion, setSuggestion] = useState<string | null>(null);
@@ -862,7 +867,7 @@ function ConversasInner() {
               <p className="font-semibold text-gray-900 text-sm leading-tight">{selected.contact.name}</p>
               <div className="flex items-center gap-1">
                 {channelIcon(selected.channel)}
-                <span className="text-xs text-gray-400">{displayPhone(selected.contact.phone) || displayPhone(selected.externalId)}</span>
+                <span className="text-xs text-gray-400">{selected.channel === "INSTAGRAM" && selected.contact.instagramHandle ? `@${selected.contact.instagramHandle}` : displayPhone(selected.contact.phone) || displayPhone(selected.externalId)}</span>
               </div>
             </div>
           </button>
@@ -1142,7 +1147,14 @@ function ConversasInner() {
             )}
           </div>
         )}
-        {!noteMode && windowClosed && !writeAnyway && (messages.length > 0 || !loadingMsgs) ? (
+        {!noteMode && isInstagram && windowClosed && (messages.length > 0 || !loadingMsgs) ? (
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 flex items-center gap-2">
+            <Clock className="w-4 h-4 text-amber-600 shrink-0" />
+            <p className="flex-1 text-sm text-amber-900">
+              Passaram mais de 7 dias desde a última mensagem do contato no Direct. O Instagram só deixa responder depois que ele escrever de novo.
+            </p>
+          </div>
+        ) : !noteMode && windowClosed && !writeAnyway && (messages.length > 0 || !loadingMsgs) ? (
           <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 flex flex-wrap items-center gap-2">
             <Clock className="w-4 h-4 text-amber-600 shrink-0" />
             <p className="flex-1 min-w-[180px] text-sm text-amber-900">
@@ -1155,12 +1167,17 @@ function ConversasInner() {
             <button onClick={() => setWriteAnyway(true)} className="text-xs text-amber-800 underline">Escrever mesmo assim</button>
           </div>
         ) : (<>
+        {humanAgentWindow && !noteMode && (
+          <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-1.5 mb-1.5">
+            Fora das 24h: a resposta vai com a tag de atendimento humano do Instagram (vale até 7 dias depois da última mensagem do contato).
+          </p>
+        )}
         {suggestion === null && !noteMode && (
           <div className="flex justify-end gap-1.5 mb-1.5">
-            <button onClick={() => setShowTemplate(true)} title="Enviar um template aprovado pela Meta"
+            {!isInstagram && <button onClick={() => setShowTemplate(true)} title="Enviar um template aprovado pela Meta"
               className="flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-gray-600 bg-gray-50 border border-gray-200 rounded-full hover:bg-gray-100">
               <FileText className="w-3.5 h-3.5" />Template
-            </button>
+            </button>}
             <button onClick={() => requestSuggestion()} title="A IA lê a conversa e sugere uma resposta (usa o que você já digitou)"
               className="flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-brand-700 bg-brand-50 border border-brand-200 rounded-full hover:bg-brand-100">
               <Sparkles className="w-3.5 h-3.5" />Sugerir resposta
@@ -1177,7 +1194,8 @@ function ConversasInner() {
           />
           <button
             onClick={() => fileInputRef.current?.click()}
-            disabled={sendingMedia || noteMode}
+            disabled={sendingMedia || noteMode || isInstagram}
+            title={isInstagram ? "Envio de arquivos pelo Instagram ainda não está disponível no CRM" : undefined}
             className="p-2 text-gray-400 hover:text-gray-600 disabled:opacity-40"
           >
             <Paperclip className="w-5 h-5" />
@@ -1253,6 +1271,9 @@ function ConversasInner() {
         <div className="w-12 h-12 rounded-full bg-brand-100 text-brand-600 font-bold text-lg flex items-center justify-center mx-auto mb-2">{selected.contact.name.charAt(0)}</div>
         <h2 className="font-bold text-gray-900 text-sm">{selected.contact.name}</h2>
         {selected.contact.phone && <p className="text-xs text-gray-400 mt-0.5">{displayPhone(selected.contact.phone)}</p>}
+        {selected.contact.instagramHandle && (
+          <a href={`https://instagram.com/${selected.contact.instagramHandle}`} target="_blank" rel="noreferrer" className="text-xs text-pink-600 hover:underline mt-0.5 block">@{selected.contact.instagramHandle}</a>
+        )}
         {contactInfo && (
           <div className="mt-3">
             {/* Lead ↔ Cliente: um clique troca o tipo do contato */}
