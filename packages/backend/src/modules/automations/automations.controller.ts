@@ -2,16 +2,27 @@ import { Controller, Get, Post, Patch, Delete, Param, Body, UseGuards, Request, 
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AutomationRunner } from './automation-runner.service';
-import { MEETING_STEPS, sanitizeSteps, TRIGGER_LABEL } from './automation-steps';
+import { MEETING_STEPS, sanitizeReminders, sanitizeSteps, TRIGGER_LABEL } from './automation-steps';
 import { normalizePhone, phoneVariants } from '../../common/phone.util';
 
 const ACTIVE = ['RUNNING', 'WAITING_REPLY'];
 
-function conditionsOf(input: any) {
+function conditionsOf(input: any, strict = true) {
   const onlyPhones = Array.isArray(input?.onlyPhones)
     ? input.onlyPhones.map((p: any) => normalizePhone(String(p))).filter(Boolean)
     : [];
-  return onlyPhones.length ? { onlyPhones } : {};
+  let reminders;
+  try {
+    reminders = sanitizeReminders(input?.reminders, strict);
+  } catch (err: any) {
+    throw new BadRequestException(err.message);
+  }
+  const giveUp = Math.round(Number(input?.giveUpSeconds));
+  return {
+    ...(onlyPhones.length ? { onlyPhones } : {}),
+    ...(reminders.length ? { reminders } : {}),
+    ...(reminders.length && giveUp >= 3600 && giveUp <= 30 * 24 * 3600 ? { giveUpSeconds: giveUp } : {}),
+  };
 }
 
 // Gatilhos já ligados ao executor (os outros do enum ainda não disparam)
@@ -124,7 +135,7 @@ export class AutomationsController {
         name,
         description: body.description?.trim() || null,
         trigger: body.trigger,
-        conditions: conditionsOf(body.conditions),
+        conditions: conditionsOf(body.conditions, body.active === true),
         actions: stepsOrThrow(body.actions, body.active === true, body.trigger) as any,
         // Nasce pausado: só liga depois de desligar o equivalente no Kommo
         active: body.active === true,
@@ -144,9 +155,11 @@ export class AutomationsController {
       data.name = String(body.name).trim();
     }
     if (body.description !== undefined) data.description = String(body.description || '').trim() || null;
-    if (body.conditions !== undefined) data.conditions = conditionsOf(body.conditions);
     if (body.active !== undefined) data.active = body.active === true;
     const willBeActive = data.active ?? current.active;
+    if (body.conditions !== undefined) data.conditions = conditionsOf(body.conditions, willBeActive);
+    // Ligar exige os lembretes completos (template escolhido)
+    else if (willBeActive && !current.active) conditionsOf(current.conditions, true);
     if (body.actions !== undefined) data.actions = stepsOrThrow(body.actions, willBeActive, current.trigger);
     // Ligar exige os passos completos (template escolhido, etapa etc.)
     else if (willBeActive && !current.active) stepsOrThrow(current.actions, true, current.trigger);
@@ -178,6 +191,7 @@ export class AutomationsController {
     const automation = await this.prisma.automation.findFirst({ where: { id, tenantId } });
     if (!automation) throw new NotFoundException('Bot não encontrado');
     stepsOrThrow(automation.actions, true);
+    conditionsOf(automation.conditions, true);
     const phone = normalizePhone(String(body?.phone ?? ''));
     if (!phone || phone.length < 12) throw new BadRequestException('Informe um número com DDD.');
 

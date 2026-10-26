@@ -6,8 +6,8 @@ import { NotifyService } from '../notifications/notify.service';
 import { phoneVariants, toBrDigits } from '../../common/phone.util';
 import { MEETING_EVENTS, appUrl } from '../scheduling/scheduling.service';
 import {
-  AutomationConditions, AutomationStep, DEFAULT_MEETING_STATUS_TIMEOUT_S, DEFAULT_REPLY_TIMEOUT_S, MEETING_LATE_GRACE_MS, StepTarget,
-  meetingWaitAt, originFromText, originLabel, salesChannelPhrase, sameAnswer, waitUntil,
+  AutomationConditions, AutomationStep, DEFAULT_MEETING_STATUS_TIMEOUT_S, MEETING_LATE_GRACE_MS, Reminder, StepTarget, WINDOW_MS,
+  meetingWaitAt, originFromText, originLabel, salesChannelPhrase, sameAnswer, waitPlan, waitUntil,
 } from './automation-steps';
 
 const ACTIVE = ['RUNNING', 'WAITING_REPLY'];
@@ -27,7 +27,10 @@ export interface InboundMessageEvent { tenantId: string; contactId: string; conv
 export interface HumanMessageEvent { tenantId: string; conversationId: string }
 export interface MeetingEvent { tenantId: string; meetingId: string; contactId: string; startAt: Date }
 
-type RunWithBot = { id: string; tenantId: string; contactId: string; conversationId: string | null; status: string; stepIndex: number; startedAt: Date; automation: { actions: any } };
+type RunWithBot = {
+  id: string; tenantId: string; contactId: string; conversationId: string | null; status: string; stepIndex: number; startedAt: Date;
+  remindersSent?: number; automation: { actions: any };
+};
 type RunRef = { id: string; tenantId: string; contactId: string; conversationId: string | null; startedAt: Date; meetingId: string | null };
 
 const stepsOf = (actions: any) => (Array.isArray(actions) ? actions : []) as AutomationStep[];
@@ -49,6 +52,17 @@ function afterReply(steps: AutomationStep[], i: number, answer: string) {
   }
   if (step?.type === 'wait_reply') return indexOf(steps, step.onReply, i);
   return i + 1;
+}
+
+/**
+ * Respondeu um lembrete em template ("oi, sim!"): isso não é a resposta da pergunta, então o bot
+ * pergunta de novo — os botões outra vez, ou o texto da pergunta antes da espera. null = segue normal.
+ */
+function askAgainAt(steps: AutomationStep[], i: number, answer: string) {
+  const step = steps[i];
+  if (step?.type === 'send_buttons') return step.buttons.some((b) => sameAnswer(b.title, answer)) ? null : i;
+  if (step?.type === 'wait_reply' && steps[i - 1]?.type === 'send_text') return i - 1;
+  return null;
 }
 
 /**
@@ -264,7 +278,9 @@ export class AutomationRunner implements OnModuleInit, OnModuleDestroy {
 
   /** Sessão esperando resposta recebeu uma: segue para o passo do caminho escolhido. */
   private async resume(run: RunWithBot, answer: string, conversationId: string | null) {
-    const next = afterReply(stepsOf(run.automation.actions), run.stepIndex, answer);
+    const steps = stepsOf(run.automation.actions);
+    const again = run.remindersSent && (await this.lastBotWasTemplate(conversationId)) ? askAgainAt(steps, run.stepIndex, answer) : null;
+    const next = again ?? afterReply(steps, run.stepIndex, answer);
     const now = new Date();
     await this.prisma.automationRun.updateMany({
       where: { id: run.id, status: 'WAITING_REPLY', stepIndex: run.stepIndex },
@@ -322,9 +338,33 @@ export class AutomationRunner implements OnModuleInit, OnModuleDestroy {
     const steps = stepsOf(run.automation.actions);
     let i = run.stepIndex;
 
-    // Prazo da espera por resposta venceu: segue pelo caminho de "sem resposta" ou encerra
+    // Espera por resposta: hora de um lembrete, ou o prazo venceu e segue pelo caminho de "sem resposta" (ou encerra)
     if (run.status === 'WAITING_REPLY') {
       const step = steps[i];
+      if (run.waitingSince && step && (step.type === 'wait_reply' || step.type === 'send_buttons')) {
+        const cond = (run.automation.conditions ?? {}) as AutomationConditions;
+        const plan = waitPlan(run.waitingSince, run.remindersSent, step, cond);
+        const now = Date.now();
+        if (plan.reminderAt && plan.reminderAt.getTime() <= now) {
+          try {
+            await this.remind(run, step, cond.reminders![run.remindersSent]);
+          } catch (err: any) {
+            // Lembrete que falhou não derruba a sessão: segue esperando a resposta
+            this.logger.warn(`[Bots] Lembrete ${run.remindersSent + 1} da sessão ${run.id} falhou: ${err.message}`);
+          }
+          const next = waitPlan(run.waitingSince, run.remindersSent + 1, step, cond);
+          await this.prisma.automationRun.updateMany({
+            where: { id: run.id, status: 'WAITING_REPLY', stepIndex: i },
+            data: { remindersSent: { increment: 1 }, nextRunAt: next.reminderAt ?? next.deadline },
+          });
+          return;
+        }
+        const until = plan.reminderAt ?? plan.deadline;
+        if (until.getTime() > now) {
+          await this.prisma.automationRun.updateMany({ where: { id: run.id, status: 'WAITING_REPLY', stepIndex: i }, data: { nextRunAt: until } });
+          return;
+        }
+      }
       const onTimeout = step && (step.type === 'wait_reply' || step.type === 'send_buttons') ? step.onTimeout : undefined;
       if (!onTimeout || indexOf(steps, onTimeout, i) === END) { await finish('EXPIRED'); return; }
       i = indexOf(steps, onTimeout, i);
@@ -406,10 +446,11 @@ export class AutomationRunner implements OnModuleInit, OnModuleDestroy {
         }
 
         if (step.type === 'wait_reply' || step.type === 'send_buttons') {
-          const timeout = step.timeoutSeconds || DEFAULT_REPLY_TIMEOUT_S;
+          const since = new Date();
+          const plan = waitPlan(since, 0, step, (run.automation.conditions ?? {}) as AutomationConditions);
           await this.prisma.automationRun.update({
             where: { id: run.id },
-            data: { status: 'WAITING_REPLY', stepIndex: i, nextRunAt: waitUntil(new Date(), timeout, step.alignTo, step.alignWeekends) },
+            data: { status: 'WAITING_REPLY', stepIndex: i, waitingSince: since, remindersSent: 0, nextRunAt: plan.reminderAt ?? plan.deadline },
           });
           // O contato pode ter respondido enquanto o passo rodava
           const answer = await this.replyAfterBot(conversationId);
@@ -497,6 +538,56 @@ export class AutomationRunner implements OnModuleInit, OnModuleDestroy {
       select: { content: true },
     });
     return reply ? reply.content : null;
+  }
+
+  /** A última mensagem do bot nessa conversa foi um template (lembrete com a janela fechada)? */
+  private async lastBotWasTemplate(conversationId: string | null) {
+    if (!conversationId) return false;
+    const last = await this.prisma.message.findFirst({
+      where: { conversationId, direction: 'OUTBOUND', senderName: 'Bot' },
+      orderBy: { sentAt: 'desc' },
+      select: { type: true },
+    });
+    return last?.type === 'TEMPLATE';
+  }
+
+  /** A janela de 24h do WhatsApp está aberta (o contato escreveu há menos de 24h)? */
+  private async windowOpen(run: { tenantId: string; contactId: string; conversationId: string | null }) {
+    const last = await this.prisma.message.findFirst({
+      where: {
+        direction: 'INBOUND',
+        ...(run.conversationId ? { conversationId: run.conversationId } : { conversation: { tenantId: run.tenantId, contactId: run.contactId, channel: 'WHATSAPP' } }),
+      },
+      orderBy: { sentAt: 'desc' },
+      select: { sentAt: true },
+    });
+    return !!last && Date.now() - last.sentAt.getTime() < WINDOW_MS;
+  }
+
+  /**
+   * Lembrete para quem não respondeu. Texto: só com a janela aberta (senão pula); numa pergunta
+   * com botões vai com os mesmos botões, para a pessoa só tocar. Template: sai sempre.
+   */
+  private async remind(run: RunRef, step: AutomationStep, reminder: Reminder | undefined) {
+    if (!reminder) return;
+    let msg: AutomationStep;
+    if (reminder.type === 'send_template') {
+      const { afterSeconds, ...tpl } = reminder;
+      msg = tpl;
+    } else {
+      if (!(await this.windowOpen(run))) {
+        this.logger.log(`[Bots] Lembrete de texto da sessão ${run.id} pulado: janela de 24h fechada`);
+        return;
+      }
+      msg = step.type === 'send_buttons'
+        ? { type: 'send_buttons', text: reminder.text, buttons: step.buttons.map((b) => ({ title: b.title })) }
+        : { type: 'send_text', text: reminder.text };
+    }
+    const sent = await this.execute(run, msg);
+    if (sent) {
+      await this.prisma.automationRun.update({ where: { id: run.id }, data: { sentCount: { increment: 1 }, conversationId: sent } });
+    }
+    this.logger.log(`[Bots] Lembrete (${reminder.type === 'send_template' ? reminder.templateName : 'texto'}) enviado na sessão ${run.id}`);
   }
 
   // ── Passos ─────────────────────────────────────────────────────────────────

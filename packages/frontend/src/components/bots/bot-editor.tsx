@@ -7,15 +7,15 @@ import ReactFlow, {
 } from "reactflow";
 import "reactflow/dist/style.css";
 import * as dagre from "@dagrejs/dagre";
-import { ArrowLeft, Flame, FlaskConical, LayoutGrid, Loader2, Plus, Save, Send, Trash2, X } from "lucide-react";
+import { ArrowLeft, Flame, FlaskConical, LayoutGrid, Loader2, Plus, Repeat, Save, Send, Trash2, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { authFetch } from "@/lib/auth-fetch";
 import { fetchTemplates, type WaTemplate } from "@/components/whatsapp/templates";
-import { Bot, BotRun, BotStep, BotStepStat, BotStepStats, MEETING_STEP_TYPES, botsApi, newStepId } from "./bot-api";
+import { Bot, BotReminder, BotRun, BotStep, BotStepStat, BotStepStats, MEETING_STEP_TYPES, botsApi, newStepId } from "./bot-api";
 import {
   BotGraph, OutKind, Output, landAt, linkKey, linkOf, outputsOf, removeButton, removeNode, toGraph, toSteps,
 } from "./bot-graph";
-import { NEW_STEP, RUN_STATUS, STEP_META, Stage, StepFields, StepType, inp, stepSummary, stepTitle } from "./bot-fields";
+import { NEW_STEP, RUN_STATUS, ReminderFields, STEP_META, Stage, StepFields, StepType, inp, stepSummary, stepTitle } from "./bot-fields";
 
 /* Editor visual dos bots (estilo Salesbot do Kommo): cada passo é um cartão e cada saída uma seta. */
 
@@ -161,6 +161,8 @@ export function BotEditor({ bot, onSaved }: { bot: Bot; onSaved: () => Promise<B
   const [name, setName] = useState(bot.name);
   const [description, setDescription] = useState(bot.description ?? "");
   const [onlyPhones, setOnlyPhones] = useState((bot.conditions?.onlyPhones ?? []).join("\n"));
+  const [reminders, setReminders] = useState<BotReminder[]>(bot.conditions?.reminders ?? []);
+  const [giveUpSeconds, setGiveUpSeconds] = useState(bot.conditions?.giveUpSeconds);
   const [templates, setTemplates] = useState<WaTemplate[]>([]);
   const [tplError, setTplError] = useState("");
   const [stages, setStages] = useState<Stage[]>([]);
@@ -370,7 +372,7 @@ export function BotEditor({ bot, onSaved }: { bot: Bot; onSaved: () => Promise<B
     try {
       await botsApi.update(bot.id, {
         name, description, actions,
-        conditions: { onlyPhones: onlyPhones.split(/[\n,;]+/).map((p) => p.trim()).filter(Boolean) },
+        conditions: { onlyPhones: onlyPhones.split(/[\n,;]+/).map((p) => p.trim()).filter(Boolean), reminders, giveUpSeconds },
       });
       const fresh = await onSaved();
       reset(fresh?.actions ?? actions);
@@ -527,6 +529,28 @@ export function BotEditor({ bot, onSaved }: { bot: Bot; onSaved: () => Promise<B
                   Se alguém do time escrever na conversa, o bot para.
                 </p>
               </div>
+
+              {/* Lembretes para quem não respondeu */}
+              {!isMeetingBot && (
+                <div className="border border-gray-100 rounded-xl p-3 space-y-2">
+                  <p className="flex items-center gap-1.5 text-xs font-semibold text-gray-700"><Repeat className="w-3.5 h-3.5" /> Lembretes para quem não respondeu</p>
+                  <p className="text-[11px] text-gray-500">
+                    Valem para toda pergunta do bot, contando a partir dela. Numa pergunta com botões, o texto vai com os mesmos botões.
+                    Lembrete não sai entre 21h e 9h (vai para as 9h). Se responder um template, o bot repete a pergunta.
+                  </p>
+                  <ReminderFields
+                    reminders={reminders}
+                    giveUpSeconds={giveUpSeconds}
+                    onChange={(patch) => {
+                      if (patch.reminders) setReminders(patch.reminders);
+                      if (patch.giveUpSeconds !== undefined) setGiveUpSeconds(patch.giveUpSeconds);
+                      setDirty(true);
+                    }}
+                    templates={templates}
+                    tplError={tplError}
+                  />
+                </div>
+              )}
 
               {/* Modo teste */}
               <div className="border border-amber-100 bg-amber-50/50 rounded-xl p-3 space-y-2">

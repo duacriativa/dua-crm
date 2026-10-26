@@ -169,6 +169,10 @@ function TemplateForm({ onCancel, onCreated }: { onCancel: () => void; onCreated
     setError("");
     if (!slug) return setError("Dê um nome ao template.");
     if (!body.trim()) return setError("Escreva o texto da mensagem.");
+    // Regra da Meta: o texto não pode começar nem terminar com variável (ex.: "{{1}}, tudo bem?" ou "…obrigado, {{1}}")
+    if (/^\{\{\s*\w+\s*\}\}/.test(body.trim()) || /\{\{\s*\w+\s*\}\}[\s.!?…]*$/.test(body.trim())) {
+      return setError("A Meta não aceita variável no começo ou no fim do texto. Coloque uma palavra antes (ex.: \"Oi, {{1}}!\") e termine a frase com texto.");
+    }
     const missing = [...headerVars.map((v) => `h${v}`), ...bodyVars.map((v) => `b${v}`)].filter((k) => !examples[k]?.trim());
     if (missing.length) return setError("Preencha um exemplo para cada variável (a Meta exige para aprovar).");
 

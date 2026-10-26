@@ -381,6 +381,8 @@ model AutomationRun {
   lastError      String?
   visitedSteps   String[]   @default([]) // ids dos passos por onde a sessão passou (contadores do editor)
   meetingId      String?    // reunião que disparou a sessão (gatilho "Reunião agendada"; esperas relativas ao horário dela)
+  waitingSince   DateTime?  // quando começou a espera por resposta atual (base dos lembretes)
+  remindersSent  Int        @default(0) // lembretes já enviados nessa espera
   startedAt      DateTime   @default(now())
   finishedAt     DateTime?
   updatedAt      DateTime   @updatedAt
