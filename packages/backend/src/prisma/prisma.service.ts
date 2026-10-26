@@ -8,6 +8,12 @@ function buildDatabaseUrl(): string {
   if (raw.includes('pgbouncer') && !raw.includes('connection_limit')) {
     return raw + (raw.includes('?') ? '&' : '?') + 'connection_limit=1';
   }
+  // Pooler do Supabase em modo sessão aceita só 15 clientes. Sem limite, o Prisma abre
+  // (CPUs × 2 + 1) e o excedente volta "max clients reached" → 500 (ex.: o dashboard, que
+  // faz ~13 consultas em paralelo). 6 deixa folga para o deploy, quando a instância velha e a nova convivem.
+  if (!raw.includes('connection_limit')) {
+    return raw + (raw.includes('?') ? '&' : '?') + 'connection_limit=6&pool_timeout=20';
+  }
   return raw;
 }
 
