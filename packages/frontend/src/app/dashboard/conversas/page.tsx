@@ -11,6 +11,40 @@ function formatWhatsApp(text?: string | null) {
     /^\*[^*\n]+\*$/.test(part) ? <strong key={i}>{part.slice(1, -1)}</strong> : part
   );
 }
+// Erros de entrega da Meta (WhatsApp Cloud API): rótulo curto no balão + explicação ao passar o mouse/tocar
+const META_ERRORS: Record<string, { label: string; detail: string }> = {
+  "131047": { label: "fora das 24h", detail: "O contato não falou com você nas últimas 24h. A Meta só permite enviar por template." },
+  "470": { label: "fora das 24h", detail: "O contato não falou com você nas últimas 24h. A Meta só permite enviar por template." },
+  "130472": { label: "bloqueado pela Meta", detail: "O número faz parte de um experimento da Meta que não recebe templates de marketing. Use outro canal (ex.: Instagram) ou espere o contato responder." },
+  "131049": { label: "limite de marketing", detail: "A Meta segurou a mensagem para não saturar o contato com marketing. Tente mais tarde ou espere ele responder." },
+  "131050": { label: "contato bloqueou marketing", detail: "O contato pediu para não receber mensagens de marketing da sua empresa." },
+  "131026": { label: "número sem WhatsApp", detail: "Não foi possível entregar: o número pode não ter WhatsApp, estar com o app desatualizado ou ter bloqueado sua empresa." },
+  "133010": { label: "número sem WhatsApp", detail: "O número não está registrado no WhatsApp." },
+  "131056": { label: "muitas mensagens", detail: "Muitas mensagens para o mesmo contato em pouco tempo. Aguarde alguns minutos." },
+  "131048": { label: "limite de spam", detail: "A Meta limitou os envios porque muitas mensagens foram bloqueadas ou denunciadas." },
+  "130429": { label: "limite de envio", detail: "Limite de mensagens por segundo da conta atingido. Tente de novo em instantes." },
+  "132000": { label: "erro no template", detail: "O número de variáveis enviadas não bate com o template aprovado." },
+  "132001": { label: "template não existe", detail: "O template não existe ou não está aprovado nesse idioma." },
+  "132005": { label: "template longo demais", detail: "O texto do template com as variáveis ficou longo demais." },
+  "132007": { label: "template fora da política", detail: "O conteúdo do template viola a política da Meta." },
+  "132015": { label: "template pausado", detail: "A Meta pausou o template por baixa qualidade." },
+  "132016": { label: "template desativado", detail: "A Meta desativou o template por baixa qualidade." },
+  "131008": { label: "faltou informação", detail: "Faltou um parâmetro obrigatório na mensagem." },
+  "131009": { label: "dado inválido", detail: "Algum parâmetro da mensagem é inválido." },
+  "131051": { label: "tipo não suportado", detail: "Esse tipo de mensagem não é suportado pelo WhatsApp." },
+  "131053": { label: "erro na mídia", detail: "Não foi possível enviar a mídia (formato ou tamanho não aceito)." },
+  "131042": { label: "problema de pagamento", detail: "Há uma pendência de pagamento na conta do WhatsApp Business." },
+  "131031": { label: "conta bloqueada", detail: "A conta do WhatsApp Business está bloqueada pela Meta." },
+  "368": { label: "conta restrita", detail: "A conta foi temporariamente restrita por violação de política." },
+  "131000": { label: "erro da Meta", detail: "Erro desconhecido na Meta. Tente enviar de novo." },
+};
+
+function deliveryError(code: string, message?: string) {
+  const known = META_ERRORS[code];
+  if (known) return { label: `Não entregue · ${known.label}`, title: `Não entregue: ${known.detail} (erro ${code})` };
+  return { label: "Não entregue", title: message ? `Não entregue: ${message}` : `Não entregue (erro ${code})` };
+}
+
 import {
   Search, Send, Phone, MoreVertical, Clock, CheckCheck, Check,
   Smile, Paperclip, MessageCircle, Instagram, Circle,
@@ -1095,7 +1129,7 @@ function ConversasInner() {
                       )}
                       <div className={`flex items-center justify-end gap-1 mt-0.5 ${isOut ? "text-white/70" : "text-gray-400"}`}>
                         <span className="text-[10px]">{new Date(msg.sentAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</span>
-                        {isOut && (msg.errorCode ? <span className="flex items-center gap-0.5 text-red-200 font-semibold" title={msg.errorCode === "131047" ? "Não entregue: o contato não falou com você nas últimas 24h. A Meta só permite enviar por template." : msg.errorMessage ? `Não entregue: ${msg.errorMessage}` : `Não entregue (erro ${msg.errorCode})`}><AlertCircle className="w-3 h-3" />{msg.errorCode === "131047" ? "Não entregue · fora das 24h" : "Não entregue"}</span> : msg.readAt ? <CheckCheck className="w-3 h-3 text-blue-300" /> : msg.deliveredAt ? <CheckCheck className="w-3 h-3" /> : <Check className="w-3 h-3" />)}
+                        {isOut && (msg.errorCode ? (() => { const err = deliveryError(msg.errorCode, msg.errorMessage); return <span className="flex items-center gap-0.5 text-red-200 font-semibold cursor-help" title={err.title} onClick={(e) => { e.stopPropagation(); alert(err.title); }}><AlertCircle className="w-3 h-3" />{err.label}</span>; })() : msg.readAt ? <CheckCheck className="w-3 h-3 text-blue-300" /> : msg.deliveredAt ? <CheckCheck className="w-3 h-3" /> : <Check className="w-3 h-3" />)}
                       </div>
                     </div>
                   </div>
