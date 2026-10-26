@@ -368,7 +368,7 @@ function MobileNav() {
         </div>
       </aside>
 
-      <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-sidebar border-t border-sidebar-border flex items-center pb-[env(safe-area-inset-bottom)]">
+      <nav className="mobile-bottom-nav lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-sidebar border-t border-sidebar-border flex items-center pb-[env(safe-area-inset-bottom)]">
         {navItems.slice(0, 4).map((item) => {
           const active = isActive(item.href);
           return (

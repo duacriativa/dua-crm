@@ -264,9 +264,38 @@ function TrophyWidget() {
   );
 }
 
+/**
+ * iPhone: o teclado cobre a página em vez de encolher a tela, escondendo a caixa de texto.
+ * A altura do app passa a seguir a área visível (visualViewport) e, com o teclado aberto,
+ * a barra de navegação de baixo some para sobrar espaço.
+ */
+function useKeyboardAwareHeight() {
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const root = document.documentElement;
+    const update = () => {
+      root.style.setProperty("--app-h", `${vv.height}px`);
+      root.toggleAttribute("data-keyboard", window.innerHeight - vv.height > 120);
+      // O iOS rola o documento para mostrar o campo; com a altura ajustada isso só desalinha o layout
+      if (window.scrollY !== 0) window.scrollTo(0, 0);
+    };
+    update();
+    vv.addEventListener("resize", update);
+    vv.addEventListener("scroll", update);
+    return () => {
+      vv.removeEventListener("resize", update);
+      vv.removeEventListener("scroll", update);
+      root.style.removeProperty("--app-h");
+      root.removeAttribute("data-keyboard");
+    };
+  }, []);
+}
+
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const [authed, setAuthed] = useState(false);
+  useKeyboardAwareHeight();
 
   useEffect(() => {
     const token = localStorage.getItem("access_token");
@@ -286,7 +315,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background">
+    <div className="app-shell flex overflow-hidden bg-background">
       <Sidebar />
       <div className="flex-1 flex flex-col min-w-0">
         {/* Header — desktop */}
@@ -303,7 +332,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <NotificationsBell />
           </div>
         </header>
-        <main className="flex-1 overflow-auto pt-[calc(3.5rem+env(safe-area-inset-top))] pb-[calc(4rem+env(safe-area-inset-bottom))] lg:pt-0 lg:pb-0">
+        <main className="app-main flex-1 overflow-auto pt-[calc(3.5rem+env(safe-area-inset-top))] pb-[calc(4rem+env(safe-area-inset-bottom))] lg:pt-0 lg:pb-0">
           <PushPrompt />
           {children}
         </main>

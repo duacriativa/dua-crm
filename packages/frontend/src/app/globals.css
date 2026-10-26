@@ -107,3 +107,10 @@
 
 /* Smooth scrolling on mobile */
 * { -webkit-overflow-scrolling: touch; }
+
+/* Altura do app = área visível (o teclado do iPhone não encolhe 100vh) */
+.app-shell { height: var(--app-h, 100dvh); }
+@media (max-width: 1023px) {
+  html[data-keyboard] .mobile-bottom-nav { display: none; }
+  html[data-keyboard] .app-main { padding-bottom: 0; }
+}
