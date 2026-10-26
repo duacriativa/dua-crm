@@ -6,7 +6,7 @@ import {
   CalendarClock, CalendarCheck,
 } from "lucide-react";
 import type { WaTemplate } from "@/components/whatsapp/templates";
-import { BotStep, LeadOrigin, ORIGIN_LABEL, fmtDuration, templateStep } from "./bot-api";
+import { BotReminder, BotStep, LeadOrigin, ORIGIN_LABEL, fmtDuration, templateStep } from "./bot-api";
 
 export interface Stage { id: string; name: string; position: number }
 export type StepType = BotStep["type"];
@@ -298,6 +298,67 @@ export function StepFields({ step, set, templates, tplError, stages, onAddButton
       )}
 
       {step.type === "end" && <p className="text-xs text-gray-500">O bot termina aqui.</p>}
+    </div>
+  );
+}
+
+const NEW_REMINDER: Record<"send_text" | "send_template", (afterSeconds: number) => BotReminder> = {
+  send_text: (afterSeconds) => ({ afterSeconds, type: "send_text", text: "Oi, {{primeiro_nome}}! Conseguiu ver minha mensagem? É só me responder por aqui 😉" }),
+  send_template: (afterSeconds) => ({ afterSeconds, type: "send_template", templateName: "", language: "pt_BR", params: [] }),
+};
+
+/**
+ * Lembretes para quem não respondeu: valem para toda espera por resposta do bot, contados a partir
+ * da pergunta. Texto só chega dentro das 24h; depois disso, só template aprovado.
+ */
+export function ReminderFields({ reminders, giveUpSeconds, onChange, templates, tplError }: {
+  reminders: BotReminder[];
+  giveUpSeconds?: number;
+  onChange: (patch: { reminders?: BotReminder[]; giveUpSeconds?: number }) => void;
+  templates: WaTemplate[];
+  tplError: string;
+}) {
+  const set = (k: number, patch: Partial<BotReminder>) =>
+    onChange({ reminders: reminders.map((r, m) => (m === k ? ({ ...r, ...patch } as BotReminder) : r)) });
+  const add = () => {
+    const last = reminders[reminders.length - 1]?.afterSeconds ?? 0;
+    onChange({ reminders: [...reminders, NEW_REMINDER[last >= 20 * 3600 ? "send_template" : "send_text"](last ? last * 2 : 3 * 3600)] });
+  };
+  return (
+    <div className="space-y-3">
+      {reminders.map((r, k) => (
+        <div key={k} className="border border-gray-100 rounded-lg p-2.5 space-y-2">
+          <div className="flex items-center gap-2 text-xs text-gray-500 flex-wrap">
+            <span className="font-semibold text-gray-700">{k + 1}º</span>
+            <DurationInput seconds={r.afterSeconds} onChange={(afterSeconds) => set(k, { afterSeconds })} />
+            <span>sem resposta</span>
+            <button onClick={() => onChange({ reminders: reminders.filter((_, m) => m !== k) })} className="ml-auto p-1 rounded hover:bg-red-50 text-red-400" title="Tirar lembrete">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+          <select value={r.type} onChange={(e) => onChange({ reminders: reminders.map((x, m) => (m === k ? NEW_REMINDER[e.target.value as "send_text" | "send_template"](x.afterSeconds) : x)) })} className={inp}>
+            <option value="send_text">Texto (só dentro das 24h)</option>
+            <option value="send_template">Template aprovado (depois das 24h)</option>
+          </select>
+          <StepFields
+            step={r as BotStep}
+            set={(patch) => set(k, patch as Partial<BotReminder>)}
+            templates={templates}
+            tplError={tplError}
+            stages={[]}
+            onAddButton={() => {}}
+            onRemoveButton={() => {}}
+          />
+        </div>
+      ))}
+      {reminders.length < 5 && <button onClick={add} className="text-xs text-brand-600 font-medium">+ lembrete</button>}
+      {reminders.length > 0 && (
+        <div className="flex items-center gap-2 text-xs text-gray-500 flex-wrap">
+          <span>Depois do último, esperar</span>
+          <DurationInput seconds={giveUpSeconds ?? 2 * 86400} onChange={(s) => onChange({ giveUpSeconds: s })} />
+          <span>e seguir pelo &quot;sem resposta&quot;</span>
+        </div>
+      )}
     </div>
   );
 }

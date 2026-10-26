@@ -65,8 +65,87 @@ export function meetingWaitAt(startAt: Date, step: { seconds: number; when: 'bef
 export type LeadOrigin = 'ADS' | 'ORGANIC' | 'REFERRAL' | 'OTHER';
 export const LEAD_ORIGINS: LeadOrigin[] = ['ADS', 'ORGANIC', 'REFERRAL', 'OTHER'];
 
+/**
+ * Lembrete para quem não respondeu: `afterSeconds` depois que o bot começou a esperar a resposta.
+ * Texto só sai com a janela de 24h aberta (senão é pulado); template sai sempre.
+ */
+export type Reminder = { afterSeconds: number } & (
+  | { type: 'send_text'; text: string }
+  | { type: 'send_template'; templateName: string; language: string; parameterFormat?: 'POSITIONAL' | 'NAMED'; bodyText?: string; params?: { key: string; value: string }[] }
+);
+
 export interface AutomationConditions {
   onlyPhones?: string[]; // modo teste: só dispara para esses números
+  reminders?: Reminder[]; // valem para toda espera por resposta do bot, em ordem de tempo
+  giveUpSeconds?: number; // depois do último lembrete, quanto esperar antes do "sem resposta"
+}
+
+/** Sem resposta depois do último lembrete: espera isso e segue pelo "sem resposta". */
+export const DEFAULT_GIVE_UP_S = 2 * 24 * 3600;
+
+/** Margem antes de a janela de 24h do WhatsApp fechar (texto livre deixa de chegar). */
+export const WINDOW_MS = 24 * 3600_000 - 10 * 60_000;
+
+/** Lembrete não sai de madrugada: entre 21h e 9h (Brasília) vai para as 9h. */
+export function businessHours(d: Date) {
+  const OFFSET = 3 * 3600_000;
+  const local = new Date(d.getTime() - OFFSET);
+  const h = local.getUTCHours();
+  if (h >= 9 && h < 21) return d;
+  const at = new Date(Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate(), 9, 0));
+  if (h >= 21) at.setUTCDate(at.getUTCDate() + 1);
+  return new Date(at.getTime() + OFFSET);
+}
+
+/**
+ * Agenda de uma espera por resposta que começou em `since`: quando sai o próximo lembrete
+ * (null = já saíram todos) e quando vence o "sem resposta". Com lembretes, o prazo do passo
+ * só vale se for depois do último lembrete + `giveUpSeconds`.
+ */
+export function waitPlan(
+  since: Date,
+  sent: number,
+  step: { timeoutSeconds?: number; alignTo?: string; alignWeekends?: boolean },
+  cond: AutomationConditions,
+) {
+  const timeoutAt = waitUntil(since, step.timeoutSeconds || DEFAULT_REPLY_TIMEOUT_S, step.alignTo, step.alignWeekends);
+  const reminders = cond.reminders ?? [];
+  if (!reminders.length) return { reminderAt: null, deadline: timeoutAt };
+  const at = (r: Reminder) => businessHours(new Date(since.getTime() + r.afterSeconds * 1000));
+  const afterLast = at(reminders[reminders.length - 1]).getTime() + (cond.giveUpSeconds ?? DEFAULT_GIVE_UP_S) * 1000;
+  return {
+    reminderAt: sent < reminders.length ? at(reminders[sent]) : null,
+    deadline: new Date(Math.max(timeoutAt.getTime(), afterLast)),
+  };
+}
+
+/** Valida os lembretes vindos da tela (até 5, em ordem de tempo, até 30 dias). */
+export function sanitizeReminders(input: any, strict = true): Reminder[] {
+  if (!Array.isArray(input)) return [];
+  if (input.length > 5) throw new Error('Máximo de 5 lembretes.');
+  const out = input.map((r: any): Reminder => {
+    const afterSeconds = Math.round(Number(r?.afterSeconds));
+    if (!Number.isFinite(afterSeconds) || afterSeconds < 60 || afterSeconds > 30 * 24 * 3600) {
+      throw new Error('Tempo do lembrete inválido (de 1 minuto a 30 dias).');
+    }
+    if (r?.type === 'send_template') {
+      const templateName = String(r.templateName ?? '').trim();
+      if (!templateName && strict) throw new Error('Escolha o template do lembrete.');
+      return {
+        afterSeconds,
+        type: 'send_template',
+        templateName,
+        language: String(r.language || 'pt_BR'),
+        parameterFormat: r.parameterFormat === 'NAMED' ? 'NAMED' : 'POSITIONAL',
+        ...(typeof r.bodyText === 'string' ? { bodyText: r.bodyText } : {}),
+        params: Array.isArray(r.params) ? r.params.map((p: any) => ({ key: String(p?.key ?? ''), value: String(p?.value ?? '') })) : [],
+      };
+    }
+    const text = String(r?.text ?? '').trim();
+    if (!text && strict) throw new Error('Lembrete de texto vazio.');
+    return { afterSeconds, type: 'send_text', text: text.slice(0, 1024) };
+  });
+  return out.sort((a, b) => a.afterSeconds - b.afterSeconds);
 }
 
 export const STEP_TYPES = ['wait', 'wait_reply', 'send_text', 'send_template', 'send_buttons', 'move_stage', 'add_tag', 'notify', 'check_origin', 'set_origin', 'goto', 'end', ...MEETING_STEPS];
