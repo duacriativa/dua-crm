@@ -25,8 +25,9 @@ self.addEventListener("notificationclick", (event) => {
     self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((list) => {
       for (const client of list) {
         if ("focus" in client) {
-          client.navigate(url);
-          return client.focus();
+          // No iPhone o navigate() às vezes falha: a própria página troca de tela pela mensagem
+          client.postMessage({ type: "navigate", url });
+          return client.focus().then(() => client.navigate && client.navigate(url)).catch(() => {});
         }
       }
       return self.clients.openWindow(url);

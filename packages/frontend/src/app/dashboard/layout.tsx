@@ -297,6 +297,17 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [authed, setAuthed] = useState(false);
   useKeyboardAwareHeight();
 
+  // Toque na notificação com o app aberto: o service worker pede para abrir a conversa
+  useEffect(() => {
+    if (!("serviceWorker" in navigator)) return;
+    const onMessage = (e: MessageEvent) => {
+      if (e.data?.type !== "navigate" || typeof e.data.url !== "string") return;
+      if (window.location.pathname + window.location.search !== e.data.url) window.location.assign(e.data.url);
+    };
+    navigator.serviceWorker.addEventListener("message", onMessage);
+    return () => navigator.serviceWorker.removeEventListener("message", onMessage);
+  }, []);
+
   useEffect(() => {
     const token = localStorage.getItem("access_token");
     if (!token) {

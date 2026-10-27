@@ -597,7 +597,7 @@ function TabIntegracoes() {
   };
 
   const available = [
-    waStatus === "disconnected" && { key: "wa", name: "WhatsApp", desc: "Atenda e automatize pelo WhatsApp", icon: "💬", onActivate: async () => router.push("/dashboard/whatsapp") },
+    waStatus === "disconnected" && { key: "wa", name: "WhatsApp", desc: "Atenda e automatize pelo WhatsApp", icon: "💬", onActivate: async () => router.push("/dashboard/whatsapp?config=1") },
     conn.google === false && { key: "google", name: "Google Agenda", desc: "Agendamentos com Google Meet", icon: "📅", onActivate: activateWith("google", startGoogleConnect) },
     conn.meta === false && { key: "meta", name: "Meta Ads", desc: "Investimento e leads dos anúncios", icon: "📣", onActivate: activateWith("meta", startMetaConnect) },
     conn.instagram === false && { key: "instagram", name: "Instagram", desc: "DMs, comentários e stories no CRM", icon: "📸", onActivate: async () => {
@@ -647,7 +647,7 @@ function TabIntegracoes() {
             </div>
 
             <button
-              onClick={() => router.push("/dashboard/whatsapp")}
+              onClick={() => router.push("/dashboard/whatsapp?config=1")}
               className={`w-full py-2 mt-auto text-sm font-medium rounded-xl transition-colors ${
                 waStatus === "connected"
                   ? "border border-border text-muted-foreground hover:bg-muted/50"

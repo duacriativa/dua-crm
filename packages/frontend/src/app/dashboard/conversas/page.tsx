@@ -933,6 +933,13 @@ function ConversasInner() {
                     </button>
                   );
                 })}
+                {contactInfo && (<>
+                  <div className="border-t border-gray-100 my-1" />
+                  <button onClick={() => { patchContact({ type: contactInfo.type === "CLIENT" ? "LEAD" : "CLIENT" }); setShowChatMenu(false); }}
+                    className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2">
+                    <BadgeCheck className="w-3.5 h-3.5" />{contactInfo.type === "CLIENT" ? "Marcar como lead" : "Marcar como cliente"}
+                  </button>
+                </>)}
                 <div className="border-t border-gray-100 my-1" />
                 <button onClick={() => { deleteConversation(); setShowChatMenu(false); }}
                   className="w-full text-left px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2">

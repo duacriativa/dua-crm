@@ -78,6 +78,12 @@ export default function FunilPage() {
   const [newLead, setNewLead] = useState({ name: "", phone: "", value: "" });
   const [draggingLead, setDraggingLead] = useState<{ lead: Lead; fromStageId: string } | null>(null);
   const [moveLeadModal, setMoveLeadModal] = useState<{ lead: Lead; fromStageId: string } | null>(null);
+  // A barra de navegação do celular ficava por cima do painel e cortava as últimas etapas
+  useEffect(() => {
+    if (!moveLeadModal) return;
+    document.documentElement.setAttribute("data-sheet", "");
+    return () => document.documentElement.removeAttribute("data-sheet");
+  }, [moveLeadModal]);
   const [draggingStageId, setDraggingStageId] = useState<string | null>(null);
   const [dragOverStageId, setDragOverStageId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -1127,9 +1133,9 @@ export default function FunilPage() {
 
       {/* ── Modal mover lead de etapa (mobile) ── */}
       {moveLeadModal && activePipeline && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4"
           onClick={() => setMoveLeadModal(null)}>
-          <div className="bg-card border border-border rounded-t-3xl sm:rounded-3xl w-full sm:max-w-sm p-6"
+          <div className="bg-card border border-border rounded-t-3xl sm:rounded-3xl w-full sm:max-w-sm p-6 pb-[calc(1.5rem+env(safe-area-inset-bottom))] max-h-[85dvh] overflow-y-auto overscroll-contain"
             onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
               <div>

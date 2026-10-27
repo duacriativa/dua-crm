@@ -636,10 +636,13 @@ export default function WhatsAppPage() {
     setMobileView("chat");
   };
 
-  // Notificações antigas apontavam para cá (?conv=<id>): a conversa abre no inbox principal
+  // O atendimento é no inbox principal (/dashboard/conversas). Esta tela fica só para a conexão
+  // (?config=1). O app instalado no celular e notificações antigas ainda abrem aqui: redireciona.
   useEffect(() => {
-    const convId = new URLSearchParams(window.location.search).get("conv");
-    if (convId) window.location.replace(`/dashboard/conversas?conv=${encodeURIComponent(convId)}`);
+    const params = new URLSearchParams(window.location.search);
+    if (params.has("config")) { setShowSettings(true); return; }
+    const convId = params.get("conv");
+    window.location.replace(convId ? `/dashboard/conversas?conv=${encodeURIComponent(convId)}` : "/dashboard/conversas");
   }, []);
 
   const updateMessage = useCallback((msgId: string, updates: Partial<Message>) => {

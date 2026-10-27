@@ -2,7 +2,7 @@
   "name": "Dua CRM",
   "short_name": "Dua CRM",
   "description": "Atendimento e funil de vendas da Dua Criativa",
-  "start_url": "/dashboard/whatsapp",
+  "start_url": "/dashboard/conversas",
   "scope": "/",
   "display": "standalone",
   "background_color": "#B5FB3D",
