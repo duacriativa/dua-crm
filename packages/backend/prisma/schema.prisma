@@ -286,6 +286,7 @@ model Message {
   content        String
   mediaUrl       String?
   mediaId        String?          // ID da mídia na WhatsApp Cloud API (download sob demanda)
+  transcription  String?          // transcrição de áudio (Whisper via Groq), gerada sob demanda
   templateName   String?
   externalId     String?          // Meta message ID
   senderName       String?        // nome de quem enviou (em grupos: pushName do remetente)

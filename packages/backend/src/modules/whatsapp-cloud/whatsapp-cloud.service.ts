@@ -1,6 +1,7 @@
 import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
 import axios from 'axios';
 import * as crypto from 'crypto';
+import { spawn } from 'child_process';
 import { PrismaService } from '../../prisma/prisma.service';
 import { EncryptionService } from '../../common/services/encryption.service';
 import { FunnelService } from '../pipelines/funnel.service';
@@ -285,9 +286,20 @@ export class WhatsAppCloudService {
     const cred = await this.getCredential(tenantId);
     if (!cred) throw new NotFoundException('WhatsApp oficial não conectado.');
 
-    const match = base64.match(/^data:([^;]+);base64,(.*)$/);
-    const mime = match?.[1] || 'application/octet-stream';
-    const buffer = Buffer.from(match?.[2] ?? base64, 'base64');
+    const match = base64.match(/^data:([^;,]+)[^,]*;base64,(.*)$/);
+    let mime = match?.[1] || 'application/octet-stream';
+    let buffer = Buffer.from(match?.[2] ?? base64, 'base64');
+
+    // Gravação do navegador (webm/mp4) → ogg/opus, o único formato que o
+    // WhatsApp mostra como mensagem de voz. Sem ffmpeg, vai o arquivo original.
+    let voice = false;
+    if (mediatype === 'audio') {
+      const ogg = await this.toOggOpus(buffer).catch((e) => {
+        this.logger.warn(`[audio] conversão para ogg falhou, enviando original: ${e.message}`);
+        return null;
+      });
+      if (ogg) { buffer = ogg; mime = 'audio/ogg'; filename = 'audio.ogg'; voice = true; }
+    }
 
     // Upload da mídia (multipart) → media id
     const form = new FormData();
@@ -309,15 +321,41 @@ export class WhatsAppCloudService {
     const media: any = { id: mediaId };
     if (caption && mediatype !== 'audio') media.caption = caption;
     if (mediatype === 'document') media.filename = filename;
+    if (voice) media.voice = true;
 
-    const data = await this.post(tenantId, 'messages', {
+    const payload = {
       messaging_product: 'whatsapp',
       recipient_type: 'individual',
       to: this.toWaId(to),
       type: mediatype,
       [mediatype]: media,
+    };
+    let data: any;
+    try {
+      data = await this.post(tenantId, 'messages', payload);
+    } catch (err) {
+      // Se a conta não aceitar o campo "voice", reenvia como áudio comum
+      if (!voice) throw err;
+      delete media.voice;
+      data = await this.post(tenantId, 'messages', payload);
+    }
+    const dataUri = `data:${mime};base64,${buffer.toString('base64')}`;
+    return { externalId: data?.messages?.[0]?.id ?? null, mediaId, dataUri };
+  }
+
+  /** Converte qualquer áudio para ogg/opus mono com o ffmpeg do sistema. */
+  private toOggOpus(input: Buffer): Promise<Buffer> {
+    return new Promise((resolve, reject) => {
+      const ff = spawn('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-i', 'pipe:0', '-vn', '-ac', '1', '-ar', '48000', '-c:a', 'libopus', '-b:a', '32k', '-f', 'ogg', 'pipe:1']);
+      const out: Buffer[] = [];
+      let err = '';
+      ff.stdout.on('data', (d) => out.push(d));
+      ff.stderr.on('data', (d) => { err += d; });
+      ff.on('error', reject); // ffmpeg ausente
+      ff.on('close', (code) => (code === 0 && out.length ? resolve(Buffer.concat(out)) : reject(new Error(err.trim() || `ffmpeg saiu com ${code}`))));
+      ff.stdin.on('error', () => {});
+      ff.stdin.end(input);
     });
-    return { externalId: data?.messages?.[0]?.id ?? null, mediaId };
   }
 
   /** Mensagem com até 3 botões de resposta (só dentro da janela de 24h). */

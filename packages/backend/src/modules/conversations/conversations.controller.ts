@@ -119,7 +119,7 @@ export class ConversationsController {
     return this.conversationsService.suggestReply(req.user.tenantId, id, body?.previous, body?.draft);
   }
 
-  /** POST /conversations/:id/media — envia mídia (imagem/vídeo/documento) */
+  /** POST /conversations/:id/media — envia mídia (imagem/vídeo/documento/áudio) */
   @Post(':id/media')
   sendMedia(
     @Request() req: any,
@@ -156,6 +156,16 @@ export class ConversationsController {
     @Param('msgId') msgId: string,
   ) {
     return this.conversationsService.redownloadMedia(req.user.tenantId, id, msgId);
+  }
+
+  /** POST /conversations/:id/messages/:msgId/transcribe — transcreve um áudio */
+  @Post(':id/messages/:msgId/transcribe')
+  transcribe(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Param('msgId') msgId: string,
+  ) {
+    return this.conversationsService.transcribe(req.user.tenantId, id, msgId);
   }
 
   /** PATCH /conversations/:id/status */

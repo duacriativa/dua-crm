@@ -15,7 +15,7 @@ import {
   Search, Send, Phone, MoreVertical, Clock, CheckCheck, Check,
   Smile, Paperclip, MessageCircle, Instagram, Circle,
   ArrowLeft, RefreshCw, Plus, X, Trash2, AlertCircle, Sparkles, FileText, StickyNote,
-  Mail, BadgeCheck, Megaphone, EyeOff, RotateCcw,
+  Mail, BadgeCheck, Megaphone, EyeOff, RotateCcw, Mic, Square,
 } from "lucide-react";
 import Link from "next/link";
 import { SendTemplateModal } from "@/components/whatsapp/templates";
@@ -32,7 +32,7 @@ interface Contact {
 }
 interface Message {
   id: string; externalId?: string | null; content: string; direction: "INBOUND" | "OUTBOUND";
-  type: string; sentAt: string; mediaUrl?: string | null;
+  type: string; sentAt: string; mediaUrl?: string | null; transcription?: string | null;
   quotedContent?: string | null; quotedExternalId?: string | null; quotedType?: string | null;
   deliveredAt?: string | null; readAt?: string | null; errorCode?: string | null; errorMessage?: string; quotedFromMe?: boolean;
 }
@@ -54,6 +54,41 @@ interface ContactDetails {
 const SERVICE_LABEL: Record<string, string> = {
   SOCIAL_MEDIA: "Social media", PAID_TRAFFIC: "Tráfego pago", CRM_SETUP: "CRM", CONSULTING: "Consultoria", OTHER: "Outro",
 };
+// Player de áudio no estilo do WhatsApp: play/pause, barra de progresso e velocidade
+function AudioPlayer({ src, isOut }: { src: string; isOut: boolean }) {
+  const ref = useRef<HTMLAudioElement>(null);
+  const [playing, setPlaying] = useState(false);
+  const [time, setTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [rate, setRate] = useState(1);
+  const fmt = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+  const toggle = () => { const a = ref.current; if (!a) return; if (a.paused) a.play(); else a.pause(); };
+  const cycleRate = () => {
+    const next = rate === 1 ? 1.5 : rate === 1.5 ? 2 : 1;
+    setRate(next);
+    if (ref.current) ref.current.playbackRate = next;
+  };
+  return (
+    <div className={`flex items-center gap-2 w-60 ${isOut ? "text-white" : "text-gray-600"}`}>
+      <audio ref={ref} src={src} preload="metadata"
+        onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} onEnded={() => { setPlaying(false); setTime(0); }}
+        onTimeUpdate={(e) => setTime(e.currentTarget.currentTime)}
+        // webm gravado no navegador vem com duração Infinity até ser lido inteiro
+        onLoadedMetadata={(e) => { const d = e.currentTarget.duration; if (Number.isFinite(d)) setDuration(d); }}
+        onDurationChange={(e) => { const d = e.currentTarget.duration; if (Number.isFinite(d)) setDuration(d); }} />
+      <button type="button" onClick={toggle} title={playing ? "Pausar" : "Ouvir"}
+        className={`w-8 h-8 shrink-0 rounded-full flex items-center justify-center ${isOut ? "bg-white/20 hover:bg-white/30" : "bg-brand-50 text-brand-600 hover:bg-brand-100"}`}>
+        {playing ? <Square className="w-3 h-3 fill-current" /> : <svg className="w-3.5 h-3.5 ml-0.5" viewBox="0 0 24 24" fill="currentColor"><path d="M6 4l14 8-14 8z" /></svg>}
+      </button>
+      <input type="range" min={0} max={duration || 1} step={0.1} value={Math.min(time, duration || 1)}
+        onChange={(e) => { const a = ref.current; if (a) a.currentTime = Number(e.target.value); }}
+        className={`flex-1 h-1 cursor-pointer ${isOut ? "accent-white" : "accent-brand-600"}`} />
+      <span className="text-[10px] tabular-nums w-8 text-right">{fmt(playing || time ? time : duration)}</span>
+      <button type="button" onClick={cycleRate} title="Velocidade"
+        className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${isOut ? "bg-white/20" : "bg-gray-100"}`}>{rate}x</button>
+    </div>
+  );
+}
 // "@lsfbrand_", "lsfbrand_" ou a URL do perfil → "lsfbrand_"
 function igHandle(raw: string) {
   return raw.trim().replace(/^https?:\/\/(www\.)?instagram\.com\//i, "").replace(/^@/, "").replace(/[/?#].*$/, "");
@@ -604,12 +639,12 @@ function ConversasInner() {
     return { url: data.mediaUrl };
   };
 
-  // Carrega automaticamente imagens/figurinhas que ainda não têm arquivo
+  // Carrega automaticamente imagens/figurinhas/áudios que ainda não têm arquivo
   const triedMediaRef = useRef(new Set<string>());
   useEffect(() => {
     if (!selected) return;
     messages
-      .filter((m) => m.type === "IMAGE" && !m.mediaUrl && !m.id.startsWith("opt-") && !triedMediaRef.current.has(m.id))
+      .filter((m) => (m.type === "IMAGE" || m.type === "AUDIO") && !m.mediaUrl && !m.id.startsWith("opt-") && !triedMediaRef.current.has(m.id))
       .slice(-20)
       .forEach((m) => { triedMediaRef.current.add(m.id); fetchMediaUrl(selected.id, m.id).catch(() => {}); });
   }, [messages, selected]);
@@ -637,6 +672,94 @@ function ConversasInner() {
     a.href = url!;
     a.download = msg.content && msg.content !== "[documento]" ? msg.content : "documento";
     a.click();
+  };
+
+  // ── Áudio: transcrição e gravação ─────────────────────────────────────────
+  const [transcribingId, setTranscribingId] = useState<string | null>(null);
+  const transcribe = async (msg: Message) => {
+    if (!selected || transcribingId) return;
+    setTranscribingId(msg.id);
+    try {
+      const res = await authFetch(`${API_URL}/api/v1/conversations/${selected.id}/messages/${msg.id}/transcribe`, { method: "POST", headers: authHeaders() });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.transcription) { alert(data.message || "Não foi possível transcrever o áudio."); return; }
+      setMessages((prev) => prev.map((m) => m.id === msg.id ? { ...m, transcription: data.transcription } : m));
+    } finally {
+      setTranscribingId(null);
+    }
+  };
+
+  const [recording, setRecording] = useState(false);
+  const [recordSeconds, setRecordSeconds] = useState(0);
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const recordChunksRef = useRef<Blob[]>([]);
+  const recordCancelRef = useRef(false);
+  useEffect(() => {
+    if (!recording) return;
+    const t = setInterval(() => setRecordSeconds((s) => s + 1), 1000);
+    return () => clearInterval(t);
+  }, [recording]);
+  // Trocar de conversa no meio da gravação descarta o áudio
+  useEffect(() => () => { if (recorderRef.current?.state === "recording") { recordCancelRef.current = true; recorderRef.current.stop(); } }, [selected?.id]);
+
+  const startRecording = async () => {
+    if (!selected || recording || sendingMedia) return;
+    let stream: MediaStream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch {
+      alert("Não foi possível acessar o microfone. Libere o acesso no navegador.");
+      return;
+    }
+    // O servidor converte para ogg/opus (mensagem de voz); aqui vale o que o navegador gravar
+    const mimeType = ["audio/ogg;codecs=opus", "audio/webm;codecs=opus", "audio/mp4"].find((t) => MediaRecorder.isTypeSupported(t));
+    const rec = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+    const convId = selected.id;
+    recordChunksRef.current = [];
+    recordCancelRef.current = false;
+    rec.ondataavailable = (e) => { if (e.data.size) recordChunksRef.current.push(e.data); };
+    rec.onstop = () => {
+      stream.getTracks().forEach((t) => t.stop());
+      setRecording(false);
+      if (recordCancelRef.current || !recordChunksRef.current.length) return;
+      sendAudio(convId, new Blob(recordChunksRef.current, { type: rec.mimeType || "audio/webm" }));
+    };
+    recorderRef.current = rec;
+    rec.start();
+    setRecordSeconds(0);
+    setRecording(true);
+  };
+  const stopRecording = (cancel: boolean) => {
+    recordCancelRef.current = cancel;
+    if (recorderRef.current?.state === "recording") recorderRef.current.stop();
+  };
+
+  const sendAudio = (convId: string, blob: Blob) => {
+    setSendingMedia(true);
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const dataUri = reader.result as string;
+      const optId = `opt-${Date.now()}`;
+      forceScrollRef.current = true;
+      setMessages((prev) => [...prev, { id: optId, content: "[áudio]", direction: "OUTBOUND", type: "AUDIO", sentAt: new Date().toISOString(), mediaUrl: dataUri }]);
+      try {
+        const res = await authFetch(`${API_URL}/api/v1/conversations/${convId}/media`, {
+          method: "POST",
+          headers: authHeaders(),
+          body: JSON.stringify({ base64: dataUri, mediatype: "audio", filename: "audio", caption: "" }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          setMessages((prev) => prev.filter((m) => m.id !== optId));
+          alert(data.message || "Não foi possível enviar o áudio.");
+          return;
+        }
+        setMessages((prev) => prev.map((m) => m.id === optId ? { ...m, ...data } : m));
+      } finally {
+        setSendingMedia(false);
+      }
+    };
+    reader.readAsDataURL(blob);
   };
 
   // ── Sugestão de resposta (IA) ─────────────────────────────────────────────
@@ -1053,11 +1176,22 @@ function ConversasInner() {
                     )}
                     {msg.type === "AUDIO" && (
                       <div className="px-3 pt-3">
-                        {false ? null : (
-                          <div className={`flex items-center gap-2 ${isOut ? "text-white/80" : "text-gray-400"}`}>
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4M8 23h8"/></svg>
-                            <span className="text-xs font-medium">Áudio</span>
-                          </div>
+                        {msg.mediaUrl ? (
+                          <AudioPlayer src={msg.mediaUrl} isOut={isOut} />
+                        ) : (
+                          <button type="button" onClick={() => selected && fetchMediaUrl(selected.id, msg.id).then((r) => { if (r.error) alert(r.error); })}
+                            className={`flex items-center gap-2 ${isOut ? "text-white/80" : "text-gray-400 hover:text-brand-600"}`}>
+                            <Mic className="w-5 h-5" />
+                            <span className="text-xs font-medium">Áudio · carregar</span>
+                          </button>
+                        )}
+                        {msg.transcription ? (
+                          <p className={`mt-2 text-xs leading-relaxed whitespace-pre-wrap italic ${isOut ? "text-white/90" : "text-gray-600"}`}>{msg.transcription}</p>
+                        ) : !msg.id.startsWith("opt-") && (
+                          <button type="button" onClick={() => transcribe(msg)} disabled={transcribingId === msg.id}
+                            className={`mt-1.5 flex items-center gap-1 text-[11px] font-semibold ${isOut ? "text-white/80 hover:text-white" : "text-brand-600 hover:text-brand-700"}`}>
+                            {transcribingId === msg.id ? <><RefreshCw className="w-3 h-3 animate-spin" />Transcrevendo…</> : <><FileText className="w-3 h-3" />Transcrever</>}
+                          </button>
                         )}
                       </div>
                     )}
@@ -1268,16 +1402,35 @@ function ConversasInner() {
             <option value="__add">+ Novo nome…</option>
             {signature && <option value="__remove">Remover "{signature}"</option>}
           </select>
+          {recording ? (
+            <div className="flex-1 flex items-center gap-3 h-[42px] bg-red-50 border border-red-200 rounded-2xl px-4 text-sm text-red-700">
+              <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse" />
+              <span className="font-semibold tabular-nums">{Math.floor(recordSeconds / 60)}:{String(recordSeconds % 60).padStart(2, "0")}</span>
+              <span className="text-xs text-red-500">Gravando áudio…</span>
+              <button onClick={() => stopRecording(true)} title="Descartar áudio" className="ml-auto p-1 text-red-400 hover:text-red-600">
+                <Trash2 className="w-4 h-4" />
+              </button>
+            </div>
+          ) : (
           <textarea value={newMessage} onChange={handleMessageChange} onKeyDown={handleKeyDown} onPaste={handlePaste}
             placeholder={noteMode ? (noteRecipient ? `Mensagem para ${noteRecipient}: o cliente não vê` : "Nota interna: só a equipe vê, não vai para o WhatsApp") : replyingTo ? "Digite sua resposta..." : "Digite uma mensagem..."}
             ref={textareaRef} data-autogrow rows={1} className={`flex-1 resize-none text-gray-900 placeholder:text-gray-400 border rounded-2xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 max-h-60 overflow-y-auto ${noteMode ? "bg-amber-50 border-amber-200 focus:ring-amber-400" : "bg-gray-50 border-gray-200 focus:ring-brand-500"}`} style={{ minHeight: "42px" }} />
+          )}
           {noteMode ? (
             <button onClick={saveNote} disabled={!newMessage.trim() || savingNote} title={noteRecipient ? `Avisar ${noteRecipient}` : "Salvar nota"}
               className="flex items-center gap-1.5 px-3 py-2.5 bg-amber-500 text-white text-xs font-semibold rounded-2xl hover:bg-amber-600 disabled:opacity-40 transition-colors">
               {savingNote ? <RefreshCw className="w-4 h-4 animate-spin" /> : <StickyNote className="w-4 h-4" />}{noteRecipient ? "Enviar" : "Salvar nota"}
             </button>
+          ) : recording ? (
+            <button onClick={() => stopRecording(false)} title="Parar e enviar áudio" className="p-2.5 bg-brand-600 text-white rounded-2xl hover:bg-brand-700 transition-colors">
+              <Send className="w-4 h-4" />
+            </button>
+          ) : !newMessage.trim() ? (
+            <button onClick={startRecording} disabled={sendingMedia} title="Gravar áudio" className="p-2.5 bg-brand-600 text-white rounded-2xl hover:bg-brand-700 disabled:opacity-40 transition-colors">
+              {sendingMedia ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Mic className="w-4 h-4" />}
+            </button>
           ) : (
-            <button onClick={sendMessage} disabled={!newMessage.trim() || sending} className="p-2.5 bg-brand-600 text-white rounded-2xl hover:bg-brand-700 disabled:opacity-40 transition-colors">
+            <button onClick={sendMessage} disabled={sending} className="p-2.5 bg-brand-600 text-white rounded-2xl hover:bg-brand-700 disabled:opacity-40 transition-colors">
               <Send className="w-4 h-4" />
             </button>
           )}

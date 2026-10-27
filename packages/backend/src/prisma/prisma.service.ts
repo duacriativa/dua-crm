@@ -314,6 +314,8 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
       `CREATE INDEX IF NOT EXISTS "Notification_tenantId_createdAt_idx" ON "Notification"("tenantId", "createdAt")`,
       `CREATE INDEX IF NOT EXISTS "Notification_tenantId_groupKey_idx" ON "Notification"("tenantId", "groupKey")`,
       `REVOKE ALL ON TABLE "Notification" FROM anon, authenticated`,
+      // 20261027000001_add_message_transcription
+      `ALTER TABLE "Message" ADD COLUMN IF NOT EXISTS "transcription" TEXT`,
     ];
     for (const sql of statements) {
       try {

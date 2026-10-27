@@ -142,6 +142,7 @@ export class ConversationsService {
         direction: true,
         type: true,
         mediaUrl: true,
+        transcription: true,
         senderName: true,
         quotedContent: true,
         quotedExternalId: true,
@@ -255,16 +256,18 @@ export class ConversationsService {
     const msgTypeOf = (t: string) => (t === 'image' ? 'IMAGE' : t === 'video' ? 'VIDEO' : t === 'audio' ? 'AUDIO' : 'DOCUMENT');
 
     await this.ensureCloudConnected(tenantId);
-    const { externalId, mediaId } = await this.cloud.sendMedia(tenantId, this.cloudRecipient(conv), base64, mediatype, filename, caption);
+    const { externalId, mediaId, dataUri } = await this.cloud.sendMedia(tenantId, this.cloudRecipient(conv), base64, mediatype, filename, caption);
     const message = await this.prisma.message.create({
       data: {
         conversationId,
         direction: 'OUTBOUND',
         type: msgTypeOf(mediatype),
-        content: caption || filename,
+        content: mediatype === 'audio' ? '[áudio]' : caption || filename,
         sentAt: new Date(),
         externalId,
         mediaId,
+        // Áudio gravado fica salvo para tocar na hora, sem baixar de novo da Meta
+        mediaUrl: mediatype === 'audio' ? dataUri : undefined,
       },
     });
     await this.prisma.conversation.update({ where: { id: conversationId }, data: { updatedAt: new Date() } });
@@ -465,14 +468,16 @@ export class ConversationsService {
       where: { conversationId },
       orderBy: { sentAt: 'desc' },
       take: 30,
-      select: { direction: true, type: true, content: true, sentAt: true },
+      select: { direction: true, type: true, content: true, transcription: true, sentAt: true },
     });
     if (recent.length === 0) throw new BadRequestException('Conversa sem mensagens para analisar.');
 
     const name = conv.contact?.name || 'Cliente';
     const transcript = recent.reverse().map((m) => {
       const who = m.direction === 'OUTBOUND' ? 'Dua' : name;
-      const text = m.type === 'TEXT' ? m.content : `[${m.type.toLowerCase()}] ${m.content ?? ''}`;
+      const text = m.type === 'TEXT' ? m.content
+        : m.transcription ? `[áudio transcrito] ${m.transcription}`
+        : `[${m.type.toLowerCase()}] ${m.content ?? ''}`;
       return `${who}: ${text}`;
     }).join('\n');
 
@@ -503,6 +508,48 @@ export class ConversationsService {
     } catch (err: any) {
       throw new BadRequestException(`Falha na IA: ${err?.response?.data?.error?.message ?? err.message}`);
     }
+  }
+
+  /** Transcreve um áudio com Whisper (Groq) e guarda o texto na mensagem. */
+  async transcribe(tenantId: string, conversationId: string, messageId: string) {
+    const apiKey = process.env.GROQ_API_KEY;
+    if (!apiKey) throw new BadRequestException('Transcrição não configurada: defina GROQ_API_KEY no servidor.');
+
+    const msg = await this.prisma.message.findFirst({
+      where: { id: messageId, conversationId, conversation: { tenantId } },
+    });
+    if (!msg) throw new NotFoundException('Mensagem não encontrada.');
+    if (msg.type !== 'AUDIO') throw new BadRequestException('Só dá para transcrever áudios.');
+    if (msg.transcription) return { transcription: msg.transcription };
+
+    let dataUri = msg.mediaUrl;
+    if (!dataUri) dataUri = (await this.redownloadMedia(tenantId, conversationId, messageId)).mediaUrl;
+    const match = dataUri.match(/^data:([^;,]+)[^,]*;base64,(.*)$/);
+    if (!match) throw new BadRequestException('Áudio em formato inesperado.');
+    const mime = match[1];
+    const ext = mime.includes('ogg') ? 'ogg' : mime.includes('mpeg') ? 'mp3' : mime.includes('mp4') || mime.includes('aac') ? 'm4a' : mime.includes('webm') ? 'webm' : 'ogg';
+
+    const form = new FormData();
+    form.append('file', new Blob([Buffer.from(match[2], 'base64')], { type: mime }), `audio.${ext}`);
+    form.append('model', process.env.GROQ_TRANSCRIBE_MODEL || 'whisper-large-v3-turbo');
+    form.append('language', 'pt');
+    form.append('response_format', 'json');
+
+    let transcription: string;
+    try {
+      const res = await axios.post('https://api.groq.com/openai/v1/audio/transcriptions', form, {
+        headers: { Authorization: `Bearer ${apiKey}` },
+        timeout: 60000,
+        maxBodyLength: Infinity,
+      });
+      transcription = String(res.data?.text ?? '').trim();
+    } catch (err: any) {
+      throw new BadRequestException(`Falha na transcrição: ${err?.response?.data?.error?.message ?? err.message}`);
+    }
+    if (!transcription) transcription = '(áudio sem fala)';
+
+    await this.prisma.message.update({ where: { id: messageId }, data: { transcription } });
+    return { transcription };
   }
 
   async redownloadMedia(tenantId: string, conversationId: string, messageId: string) {
