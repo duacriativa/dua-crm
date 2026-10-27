@@ -37,7 +37,15 @@ export class ContractsService {
     // 1. Tenta encontrar o contato pelo telefone ou nome
     let contactId: string | null = null;
 
-    if (dto.clientPhone) {
+    if (dto.contactId) {
+      const contact = await this.prisma.contact.findFirst({
+        where: { id: dto.contactId, tenantId },
+        select: { id: true },
+      });
+      if (contact) contactId = contact.id;
+    }
+
+    if (!contactId && dto.clientPhone) {
       const phone = dto.clientPhone.replace(/\D/g, '');
       const contact = await this.prisma.contact.findFirst({
         where: {
@@ -86,10 +94,10 @@ export class ContractsService {
         monthlyValue: dto.monthlyValue,
         installments: dto.installments ?? 1,
         signedAt: new Date(dto.signedAt),
-        startsAt: new Date(dto.startsAt),
+        startsAt: new Date(dto.startsAt || dto.signedAt),
         endsAt: dto.endsAt ? new Date(dto.endsAt) : null,
-        clicksignDocId: dto.clicksignDocId,
-        notes: dto.notes,
+        clicksignDocId: dto.clicksignDocId || null,
+        notes: dto.notes || null,
       },
     });
 
