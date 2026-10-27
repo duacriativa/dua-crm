@@ -1,5 +1,6 @@
 import { Controller, Get, Post, Patch, Delete, Param, Body, Query, UseGuards, Request, BadRequestException, NotFoundException } from '@nestjs/common';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../../prisma/prisma.service';
 
 const STAGE_KINDS = ['OPEN', 'WON', 'LOST'];
@@ -23,7 +24,10 @@ function monthStartBR(offsetMonths = 0) {
 @Controller('pipelines')
 @UseGuards(JwtAuthGuard)
 export class PipelinesController {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly events: EventEmitter2,
+  ) {}
 
   // ── Pipelines ──────────────────────────────────────────────────────────────
 
@@ -172,7 +176,7 @@ export class PipelinesController {
       this.prisma.pipelineStage.findFirst({ where: { id: body.stageId, pipeline: { tenantId } }, select: { kind: true } }),
       this.prisma.pipelineLead.findFirst({
         where: { id: leadId, stage: { pipeline: { tenantId } } },
-        select: { contactId: true, wonAt: true, lostAt: true },
+        select: { contactId: true, stageId: true, wonAt: true, lostAt: true },
       }),
     ]);
     if (!stage || !lead) throw new NotFoundException('Card ou etapa não encontrado');
@@ -195,6 +199,10 @@ export class PipelinesController {
         where: { id: lead.contactId, tenantId, type: 'LEAD' },
         data: { type: 'CLIENT', clientSince: now },
       });
+    }
+    // Bots com o gatilho "Card entrou na etapa do funil"
+    if (lead.stageId !== body.stageId) {
+      this.events.emit('funnel.stage_entered', { tenantId, contactId: lead.contactId, stageId: body.stageId });
     }
     return updated;
   }

@@ -18,7 +18,9 @@ function conditionsOf(input: any, strict = true) {
     throw new BadRequestException(err.message);
   }
   const giveUp = Math.round(Number(input?.giveUpSeconds));
+  const stageId = typeof input?.stageId === 'string' && input.stageId ? input.stageId : null;
   return {
+    ...(stageId ? { stageId } : {}),
     ...(onlyPhones.length ? { onlyPhones } : {}),
     ...(reminders.length ? { reminders } : {}),
     ...(reminders.length && giveUp >= 3600 && giveUp <= 30 * 24 * 3600 ? { giveUpSeconds: giveUp } : {}),
@@ -26,7 +28,7 @@ function conditionsOf(input: any, strict = true) {
 }
 
 // Gatilhos já ligados ao executor (os outros do enum ainda não disparam)
-const TRIGGERS = ['LEAD_FORM_SUBMITTED', 'WHATSAPP_FIRST_MESSAGE', 'MEETING_SCHEDULED'];
+const TRIGGERS = ['LEAD_FORM_SUBMITTED', 'WHATSAPP_FIRST_MESSAGE', 'MEETING_SCHEDULED', 'LEAD_STAGE_ENTERED'];
 
 function stepsOrThrow(actions: any, strict = true, trigger?: string) {
   let steps;
@@ -48,6 +50,17 @@ export class AutomationsController {
     private readonly prisma: PrismaService,
     private readonly runner: AutomationRunner,
   ) {}
+
+  /** Gatilho de etapa: a etapa tem que ser do tenant e, para ligar, estar escolhida. */
+  private async checkStage(tenantId: string, trigger: string, cond: { stageId?: string }, active: boolean) {
+    if (trigger !== 'LEAD_STAGE_ENTERED') return;
+    if (!cond.stageId) {
+      if (active) throw new BadRequestException('Escolha a etapa do funil que dispara o bot.');
+      return;
+    }
+    const stage = await this.prisma.pipelineStage.findFirst({ where: { id: cond.stageId, pipeline: { tenantId } }, select: { id: true } });
+    if (!stage) throw new BadRequestException('Etapa do funil não encontrada.');
+  }
 
   /** Bots com os números da tela: sessões, ativas, enviados e quem respondeu. */
   @Get()
@@ -129,13 +142,15 @@ export class AutomationsController {
     const name = String(body?.name ?? '').trim();
     if (!name) throw new BadRequestException('Dê um nome ao bot.');
     if (!TRIGGERS.includes(body?.trigger)) throw new BadRequestException('Gatilho ainda não disponível.');
+    const conditions = conditionsOf(body.conditions, body.active === true);
+    await this.checkStage(req.user.tenantId, body.trigger, conditions, body.active === true);
     return this.prisma.automation.create({
       data: {
         tenantId: req.user.tenantId,
         name,
         description: body.description?.trim() || null,
         trigger: body.trigger,
-        conditions: conditionsOf(body.conditions, body.active === true),
+        conditions,
         actions: stepsOrThrow(body.actions, body.active === true, body.trigger) as any,
         // Nasce pausado: só liga depois de desligar o equivalente no Kommo
         active: body.active === true,
@@ -163,6 +178,7 @@ export class AutomationsController {
     if (body.actions !== undefined) data.actions = stepsOrThrow(body.actions, willBeActive, current.trigger);
     // Ligar exige os passos completos (template escolhido, etapa etc.)
     else if (willBeActive && !current.active) stepsOrThrow(current.actions, true, current.trigger);
+    await this.checkStage(tenantId, current.trigger, (data.conditions ?? current.conditions ?? {}) as any, willBeActive);
 
     const updated = await this.prisma.automation.update({ where: { id }, data });
     // Pausar encerra as sessões em andamento (senão elas voltariam fora de contexto ao religar)

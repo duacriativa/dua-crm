@@ -49,7 +49,7 @@ export const newStepId = () => `s${Math.random().toString(36).slice(2, 8)}`;
 /** Lembrete para quem não respondeu (vale para toda espera por resposta do bot). Texto só com a janela de 24h aberta. */
 export type BotReminder = { afterSeconds: number } & Extract<BotStep, { type: "send_text" } | { type: "send_template" }>;
 
-export interface BotConditions { onlyPhones?: string[]; reminders?: BotReminder[]; giveUpSeconds?: number }
+export interface BotConditions { onlyPhones?: string[]; reminders?: BotReminder[]; giveUpSeconds?: number; stageId?: string }
 
 export interface BotStats { sessions: number; active: number; completed: number; failed: number; sent: number; replied: number; lastRunAt: string | null }
 
@@ -284,6 +284,55 @@ export function whatsappQualifyPreset(): Partial<Bot> {
     name: "Pré-qualificação do WhatsApp",
     description: "Quem chama direto no WhatsApp: descobre a origem (ou pergunta), entende se a marca já vende ou está começando e convida para a call",
     trigger: "WHATSAPP_FIRST_MESSAGE",
+    active: false,
+    actions: steps,
+  };
+}
+
+/**
+ * Templates (MARKETING, pt_BR) da oferta de consultoria. {{1}} = primeiro nome.
+ * Criar em Configurações → Templates com estes nomes e textos.
+ */
+export const CONSULTORIA_TEMPLATES = {
+  oferta: {
+    name: "oferta_consultoria",
+    body: "Oi, {{1}}! Aqui é a Duda, da Dua 💜\n\nLembrei de você por aqui. Pra marcas que estão estruturando o marketing agora, abrimos uma *consultoria estratégica*: com um investimento bem menor que a gestão completa, você sai com um plano claro de posicionamento, conteúdo e vendas pra colocar em prática.\n\nQuer que eu te conte como funciona?",
+  },
+  lembrete: {
+    name: "oferta_consultoria_lembrete",
+    body: "Oi, {{1}}! Passando pra ver se você viu minha mensagem sobre a consultoria estratégica da Dua 😊\n\nAs vagas deste mês são poucas. Se fizer sentido pro momento da sua marca, me responde aqui que eu te explico tudo.",
+  },
+};
+
+/** Template aprovado com esse nome (os da consultoria), ou passo vazio para escolher depois. */
+const namedTemplate = (templates: WaTemplate[], name: string): BotStep => {
+  const t = templates.find((x) => x.status === "APPROVED" && x.name === name);
+  return t ? templateStep(t) : { type: "send_template", templateName: "", language: "pt_BR", params: [] };
+};
+
+/**
+ * Oferta de consultoria para quem esfriou e não tem perfil para o pacote completo:
+ * o time arrasta o card para a etapa escolhida e o bot manda o template, um lembrete
+ * se não responder e avisa o Daniel quando a pessoa responder (o time assume a conversa).
+ */
+export function consultoriaPreset(templates: WaTemplate[], stageId?: string): Partial<Bot> {
+  const steps: BotStep[] = [
+    { id: "msg1", name: "Oferta", ...namedTemplate(templates, CONSULTORIA_TEMPLATES.oferta.name) } as BotStep,
+    { id: "espera1", type: "wait_reply", timeoutSeconds: 2 * 24 * H, alignTo: "10:00", alignWeekends: true, onReply: "respondeu", onTimeout: "lembrete" },
+    { id: "lembrete", name: "Lembrete", ...namedTemplate(templates, CONSULTORIA_TEMPLATES.lembrete.name) } as BotStep,
+    { id: "espera2", type: "wait_reply", timeoutSeconds: 3 * 24 * H, onReply: "respondeu", onTimeout: "sem_resposta" },
+    { id: "sem_resposta", name: "Não respondeu", type: "add_tag", tag: "consultoria sem resposta" },
+    { id: "fim_sem_resposta", type: "end" },
+
+    { id: "respondeu", name: "Respondeu", type: "add_tag", tag: "interesse consultoria" },
+    { id: "aviso", type: "notify", to: "Daniel", text: "{{primeiro_nome}} respondeu a oferta da consultoria:\n{{respostas}}" },
+    { id: "fim", type: "end" },
+  ];
+  return {
+    name: "Oferta de consultoria",
+    description: "Card arrastado para a etapa: manda a oferta da consultoria, um lembrete se não responder e avisa o Daniel quando responder",
+    trigger: "LEAD_STAGE_ENTERED",
+    conditions: stageId ? { stageId } : {},
     active: false,
     actions: steps,
   };

@@ -22,9 +22,10 @@ import {
   ChevronRight,
   ChevronLeft,
 } from "lucide-react";
+import { authFetch } from "@/lib/auth-fetch";
 import { fetchTemplates } from "@/components/whatsapp/templates";
 import { InstagramRules } from "@/components/instagram/instagram-rules";
-import { Bot as BotFlow, botsApi, findFollowupTemplate, findFormTemplate, formBotPreset, formQualifyPreset, meetingRemindersPreset, whatsappQualifyPreset } from "@/components/bots/bot-api";
+import { Bot as BotFlow, botsApi, consultoriaPreset, findFollowupTemplate, findFormTemplate, formBotPreset, formQualifyPreset, meetingRemindersPreset, whatsappQualifyPreset } from "@/components/bots/bot-api";
 
 // Os prontos já funcionam; os outros entram conforme forem migrados do Kommo
 const TEMPLATES = [
@@ -32,9 +33,16 @@ const TEMPLATES = [
   { id: "qualify", name: "Qualificação do cadastro no site", description: "1ª mensagem + follow-up, entende o momento da marca e convida para a call (roteiro Dua Lab)", icon: "🎯", color: "bg-purple-50 border-purple-200", ready: true },
   { id: "whatsapp", name: "Pré-qualificação do WhatsApp", description: "Para quem chama direto no WhatsApp: descobre de onde veio (ou pergunta), entende o momento da marca e convida para a call", icon: "💬", color: "bg-green-50 border-green-200", ready: true },
   { id: "meeting", name: "Lembretes da reunião", description: "Confirma o agendamento, lembra 24h e 1h antes (com o link do Meet) e faz o follow-up de quem não compareceu", icon: "📅", color: "bg-sky-50 border-sky-200", ready: true },
-  { id: "t3", name: "Follow-up", description: "Reengaja leads que pararam de responder", icon: "🔄", color: "bg-red-50 border-red-200", ready: false },
+  { id: "consultoria", name: "Oferta de consultoria", description: "Arraste o card para a etapa \"Oferta Consultoria\" do funil: o bot manda a oferta, lembra quem não respondeu e te avisa quando responder", icon: "🔄", color: "bg-red-50 border-red-200", ready: true },
   { id: "t4", name: "Pós-venda / NPS", description: "Acompanhamento e NPS após a venda fechada", icon: "⭐", color: "bg-yellow-50 border-yellow-200", ready: false },
 ];
+
+/** Etapa "Oferta Consultoria" do funil principal, se já existir (o bot já nasce ligado a ela). */
+async function consultoriaStageId(): Promise<string | undefined> {
+  const res = await authFetch("/api/v1/pipelines", { headers: { Authorization: `Bearer ${localStorage.getItem("access_token") ?? ""}` } }).catch(() => null);
+  const pipes: any[] = res?.ok ? await res.json() : [];
+  return (pipes[0]?.stages ?? []).find((s: any) => /consultoria/i.test(s.name))?.id;
+}
 
 const statusConfig = {
   active: { label: "Ativo", color: "bg-green-100 text-green-700", dot: "bg-green-500" },
@@ -98,12 +106,13 @@ export default function BotsPage() {
   };
 
   const createFromTemplate = async (id: string) => {
-    if (!["form", "qualify", "whatsapp", "meeting"].includes(id)) return;
+    if (!["form", "qualify", "whatsapp", "meeting", "consultoria"].includes(id)) return;
     setCreating(true);
     try {
       const templates = id === "whatsapp" ? [] : await fetchTemplates().catch(() => []);
       const preset = id === "whatsapp" ? whatsappQualifyPreset()
         : id === "meeting" ? meetingRemindersPreset(templates)
+        : id === "consultoria" ? consultoriaPreset(templates, await consultoriaStageId())
         : id === "form" ? formBotPreset(findFormTemplate(templates))
         : formQualifyPreset(findFormTemplate(templates), findFollowupTemplate(templates));
       const bot = await botsApi.create(preset);

@@ -25,6 +25,7 @@ const NEW_CONTACT_MS = 24 * 3600_000;
 export interface LeadFormEvent { tenantId: string; contactId: string }
 export interface InboundMessageEvent { tenantId: string; contactId: string; conversationId: string; firstMessage?: boolean }
 export interface HumanMessageEvent { tenantId: string; conversationId: string }
+export interface StageEnteredEvent { tenantId: string; contactId: string; stageId: string }
 export interface MeetingEvent { tenantId: string; meetingId: string; contactId: string; startAt: Date }
 
 type RunWithBot = {
@@ -97,6 +98,12 @@ export class AutomationRunner implements OnModuleInit, OnModuleDestroy {
   @OnEvent('lead.form_submitted', { async: true })
   async onLeadForm(e: LeadFormEvent) {
     await this.trigger(e.tenantId, 'LEAD_FORM_SUBMITTED', e.contactId);
+  }
+
+  /** Alguém do time arrastou o card para outra etapa: dispara os bots daquela etapa. */
+  @OnEvent('funnel.stage_entered', { async: true })
+  async onStageEntered(e: StageEnteredEvent) {
+    await this.trigger(e.tenantId, 'LEAD_STAGE_ENTERED', e.contactId, { stageId: e.stageId });
   }
 
   @OnEvent(MEETING_EVENTS.scheduled, { async: true })
@@ -227,7 +234,7 @@ export class AutomationRunner implements OnModuleInit, OnModuleDestroy {
   }
 
   /** Abre uma sessão de cada bot ativo desse gatilho para o contato. */
-  async trigger(tenantId: string, trigger: string, contactId: string, opts: { meetingId?: string } = {}) {
+  async trigger(tenantId: string, trigger: string, contactId: string, opts: { meetingId?: string; stageId?: string } = {}) {
     try {
       const automations = await this.prisma.automation.findMany({
         where: { tenantId, trigger: trigger as any, active: true },
@@ -238,6 +245,7 @@ export class AutomationRunner implements OnModuleInit, OnModuleDestroy {
 
       for (const a of automations) {
         const cond = (a.conditions ?? {}) as AutomationConditions;
+        if (trigger === 'LEAD_STAGE_ENTERED' && cond.stageId !== opts.stageId) continue;
         if (cond.onlyPhones?.length) {
           const allowed = new Set(cond.onlyPhones.flatMap((p) => phoneVariants(p)));
           if (!phoneVariants(contact.phone).some((v) => allowed.has(v))) continue;

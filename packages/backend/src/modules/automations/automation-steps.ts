@@ -78,6 +78,7 @@ export interface AutomationConditions {
   onlyPhones?: string[]; // modo teste: só dispara para esses números
   reminders?: Reminder[]; // valem para toda espera por resposta do bot, em ordem de tempo
   giveUpSeconds?: number; // depois do último lembrete, quanto esperar antes do "sem resposta"
+  stageId?: string; // gatilho LEAD_STAGE_ENTERED: a etapa que dispara o bot
 }
 
 /** Sem resposta depois do último lembrete: espera isso e segue pelo "sem resposta". */

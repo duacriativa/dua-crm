@@ -163,6 +163,9 @@ export function BotEditor({ bot, onSaved }: { bot: Bot; onSaved: () => Promise<B
   const [onlyPhones, setOnlyPhones] = useState((bot.conditions?.onlyPhones ?? []).join("\n"));
   const [reminders, setReminders] = useState<BotReminder[]>(bot.conditions?.reminders ?? []);
   const [giveUpSeconds, setGiveUpSeconds] = useState(bot.conditions?.giveUpSeconds);
+  const [stageId, setStageId] = useState(bot.conditions?.stageId ?? "");
+  const isMeetingBot = bot.trigger === "MEETING_SCHEDULED";
+  const isStageBot = bot.trigger === "LEAD_STAGE_ENTERED";
   const [templates, setTemplates] = useState<WaTemplate[]>([]);
   const [tplError, setTplError] = useState("");
   const [stages, setStages] = useState<Stage[]>([]);
@@ -372,7 +375,7 @@ export function BotEditor({ bot, onSaved }: { bot: Bot; onSaved: () => Promise<B
     try {
       await botsApi.update(bot.id, {
         name, description, actions,
-        conditions: { onlyPhones: onlyPhones.split(/[\n,;]+/).map((p) => p.trim()).filter(Boolean), reminders, giveUpSeconds },
+        conditions: { onlyPhones: onlyPhones.split(/[\n,;]+/).map((p) => p.trim()).filter(Boolean), reminders, giveUpSeconds, ...(isStageBot && stageId ? { stageId } : {}) },
       });
       const fresh = await onSaved();
       reset(fresh?.actions ?? actions);
@@ -402,7 +405,7 @@ export function BotEditor({ bot, onSaved }: { bot: Bot; onSaved: () => Promise<B
   };
 
   const sel = selected ? graph.nodes.find((n) => n.id === selected) : undefined;
-  const isMeetingBot = bot.trigger === "MEETING_SCHEDULED";
+
   const others = (self?: string) => graph.nodes.filter((n) => n.id !== self);
 
   return (
@@ -515,6 +518,15 @@ export function BotEditor({ bot, onSaved }: { bot: Bot; onSaved: () => Promise<B
             <div className="p-4 space-y-5">
               <div>
                 <p className="text-xs text-gray-400">Gatilho: {bot.triggerLabel}</p>
+                {isStageBot && (
+                  <>
+                    <select value={stageId} onChange={(e) => { setStageId(e.target.value); setDirty(true); }} className={`${inp} mt-2`}>
+                      <option value="">Escolha a etapa…</option>
+                      {stages.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                    </select>
+                    <p className="text-[11px] text-gray-400 mt-1">Dispara quando alguém do time arrasta um card para esta etapa (uma vez a cada 24h por contato).</p>
+                  </>
+                )}
                 <input value={description} onChange={(e) => { setDescription(e.target.value); setDirty(true); }} placeholder="Descrição (opcional)" className={`${inp} mt-2`} />
               </div>
 
