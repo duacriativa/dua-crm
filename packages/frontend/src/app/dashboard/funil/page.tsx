@@ -21,7 +21,7 @@ interface Contact {
   leadOrigin?: LeadOrigin | null; adId?: string | null; adHeadline?: string | null; adSourceUrl?: string | null;
   utmSource?: string | null; utmMedium?: string | null; utmCampaign?: string | null;
 }
-interface Lead { id: string; contactId: string; contact: Contact; value?: number | null; notes?: string | null; position: number; stageId: string; createdAt?: string; wonAt?: string | null; lostAt?: string | null; lostReason?: string | null; }
+interface Lead { id: string; contactId: string; contact: Contact; value?: number | null; notes?: string | null; position: number; stageId: string; createdAt?: string; wonAt?: string | null; wonItem?: string | null; lostAt?: string | null; lostReason?: string | null; }
 type StageKind = "OPEN" | "WON" | "LOST";
 interface Stage { id: string; name: string; color: string; position: number; kind?: StageKind; leads: Lead[]; }
 type LeadOrigin = "ADS" | "ORGANIC" | "REFERRAL" | "OTHER";
@@ -91,6 +91,7 @@ export default function FunilPage() {
   const [outcomeModal, setOutcomeModal] = useState<{ lead: Lead; fromStageId: string; toStage: Stage } | null>(null);
   const [outcomeValue, setOutcomeValue] = useState("");
   const [outcomeReason, setOutcomeReason] = useState("");
+  const [outcomeItem, setOutcomeItem] = useState("");
   const [editingValue, setEditingValue] = useState(false);
   const [editValueInput, setEditValueInput] = useState("");
 
@@ -313,7 +314,7 @@ export default function FunilPage() {
   };
 
   /** Move o card (otimista) e persiste; numa etapa de ganho/perda manda junto valor ou motivo. */
-  const commitMove = async (lead: Lead, fromStageId: string, toStageId: string, extra: { value?: number; lostReason?: string } = {}) => {
+  const commitMove = async (lead: Lead, fromStageId: string, toStageId: string, extra: { value?: number; lostReason?: string; wonItem?: string } = {}) => {
     if (!activePipeline) return;
     const before = activePipeline;
     const toKind = before.stages.find((s) => s.id === toStageId)?.kind ?? "OPEN";
@@ -323,6 +324,7 @@ export default function FunilPage() {
       stageId: toStageId,
       ...(extra.value !== undefined && { value: extra.value }),
       wonAt: toKind === "WON" ? lead.wonAt ?? now : null,
+      ...(toKind === "WON" && extra.wonItem !== undefined && { wonItem: extra.wonItem }),
       lostAt: toKind === "LOST" ? lead.lostAt ?? now : null,
       lostReason: toKind === "LOST" ? extra.lostReason ?? lead.lostReason ?? null : null,
     };
@@ -353,6 +355,7 @@ export default function FunilPage() {
     if (toStage?.kind === "WON" || toStage?.kind === "LOST") {
       setOutcomeValue(lead.value ? String(lead.value).replace(".", ",") : "");
       setOutcomeReason(lead.lostReason || "");
+      setOutcomeItem(lead.wonItem || "");
       setOutcomeModal({ lead, fromStageId, toStage });
       return;
     }
@@ -366,7 +369,7 @@ export default function FunilPage() {
       const value = parseMoney(outcomeValue);
       if (value === null) return;
       setOutcomeModal(null);
-      commitMove(lead, fromStageId, toStage.id, { value });
+      commitMove(lead, fromStageId, toStage.id, { value, wonItem: outcomeItem.trim() || undefined });
     } else {
       setOutcomeModal(null);
       commitMove(lead, fromStageId, toStage.id, { lostReason: outcomeReason.trim() || undefined });
@@ -988,6 +991,23 @@ export default function FunilPage() {
                       {selectedLead.wonAt
                         ? <>Venda fechada em {new Date(selectedLead.wonAt).toLocaleDateString("pt-BR")}</>
                         : <>Perdido em {new Date(selectedLead.lostAt!).toLocaleDateString("pt-BR")}{selectedLead.lostReason ? ` — ${selectedLead.lostReason}` : ""}</>}
+                      {selectedLead.wonAt && (
+                        // key: recria o campo ao trocar de card, para não levar o texto de um lead para outro
+                        <input key={selectedLead.id} defaultValue={selectedLead.wonItem || ""} placeholder="O que foi vendido? (ex.: Loja virtual Nuvemshop)"
+                          onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
+                          onBlur={async (e) => {
+                            const wonItem = e.target.value.trim();
+                            if (wonItem === (selectedLead.wonItem || "")) return;
+                            const id = selectedLead.id;
+                            const res = await authFetch(`${API_URL}/api/v1/pipelines/leads/${id}`, {
+                              method: "PATCH", headers: authHeaders(), body: JSON.stringify({ wonItem }),
+                            });
+                            if (!res.ok) { alert("Não foi possível salvar o que foi vendido."); return; }
+                            setSelectedLead((p: any) => p?.id === id ? { ...p, wonItem: wonItem || null } : p);
+                            setActivePipeline((prev: any) => prev ? { ...prev, stages: prev.stages.map((s: any) => ({ ...s, leads: s.leads.map((l: any) => l.id === id ? { ...l, wonItem: wonItem || null } : l) })) } : prev);
+                          }}
+                          className="mt-2 w-full px-2.5 py-1.5 text-xs rounded-lg bg-background border border-green-500/30 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-green-500/40" />
+                      )}
                     </div>
                   )}
 
@@ -1107,6 +1127,11 @@ export default function FunilPage() {
                     placeholder="0,00" className="flex-1 py-2.5 text-sm bg-transparent text-foreground focus:outline-none" />
                 </div>
                 {outcomeValue && parseMoney(outcomeValue) === null && <p className="text-xs text-red-500 mt-1">Valor inválido</p>}
+                <label className="text-sm font-medium text-foreground/80 block mt-4 mb-1.5">O que foi vendido</label>
+                <input value={outcomeItem} onChange={(e) => setOutcomeItem(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") confirmOutcome(); if (e.key === "Escape") setOutcomeModal(null); }}
+                  placeholder="Ex.: Loja virtual Nuvemshop"
+                  className="w-full px-3 py-2.5 text-sm border border-border rounded-xl bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-brand-500" />
                 <p className="text-xs text-muted-foreground mt-2">Entra no total da etapa, no topo do funil e nas vendas do mês no Dashboard.</p>
               </>
             ) : (

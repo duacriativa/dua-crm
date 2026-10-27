@@ -450,6 +450,7 @@ model PipelineLead {
   notes     String?
   position  Int           @default(0)
   wonAt      DateTime?     // entrou numa etapa de ganho (value = valor fechado)
+  wonItem    String?       // o que foi vendido (ex.: "Loja virtual Nuvemshop"), aparece no histórico de compras
   lostAt     DateTime?
   lostReason String?
   createdAt DateTime      @default(now())

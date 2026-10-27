@@ -165,7 +165,7 @@ export class PipelinesController {
   async moveLead(
     @Request() req: any,
     @Param('leadId') leadId: string,
-    @Body() body: { stageId: string; value?: number; lostReason?: string },
+    @Body() body: { stageId: string; value?: number; lostReason?: string; wonItem?: string },
   ) {
     const tenantId = req.user.tenantId;
     const [stage, lead] = await Promise.all([
@@ -179,6 +179,7 @@ export class PipelinesController {
 
     const value = typeof body.value === 'number' && Number.isFinite(body.value) && body.value >= 0 ? body.value : undefined;
     const lostReason = typeof body.lostReason === 'string' && body.lostReason.trim() ? body.lostReason.trim().slice(0, 500) : undefined;
+    const wonItem = stage.kind === 'WON' && typeof body.wonItem === 'string' && body.wonItem.trim() ? body.wonItem.trim().slice(0, 200) : undefined;
     const now = new Date();
     const outcome =
       stage.kind === 'WON' ? { wonAt: lead.wonAt ?? now, lostAt: null, lostReason: null }
@@ -187,7 +188,7 @@ export class PipelinesController {
 
     const updated = await this.prisma.pipelineLead.update({
       where: { id: leadId },
-      data: { stageId: body.stageId, ...outcome, ...(value !== undefined && { value }) },
+      data: { stageId: body.stageId, ...outcome, ...(value !== undefined && { value }), ...(wonItem !== undefined && { wonItem }) },
     });
     if (stage.kind === 'WON') {
       await this.prisma.contact.updateMany({
@@ -199,8 +200,24 @@ export class PipelinesController {
   }
 
   @Patch('leads/:leadId')
-  async updateLead(@Param('leadId') leadId: string, @Body() body: { value?: number; notes?: string; lostReason?: string }) {
-    return this.prisma.pipelineLead.update({ where: { id: leadId }, data: body });
+  async updateLead(
+    @Request() req: any,
+    @Param('leadId') leadId: string,
+    @Body() body: { value?: number | null; notes?: string; lostReason?: string; wonItem?: string | null },
+  ) {
+    // Só campos editáveis, e só em card do próprio tenant
+    const lead = await this.prisma.pipelineLead.findFirst({ where: { id: leadId, stage: { pipeline: { tenantId: req.user.tenantId } } }, select: { id: true } });
+    if (!lead) throw new NotFoundException('Card não encontrado');
+    const { value, notes, lostReason, wonItem } = body;
+    return this.prisma.pipelineLead.update({
+      where: { id: leadId },
+      data: {
+        ...(value !== undefined && { value }),
+        ...(notes !== undefined && { notes }),
+        ...(lostReason !== undefined && { lostReason }),
+        ...(wonItem !== undefined && { wonItem: wonItem?.trim().slice(0, 200) || null }),
+      },
+    });
   }
 
   // ── Resumo de vendas (dashboard) ───────────────────────────────────────────

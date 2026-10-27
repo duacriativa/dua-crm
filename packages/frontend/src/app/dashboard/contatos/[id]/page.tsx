@@ -133,7 +133,7 @@ function SegmentBadge({ contactId, segment, onChange }: { contactId: string; seg
 
 
 /* ── NotesEditor ── */
-function NotesEditor({ contactId, initialNotes }: { contactId: string; initialNotes: string }) {
+function NotesEditor({ contactId, initialNotes, onSaved }: { contactId: string; initialNotes: string; onSaved: (notes: string) => void }) {
   const [notes, setNotes] = useState(initialNotes);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -150,6 +150,8 @@ function NotesEditor({ contactId, initialNotes }: { contactId: string; initialNo
         method: "PATCH", headers: authHeaders(), body: JSON.stringify({ notes }),
       });
       if (!res.ok) { setSaveError("Erro ao salvar. Tente novamente."); return; }
+      // Atualiza o contato da página: sem isso a sincronização acima trazia o texto antigo de volta
+      onSaved(notes);
       setEditing(false);
     } catch { setSaveError("Erro de conexão."); }
     finally { setSaving(false); }
@@ -276,7 +278,7 @@ function ContactInfoEditor({ contact, onSave }: { contact: any; onSave: (f: any)
 const FATURAMENTO_OPTIONS = ["Menos de R$ 50k/mês","R$ 50k – R$ 100k/mês","R$ 100k – R$ 150k/mês","Acima de R$ 150k/mês"];
 const MODELO_VENDA_OPTIONS = ["E-commerce próprio","Instagram/WhatsApp","Marketplace (Shopee, Mercado Livre)","Loja física + online","Atacado"];
 
-function BusinessProfileEditor({ contact, onSave }: { contact: any; onSave: (f: any) => void }) {
+function BusinessProfileEditor({ contact, onSave, onSaved }: { contact: any; onSave: (f: any) => void; onSaved: (patch: { notes: string; instagramHandle: string | null }) => void }) {
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ faturamento: "", investimento: "", modelo: "", interesse: "", instagram: contact.instagramHandle || "" });
   const [saving, setSaving] = useState(false);
@@ -312,6 +314,7 @@ function BusinessProfileEditor({ contact, onSave }: { contact: any; onSave: (f: 
       const res = await authFetch(`${API_URL}/api/v1/contacts/${contact.id}`, { method: "PATCH", headers: authHeaders(), body: JSON.stringify(body) });
       if (!res.ok) { setSaveError("Erro ao salvar. Tente novamente."); return; }
       onSave({ faturamento: form.faturamento, investimento: form.investimento, interesse: form.interesse });
+      onSaved({ notes: body.notes, instagramHandle: body.instagramHandle });
       setOpen(false);
     } catch { setSaveError("Erro de conexão."); }
     finally { setSaving(false); }
@@ -366,6 +369,95 @@ const SERVICE_CONFIG: Record<string, { short: string; color: string }> = {
 
 function fmtVal(v: number) {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v);
+}
+
+/* ── Histórico de compras: vendas ganhas no funil, contratos e planos pagos ── */
+type Purchase = {
+  kind: "SALE" | "CONTRACT" | "PLAN"; id: string; date: string; title: string; serviceType?: string;
+  detail: string; value: number; estimated: boolean; status: string;
+};
+const PURCHASE_KIND: Record<Purchase["kind"], { label: string; color: string }> = {
+  SALE:     { label: "Venda",    color: "bg-green-500/10 text-green-700" },
+  CONTRACT: { label: "Contrato", color: "bg-blue-500/10 text-blue-700" },
+  PLAN:     { label: "Plano",    color: "bg-purple-500/10 text-purple-700" },
+};
+const CONTRACT_STATUS: Record<string, string> = { ACTIVE: "ativo", FINISHED: "encerrado", CANCELLED: "cancelado" };
+
+function PurchaseHistory({ contactId }: { contactId: string }) {
+  const [data, setData] = useState<{ total: number; count: number; hasEstimate: boolean; items: Purchase[] } | null>(null);
+  const [error, setError] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+
+  useEffect(() => {
+    setData(null); setError(false);
+    authFetch(`${API_URL}/api/v1/contacts/${contactId}/purchases`, { headers: authHeaders() })
+      .then(async (res) => { if (!res.ok) throw new Error(); setData(await res.json()); })
+      .catch(() => setError(true));
+  }, [contactId]);
+
+  const items = data?.items ?? [];
+  const visible = expanded ? items : items.slice(0, 5);
+  return (
+    <div className="bg-card surface-card p-6 shadow-none border border-border">
+      <div className="flex items-center gap-3 mb-5">
+        <div className="w-10 h-10 rounded-xl bg-green-500/10 flex items-center justify-center text-green-600">
+          <DollarSign size={20} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <h2 className="text-lg font-bold text-foreground">Histórico de compras</h2>
+          {data && data.count > 0 && (
+            <p className="text-xs text-muted-foreground">{data.count} {data.count === 1 ? "compra" : "compras"} com a Dua</p>
+          )}
+        </div>
+        {data && data.count > 0 && (
+          <div className="text-right">
+            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Total</p>
+            <p className="text-xl font-bold text-green-600">{fmtVal(data.total)}</p>
+          </div>
+        )}
+      </div>
+
+      {error ? (
+        <p className="text-sm text-red-500">Não foi possível carregar o histórico.</p>
+      ) : !data ? (
+        <p className="text-sm text-muted-foreground">Carregando…</p>
+      ) : items.length === 0 ? (
+        <p className="text-sm text-muted-foreground italic">
+          Nenhuma compra ainda. Vendas pontuais entram aqui quando o card vai para a etapa de ganho no funil; serviços mensais, pelos contratos.
+        </p>
+      ) : (
+        <>
+          <ul className="divide-y divide-border">
+            {visible.map((p) => (
+              <li key={`${p.kind}-${p.id}`} className="flex items-center gap-3 py-3">
+                <span className={`shrink-0 px-2 py-0.5 rounded-lg text-[10px] font-bold uppercase ${PURCHASE_KIND[p.kind].color}`}>{PURCHASE_KIND[p.kind].label}</span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-foreground truncate">
+                    {p.kind === "CONTRACT" && p.title === p.serviceType ? (SERVICE_CONFIG[p.title]?.short ?? p.title) : p.title}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {new Date(p.date).toLocaleDateString("pt-BR")} · {p.detail}
+                    {p.kind === "CONTRACT" && CONTRACT_STATUS[p.status] ? ` · ${CONTRACT_STATUS[p.status]}` : ""}
+                  </p>
+                </div>
+                <p className="shrink-0 text-sm font-bold text-foreground" title={p.estimated ? "Estimado: mensalidade × meses ativos (contrato sem cobranças registradas)" : undefined}>
+                  {p.estimated && <span className="text-muted-foreground font-normal">~ </span>}{fmtVal(p.value)}
+                </p>
+              </li>
+            ))}
+          </ul>
+          {items.length > 5 && (
+            <button onClick={() => setExpanded((v) => !v)} className="mt-2 text-xs font-semibold text-primary hover:underline">
+              {expanded ? "Mostrar menos" : `Ver todas (${items.length})`}
+            </button>
+          )}
+          {data.hasEstimate && (
+            <p className="mt-3 text-[11px] text-muted-foreground">~ estimado: contrato sem cobranças registradas, calculado pela mensalidade × meses ativos.</p>
+          )}
+        </>
+      )}
+    </div>
+  );
 }
 
 function ContractsSection({ contactName }: { contactName: string }) {
@@ -891,7 +983,8 @@ export default function ContactProfilePage() {
                   <h2 className="text-lg font-bold text-foreground">Perfil do Negócio</h2>
                   <p className="text-sm text-muted-foreground">Informações coletadas durante o cadastro</p>
                 </div>
-                <BusinessProfileEditor contact={contact} onSave={(fields) => setAditionalFields(fields)} />
+                <BusinessProfileEditor contact={contact} onSave={(fields) => setAditionalFields(fields)}
+                  onSaved={(patch) => setContact((c) => c ? { ...c, ...patch } : c)} />
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mt-6">
@@ -949,8 +1042,11 @@ export default function ContactProfilePage() {
                 </div>
                 <h2 className="text-lg font-bold text-foreground">Notas e Observações</h2>
               </div>
-              <NotesEditor contactId={contact.id} initialNotes={contact.notes || ""} />
+              <NotesEditor contactId={contact.id} initialNotes={contact.notes || ""}
+                onSaved={(notes) => setContact((c) => c ? { ...c, notes } : c)} />
             </div>
+
+            <PurchaseHistory contactId={contact.id} />
 
             {/* ── Card: Análise de Perfil Instagram ── */}
             <div className="bg-card surface-card p-6 shadow-none border border-border">

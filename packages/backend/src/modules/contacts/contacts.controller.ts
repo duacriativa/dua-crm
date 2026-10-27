@@ -166,6 +166,12 @@ export class ContactsController {
   }
 
   /** GET /contacts/:id */
+  /** GET /contacts/:id/purchases — histórico de compras (funil, contratos, planos) */
+  @Get(':id/purchases')
+  purchases(@Request() req: any, @Param('id') id: string) {
+    return this.contactsService.purchaseHistory(req.user.tenantId, id);
+  }
+
   @Get(':id')
   findOne(@Request() req: any, @Param('id') id: string) {
     return this.contactsService.findOne(req.user.tenantId, id);

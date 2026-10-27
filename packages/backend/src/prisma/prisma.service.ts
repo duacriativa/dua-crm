@@ -316,6 +316,8 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
       `REVOKE ALL ON TABLE "Notification" FROM anon, authenticated`,
       // 20261027000001_add_message_transcription
       `ALTER TABLE "Message" ADD COLUMN IF NOT EXISTS "transcription" TEXT`,
+      // 20261027000002_add_lead_won_item
+      `ALTER TABLE "PipelineLead" ADD COLUMN IF NOT EXISTS "wonItem" TEXT`,
     ];
     for (const sql of statements) {
       try {
