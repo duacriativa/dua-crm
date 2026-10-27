@@ -7,7 +7,7 @@ import { phoneVariants, toBrDigits } from '../../common/phone.util';
 import { MEETING_EVENTS, appUrl } from '../scheduling/scheduling.service';
 import {
   AutomationConditions, AutomationStep, DEFAULT_MEETING_STATUS_TIMEOUT_S, MEETING_LATE_GRACE_MS, Reminder, StepTarget, WINDOW_MS,
-  meetingWaitAt, originFromText, originLabel, salesChannelPhrase, sameAnswer, waitPlan, waitUntil,
+  dueReminder, giveUpAfter, meetingWaitAt, originFromText, originLabel, salesChannelPhrase, sameAnswer, waitPlan, waitUntil,
 } from './automation-steps';
 
 const ACTIVE = ['RUNNING', 'WAITING_REPLY'];
@@ -18,6 +18,8 @@ const LEASE_MS = 2 * 60_000;
 const END = -1;
 // Passos seguidos sem espera numa mesma execução (protege contra "ir para" em círculo)
 const MAX_STEPS_PER_RUN = 60;
+// Respondeu até esse tempo depois de o bot desistir por falta de resposta: o bot retoma
+const REVIVE_MS = 7 * 24 * 3600_000;
 // "Primeira mensagem no WhatsApp" só vale para contato criado há menos que isso
 const NEW_CONTACT_MS = 24 * 3600_000;
 
@@ -184,6 +186,8 @@ export class AutomationRunner implements OnModuleInit, OnModuleDestroy {
         });
         for (const r of waiting) await this.resume(r, reply?.content ?? '', e.conversationId);
         this.kick();
+      } else {
+        await this.revive(e);
       }
     } catch (err: any) {
       this.logger.error(`[Bots] Falha ao tratar resposta de ${e.contactId}: ${err.message}`);
@@ -284,6 +288,95 @@ export class AutomationRunner implements OnModuleInit, OnModuleDestroy {
     return run;
   }
 
+  /**
+   * A pessoa respondeu depois que o bot desistiu por falta de resposta (até 7 dias, sem o time ter
+   * escrito depois): o bot volta para a pergunta em que parou e segue com essa resposta. Desfaz as
+   * etiquetas e a etapa do caminho de "sem resposta" e avisa o time.
+   */
+  private async revive(e: InboundMessageEvent) {
+    const run = await this.prisma.automationRun.findFirst({
+      where: {
+        tenantId: e.tenantId, contactId: e.contactId, status: { in: ['COMPLETED', 'EXPIRED'] },
+        timedOutStep: { not: null }, finishedAt: { gte: new Date(Date.now() - REVIVE_MS) },
+      },
+      orderBy: { finishedAt: 'desc' },
+      include: { automation: true },
+    });
+    if (!run?.finishedAt || !run.timedOutStep || (!run.automation.active && !run.isTest)) return;
+    const busy = await this.prisma.automationRun.findFirst({
+      where: { tenantId: e.tenantId, contactId: e.contactId, status: { in: ACTIVE } },
+      select: { id: true },
+    });
+    if (busy) return;
+    const steps = stepsOf(run.automation.actions);
+    const k = steps.findIndex((s) => s.id === run.timedOutStep);
+    if (k < 0 || (steps[k].type !== 'wait_reply' && steps[k].type !== 'send_buttons')) return;
+    // O time já entrou na conversa depois que o bot desistiu: a conversa é deles
+    const human = await this.prisma.message.findFirst({
+      where: {
+        conversation: { tenantId: e.tenantId, contactId: e.contactId }, direction: 'OUTBOUND', sentAt: { gt: run.finishedAt },
+        OR: [{ senderName: null }, { senderName: { not: 'Bot' } }],
+      },
+      select: { id: true },
+    });
+    if (human) return;
+
+    const claimed = await this.prisma.automationRun.updateMany({
+      where: { id: run.id, status: run.status, finishedAt: run.finishedAt },
+      data: { status: 'WAITING_REPLY', stepIndex: k, finishedAt: null, timedOutStep: null, nextRunAt: new Date(Date.now() + LEASE_MS), conversationId: e.conversationId },
+    });
+    if (claimed.count !== 1) return;
+    this.logger.log(`[Bots] Sessão ${run.id} retomada: o contato respondeu depois do "sem resposta"`);
+
+    try {
+      await this.undoGiveUp(run, steps);
+      const contact = await this.prisma.contact.findFirst({ where: { id: run.contactId }, select: { id: true, name: true, phone: true } });
+      if (contact) {
+        const { primeiro_nome } = varsOf(contact.name, contact.phone);
+        await this.notify({ ...run, conversationId: e.conversationId }, contact,
+          `${primeiro_nome === 'você' ? 'O contato' : primeiro_nome} respondeu depois que o bot tinha desistido. O bot retomou de onde parou.`);
+      }
+    } catch (err: any) {
+      this.logger.warn(`[Bots] Sessão ${run.id}: falha ao desfazer o "sem resposta": ${err.message}`);
+    }
+    const reply = await this.prisma.message.findFirst({
+      where: { conversationId: e.conversationId, direction: 'INBOUND' },
+      orderBy: { sentAt: 'desc' },
+      select: { content: true },
+    });
+    await this.resume({ ...run, status: 'WAITING_REPLY', stepIndex: k }, reply?.content ?? '', e.conversationId);
+    this.kick();
+  }
+
+  /** Desfaz o que o caminho de "sem resposta" fez: tira as etiquetas e devolve o card à etapa de antes. */
+  private async undoGiveUp(run: { tenantId: string; contactId: string; timedOutStep: string | null; visitedSteps: string[] }, steps: AutomationStep[]) {
+    const at = run.visitedSteps.lastIndexOf(run.timedOutStep!);
+    if (at < 0) return;
+    const byId = (id: string) => steps.find((s) => s.id === id);
+    const after = run.visitedSteps.slice(at + 1).map(byId).filter(Boolean) as AutomationStep[];
+    const before = run.visitedSteps.slice(0, at).map(byId).filter(Boolean) as AutomationStep[];
+
+    const tags = after.flatMap((s) => (s.type === 'add_tag' ? [s.tag] : []));
+    if (tags.length) {
+      const contact = await this.prisma.contact.findFirst({ where: { id: run.contactId, tenantId: run.tenantId }, select: { tags: true } });
+      if (contact) await this.prisma.contact.update({ where: { id: run.contactId }, data: { tags: contact.tags.filter((t) => !tags.includes(t)) } });
+    }
+
+    const moved = [...after].reverse().find((s) => s.type === 'move_stage');
+    const prev = [...before].reverse().find((s) => s.type === 'move_stage');
+    if (moved?.type !== 'move_stage' || prev?.type !== 'move_stage') return;
+    const stageOf = (s: { stageId?: string; stageName?: string }) => s.stageId
+      ? this.prisma.pipelineStage.findFirst({ where: { id: s.stageId, pipeline: { tenantId: run.tenantId } } })
+      : this.prisma.pipelineStage.findFirst({ where: { name: { equals: s.stageName, mode: 'insensitive' }, pipeline: { tenantId: run.tenantId } }, orderBy: { pipeline: { createdAt: 'asc' } } });
+    const [from, to] = await Promise.all([stageOf(moved), stageOf(prev)]);
+    if (!from || !to || from.pipelineId !== to.pipelineId) return;
+    // Só se o card ainda está onde o bot deixou (o time pode já ter movido)
+    await this.prisma.pipelineLead.updateMany({
+      where: { contactId: run.contactId, stageId: from.id },
+      data: { stageId: to.id, wonAt: null, lostAt: null, lostReason: null },
+    });
+  }
+
   /** Sessão esperando resposta recebeu uma: segue para o passo do caminho escolhido. */
   private async resume(run: RunWithBot, answer: string, conversationId: string | null) {
     const steps = stepsOf(run.automation.actions);
@@ -334,10 +427,10 @@ export class AutomationRunner implements OnModuleInit, OnModuleDestroy {
     const run = await this.prisma.automationRun.findUnique({ where: { id: runId }, include: { automation: true } });
     if (!run || !ACTIVE.includes(run.status)) return;
     // Só encerra se ainda estiver ativa (o time pode ter assumido no meio)
-    const finish = (status: string, lastError?: string) =>
+    const finish = (status: string, lastError?: string, extra: { timedOutStep?: string } = {}) =>
       this.prisma.automationRun.updateMany({
         where: { id: run.id, status: { in: ACTIVE } },
-        data: { status, finishedAt: new Date(), nextRunAt: null, ...(lastError ? { lastError: lastError.slice(0, 500) } : {}) },
+        data: { status, finishedAt: new Date(), nextRunAt: null, ...extra, ...(lastError ? { lastError: lastError.slice(0, 500) } : {}) },
       });
 
     // Teste manual roda mesmo com o bot pausado
@@ -353,17 +446,20 @@ export class AutomationRunner implements OnModuleInit, OnModuleDestroy {
         const cond = (run.automation.conditions ?? {}) as AutomationConditions;
         const plan = waitPlan(run.waitingSince, run.remindersSent, step, cond);
         const now = Date.now();
-        if (plan.reminderAt && plan.reminderAt.getTime() <= now) {
+        const due = dueReminder(run.waitingSince, run.remindersSent, cond, now);
+        if (due !== null) {
           try {
-            await this.remind(run, step, cond.reminders![run.remindersSent]);
+            await this.remind(run, step, cond.reminders![due]);
           } catch (err: any) {
             // Lembrete que falhou não derruba a sessão: segue esperando a resposta
-            this.logger.warn(`[Bots] Lembrete ${run.remindersSent + 1} da sessão ${run.id} falhou: ${err.message}`);
+            this.logger.warn(`[Bots] Lembrete ${due + 1} da sessão ${run.id} falhou: ${err.message}`);
           }
-          const next = waitPlan(run.waitingSince, run.remindersSent + 1, step, cond);
+          const next = waitPlan(run.waitingSince, due + 1, step, cond);
+          // Lembrete atrasado (o prazo já tinha passado): ainda assim dá o tempo de resposta inteiro
+          const until = next.reminderAt ?? new Date(Math.max(next.deadline.getTime(), giveUpAfter(now, cond).getTime()));
           await this.prisma.automationRun.updateMany({
             where: { id: run.id, status: 'WAITING_REPLY', stepIndex: i },
-            data: { remindersSent: { increment: 1 }, nextRunAt: next.reminderAt ?? next.deadline },
+            data: { remindersSent: due + 1, nextRunAt: until },
           });
           return;
         }
@@ -374,9 +470,10 @@ export class AutomationRunner implements OnModuleInit, OnModuleDestroy {
         }
       }
       const onTimeout = step && (step.type === 'wait_reply' || step.type === 'send_buttons') ? step.onTimeout : undefined;
-      if (!onTimeout || indexOf(steps, onTimeout, i) === END) { await finish('EXPIRED'); return; }
+      if (!onTimeout || indexOf(steps, onTimeout, i) === END) { await finish('EXPIRED', undefined, { timedOutStep: step?.id }); return; }
+      const waited = step.id;
       i = indexOf(steps, onTimeout, i);
-      await this.prisma.automationRun.update({ where: { id: run.id }, data: { status: 'RUNNING', stepIndex: i } });
+      await this.prisma.automationRun.update({ where: { id: run.id }, data: { status: 'RUNNING', stepIndex: i, timedOutStep: waited ?? null } });
     }
 
     let conversationId = run.conversationId;
@@ -458,7 +555,7 @@ export class AutomationRunner implements OnModuleInit, OnModuleDestroy {
           const plan = waitPlan(since, 0, step, (run.automation.conditions ?? {}) as AutomationConditions);
           await this.prisma.automationRun.update({
             where: { id: run.id },
-            data: { status: 'WAITING_REPLY', stepIndex: i, waitingSince: since, remindersSent: 0, nextRunAt: plan.reminderAt ?? plan.deadline },
+            data: { status: 'WAITING_REPLY', stepIndex: i, waitingSince: since, remindersSent: 0, timedOutStep: null, nextRunAt: plan.reminderAt ?? plan.deadline },
           });
           // O contato pode ter respondido enquanto o passo rodava
           const answer = await this.replyAfterBot(conversationId);

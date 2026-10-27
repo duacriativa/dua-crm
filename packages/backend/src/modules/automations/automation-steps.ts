@@ -120,6 +120,24 @@ export function waitPlan(
   };
 }
 
+/**
+ * Qual lembrete sai agora: o mais recente já vencido (null = nenhum). Se vários venceram juntos
+ * (lembretes ligados depois que a espera começou, servidor fora do ar), só o último sai.
+ */
+export function dueReminder(since: Date, sent: number, cond: AutomationConditions, now: number) {
+  const reminders = cond.reminders ?? [];
+  let due: number | null = null;
+  for (let k = sent; k < reminders.length; k++) {
+    if (businessHours(new Date(since.getTime() + reminders[k].afterSeconds * 1000)).getTime() <= now) due = k;
+  }
+  return due;
+}
+
+/** Depois do último lembrete enviado, a pessoa tem pelo menos `giveUpSeconds` para responder. */
+export function giveUpAfter(sentAt: number, cond: AutomationConditions) {
+  return new Date(sentAt + (cond.giveUpSeconds ?? DEFAULT_GIVE_UP_S) * 1000);
+}
+
 /** Valida os lembretes vindos da tela (até 5, em ordem de tempo, até 30 dias). */
 export function sanitizeReminders(input: any, strict = true): Reminder[] {
   if (!Array.isArray(input)) return [];

@@ -385,6 +385,7 @@ model AutomationRun {
   meetingId      String?    // reunião que disparou a sessão (gatilho "Reunião agendada"; esperas relativas ao horário dela)
   waitingSince   DateTime?  // quando começou a espera por resposta atual (base dos lembretes)
   remindersSent  Int        @default(0) // lembretes já enviados nessa espera
+  timedOutStep   String?    // id da espera que venceu sem resposta (a sessão pode ser retomada se a pessoa responder depois)
   startedAt      DateTime   @default(now())
   finishedAt     DateTime?
   updatedAt      DateTime   @updatedAt
