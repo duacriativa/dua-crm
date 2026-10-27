@@ -460,7 +460,7 @@ function PurchaseHistory({ contactId }: { contactId: string }) {
   );
 }
 
-function ContractsSection({ contactName }: { contactName: string }) {
+function ContractsSection({ contactId, contactName }: { contactId: string; contactName: string }) {
   const [contracts, setContracts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -468,6 +468,7 @@ function ContractsSection({ contactName }: { contactName: string }) {
   const [cancelReason, setCancelReason] = useState("");
   const [cancelling, setCancelling] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [reactivatingId, setReactivatingId] = useState<string | null>(null);
   const [form, setForm] = useState({
     serviceType: "SOCIAL_MEDIA", monthlyValue: "", signedAt: "", startsAt: "",
@@ -492,9 +493,11 @@ function ContractsSection({ contactName }: { contactName: string }) {
 
   const save = async () => {
     setSaving(true);
+    setSaveError(null);
     try {
       await api.post("/contracts", {
         clientName: contactName,
+        contactId,
         serviceType: form.serviceType,
         monthlyValue: parseFloat(form.monthlyValue),
         totalValue: parseFloat(form.monthlyValue),
@@ -505,7 +508,10 @@ function ContractsSection({ contactName }: { contactName: string }) {
       setShowForm(false);
       setForm({ serviceType: "SOCIAL_MEDIA", monthlyValue: "", signedAt: "", startsAt: "" });
       load();
-    } catch { } finally { setSaving(false); }
+    } catch (err: any) {
+      const msg = err?.response?.data?.message;
+      setSaveError(Array.isArray(msg) ? msg.join(", ") : msg || "Não foi possível salvar o contrato.");
+    } finally { setSaving(false); }
   };
 
   const cancelContract = async () => {
@@ -575,6 +581,7 @@ function ContractsSection({ contactName }: { contactName: string }) {
               onChange={(e) => setForm((p) => ({ ...p, signedAt: e.target.value }))}
             />
           </div>
+          {saveError && <p className="text-[11px] text-red-500">{saveError}</p>}
           <div className="flex gap-2 pt-1">
             <button
               onClick={save}
@@ -1387,7 +1394,7 @@ export default function ContactProfilePage() {
             </div>
 
             {/* Contratos */}
-            <ContractsSection contactName={contact.name} />
+            <ContractsSection contactId={contact.id} contactName={contact.name} />
 
           </div>
         </div>
