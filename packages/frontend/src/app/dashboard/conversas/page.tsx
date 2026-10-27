@@ -267,6 +267,8 @@ function ConversasInner() {
   // File attachment
   const [sendingMedia, setSendingMedia] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // Anexo escolhido fica aqui até apertar enviar (dá para trocar, remover e escrever legenda)
+  const [pendingFile, setPendingFile] = useState<{ file: File; previewUrl: string | null } | null>(null);
 
   // Menu ⋮ do header do chat
   const [showChatMenu, setShowChatMenu] = useState(false);
@@ -670,7 +672,7 @@ function ConversasInner() {
     }
     const a = document.createElement("a");
     a.href = url!;
-    a.download = msg.content && msg.content !== "[documento]" ? msg.content : "documento";
+    a.download = msg.content && msg.content !== "[documento]" ? msg.content.split("\n")[0] : "documento";
     a.click();
   };
 
@@ -831,19 +833,6 @@ function ConversasInner() {
     if (res.ok) setNotes((prev) => prev.filter((n) => n.id !== note.id));
   };
 
-  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
-      // Ctrl+Enter quebra a linha na posição do cursor
-      e.preventDefault();
-      const el = e.currentTarget as HTMLTextAreaElement;
-      const { selectionStart: start, selectionEnd: end, value } = el;
-      setNewMessage(value.slice(0, start) + "\n" + value.slice(end));
-      requestAnimationFrame(() => { el.selectionStart = el.selectionEnd = start + 1; });
-      return;
-    }
-    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (noteMode) saveNote(); else sendMessage(); }
-  }, [sendMessage, saveNote, noteMode]);
-
   const handleMessageChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setNewMessage(e.target.value);
   }, []);
@@ -855,59 +844,92 @@ function ConversasInner() {
     '👋','🤝','💪','🙌','👏','🫶','❤️‍🔥','💔','💬','📸',
   ];
 
+  const attachFile = (file: File) => {
+    setPendingFile((prev) => {
+      if (prev?.previewUrl) URL.revokeObjectURL(prev.previewUrl);
+      return { file, previewUrl: file.type.startsWith("image/") || file.type.startsWith("video/") ? URL.createObjectURL(file) : null };
+    });
+    textareaRef.current?.focus();
+  };
+  const clearPendingFile = () => {
+    setPendingFile((prev) => { if (prev?.previewUrl) URL.revokeObjectURL(prev.previewUrl); return null; });
+  };
+  // Trocar de conversa descarta o anexo que não foi enviado
+  useEffect(() => { clearPendingFile(); }, [selected?.id]);
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) sendFile(file);
+    if (file) attachFile(file);
+    e.target.value = ""; // permite escolher o mesmo arquivo de novo
   };
 
-  // Ctrl+V com imagem (print) no campo de mensagem envia a imagem
+  // Ctrl+V com imagem (print) no campo de mensagem anexa a imagem
   const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
     const item = Array.from(e.clipboardData.items).find((i) => i.type.startsWith("image/"));
     const blob = item?.getAsFile();
     if (!blob || !selected) return;
     e.preventDefault();
-    if (!window.confirm(`Enviar a imagem colada para ${selected.contact.name}?`)) return;
     const ext = blob.type.split("/")[1] || "png";
-    sendFile(new File([blob], `print-${Date.now()}.${ext}`, { type: blob.type }));
+    attachFile(new File([blob], `print-${Date.now()}.${ext}`, { type: blob.type }));
   };
 
-  const sendFile = async (file: File) => {
-    if (!selected || sendingMedia) return;
+  // Envia o anexo pendente com o texto digitado como legenda
+  const sendPendingFile = () => {
+    if (!selected || !pendingFile || sendingMedia) return;
+    const { file, previewUrl } = pendingFile;
+    const convId = selected.id;
+    const text = newMessage.trim();
+    const caption = text && signature ? `*${signature}:*\n${text}` : text;
+    const mediatype = file.type.startsWith("image/") ? "image" : file.type.startsWith("video/") ? "video" : "document";
     setSendingMedia(true);
+    setPendingFile(null);
+    setNewMessage("");
 
     const reader = new FileReader();
     reader.onload = async () => {
-      const base64 = (reader.result as string).split(',')[1];
-      const mediatype = file.type.startsWith('image/') ? 'image'
-        : file.type === 'application/pdf' ? 'document'
-        : file.type.startsWith('video/') ? 'video'
-        : 'document';
-
-      // Optimistic message
+      const dataUri = reader.result as string;
       const optimistic: Message = {
         id: `opt-${Date.now()}`,
-        content: file.name,
-        direction: 'OUTBOUND',
-        type: mediatype === 'image' ? 'IMAGE' : mediatype === 'video' ? 'VIDEO' : 'DOCUMENT',
+        content: mediatype === "document" ? (caption ? `${file.name}\n${caption}` : file.name) : caption || (mediatype === "image" ? "[imagem]" : "[vídeo]"),
+        direction: "OUTBOUND",
+        type: mediatype === "image" ? "IMAGE" : mediatype === "video" ? "VIDEO" : "DOCUMENT",
         sentAt: new Date().toISOString(),
-        mediaUrl: mediatype === 'image' ? `data:${file.type};base64,${base64}` : null,
+        mediaUrl: mediatype === "document" ? null : dataUri,
       };
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
       forceScrollRef.current = true;
-      setMessages(prev => [...prev, optimistic]);
-
+      setMessages((prev) => [...prev, optimistic]);
       try {
-        await authFetch(`${API_URL}/api/v1/conversations/${selected.id}/media`, {
-          method: 'POST',
+        const res = await authFetch(`${API_URL}/api/v1/conversations/${convId}/media`, {
+          method: "POST",
           headers: authHeaders(),
-          body: JSON.stringify({ base64, mediatype, filename: file.name, caption: '' }),
+          body: JSON.stringify({ base64: dataUri, mediatype, filename: file.name, caption }),
         });
+        const saved = await res.json().catch(() => null);
+        setMessages((prev) => prev.map((m) => m.id !== optimistic.id ? m
+          : res.ok && saved?.id ? { ...saved, mediaUrl: saved.mediaUrl ?? m.mediaUrl }
+          : { ...m, errorCode: "send_failed", errorMessage: [].concat(saved?.message ?? `Erro ${res.status}`).join(" ") }));
+      } catch {
+        setMessages((prev) => prev.map((m) => m.id === optimistic.id ? { ...m, errorCode: "send_failed", errorMessage: "Sem conexão com o servidor." } : m));
       } finally {
         setSendingMedia(false);
-        if (fileInputRef.current) fileInputRef.current.value = '';
       }
     };
     reader.readAsDataURL(file);
   };
+
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+      // Ctrl+Enter quebra a linha na posição do cursor
+      e.preventDefault();
+      const el = e.currentTarget as HTMLTextAreaElement;
+      const { selectionStart: start, selectionEnd: end, value } = el;
+      setNewMessage(value.slice(0, start) + "\n" + value.slice(end));
+      requestAnimationFrame(() => { el.selectionStart = el.selectionEnd = start + 1; });
+      return;
+    }
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (noteMode) saveNote(); else if (pendingFile) sendPendingFile(); else sendMessage(); }
+  }, [sendMessage, saveNote, noteMode, pendingFile, sendPendingFile]);
 
   const updateStatus = async (status: ConversationStatus) => {
     if (!selected) return;
@@ -1199,13 +1221,17 @@ function ConversasInner() {
                       <button type="button" onClick={() => downloadDocument(msg)} title="Baixar arquivo"
                         className={`flex items-center gap-2 px-4 pt-3 hover:underline ${isOut ? "text-white/80" : "text-gray-500 hover:text-brand-600"}`}>
                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                        <span className="text-xs font-medium truncate max-w-[180px]">{msg.content !== "[documento]" ? msg.content : "Documento"}</span>
+                        <span className="text-xs font-medium truncate max-w-[180px]">{msg.content !== "[documento]" ? msg.content.split("\n")[0] : "Documento"}</span>
                         {downloadingId === msg.id ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <span className="text-[10px] font-semibold">Baixar</span>}
                       </button>
                     )}
                     {/* Conteúdo/legenda */}
                     <div className="px-4 py-2.5">
                       {msg.type === "TEXT" && <p className="leading-relaxed whitespace-pre-wrap">{formatWhatsApp(msg.content)}</p>}
+                      {/* Documento: a 1ª linha é o nome do arquivo; o resto é a legenda */}
+                      {msg.type === "DOCUMENT" && msg.content.includes("\n") && (
+                        <p className="leading-relaxed whitespace-pre-wrap">{formatWhatsApp(msg.content.slice(msg.content.indexOf("\n") + 1))}</p>
+                      )}
                       {msg.type === "INTERACTIVE" && (() => {
                         // Bot: "texto\n\n[ Botão 1 ]  [ Botão 2 ]" · Cliente: título do botão que tocou
                         const m = msg.content.match(/^([\s\S]*?)\n*((?:\[ [^\]]+ \]\s*)+)$/);
@@ -1232,7 +1258,7 @@ function ConversasInner() {
                         </>
                       )}
                       {(msg.type === "IMAGE" || msg.type === "VIDEO") && msg.content && msg.content !== "[imagem]" && msg.content !== "[vídeo]" && !(msg.mediaUrl && msg.content === "[figurinha]") && (
-                        <p className="leading-relaxed whitespace-pre-wrap text-xs mt-1 opacity-90">{msg.content}</p>
+                        <p className="leading-relaxed whitespace-pre-wrap text-xs mt-1 opacity-90">{formatWhatsApp(msg.content)}</p>
                       )}
                       <div className={`flex items-center justify-end gap-1 mt-0.5 ${isOut ? "text-white/70" : "text-gray-400"}`}>
                         <span className="text-[10px]">{new Date(msg.sentAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</span>
@@ -1356,6 +1382,29 @@ function ConversasInner() {
             </button>
           </div>
         )}
+        {pendingFile && !noteMode && (
+          <div className="flex items-center gap-3 mb-2 p-2 pr-3 bg-gray-50 border border-gray-200 rounded-2xl">
+            {pendingFile.previewUrl && pendingFile.file.type.startsWith("image/") ? (
+              <img src={pendingFile.previewUrl} alt="" className="w-14 h-14 rounded-xl object-cover shrink-0" />
+            ) : pendingFile.previewUrl ? (
+              <video src={pendingFile.previewUrl} className="w-14 h-14 rounded-xl object-cover shrink-0 bg-black" muted />
+            ) : (
+              <div className="w-14 h-14 rounded-xl bg-white border border-gray-200 flex items-center justify-center text-gray-400 shrink-0">
+                <FileText className="w-6 h-6" />
+              </div>
+            )}
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-gray-800 truncate">{pendingFile.file.name}</p>
+              <p className="text-xs text-gray-500">
+                {pendingFile.file.size < 1024 * 1024 ? `${Math.max(1, Math.round(pendingFile.file.size / 1024))} KB` : `${(pendingFile.file.size / 1024 / 1024).toFixed(1)} MB`}
+                {" · "}escreva uma legenda (opcional) e envie
+              </p>
+            </div>
+            <button onClick={clearPendingFile} title="Remover anexo" className="p-1.5 text-gray-400 hover:text-red-500 rounded-full hover:bg-white">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
         <div className="flex items-end gap-2">
           <input
             ref={fileInputRef}
@@ -1413,7 +1462,7 @@ function ConversasInner() {
             </div>
           ) : (
           <textarea value={newMessage} onChange={handleMessageChange} onKeyDown={handleKeyDown} onPaste={handlePaste}
-            placeholder={noteMode ? (noteRecipient ? `Mensagem para ${noteRecipient}: o cliente não vê` : "Nota interna: só a equipe vê, não vai para o WhatsApp") : replyingTo ? "Digite sua resposta..." : "Digite uma mensagem..."}
+            placeholder={noteMode ? (noteRecipient ? `Mensagem para ${noteRecipient}: o cliente não vê` : "Nota interna: só a equipe vê, não vai para o WhatsApp") : pendingFile ? "Adicione uma legenda..." : replyingTo ? "Digite sua resposta..." : "Digite uma mensagem..."}
             ref={textareaRef} data-autogrow rows={1} className={`flex-1 resize-none text-gray-900 placeholder:text-gray-400 border rounded-2xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 max-h-60 overflow-y-auto ${noteMode ? "bg-amber-50 border-amber-200 focus:ring-amber-400" : "bg-gray-50 border-gray-200 focus:ring-brand-500"}`} style={{ minHeight: "42px" }} />
           )}
           {noteMode ? (
@@ -1423,6 +1472,10 @@ function ConversasInner() {
             </button>
           ) : recording ? (
             <button onClick={() => stopRecording(false)} title="Parar e enviar áudio" className="p-2.5 bg-brand-600 text-white rounded-2xl hover:bg-brand-700 transition-colors">
+              <Send className="w-4 h-4" />
+            </button>
+          ) : pendingFile ? (
+            <button onClick={sendPendingFile} disabled={sendingMedia} title="Enviar anexo" className="p-2.5 bg-brand-600 text-white rounded-2xl hover:bg-brand-700 disabled:opacity-40 transition-colors">
               <Send className="w-4 h-4" />
             </button>
           ) : !newMessage.trim() ? (

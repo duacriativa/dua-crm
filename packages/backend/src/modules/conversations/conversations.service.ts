@@ -262,7 +262,10 @@ export class ConversationsService {
         conversationId,
         direction: 'OUTBOUND',
         type: msgTypeOf(mediatype),
-        content: mediatype === 'audio' ? '[áudio]' : caption || filename,
+        // Documento guarda "nome\nlegenda" (o balão mostra o nome no botão de baixar)
+        content: mediatype === 'audio' ? '[áudio]'
+          : mediatype === 'document' ? [filename, caption].filter(Boolean).join('\n')
+          : caption || (mediatype === 'image' ? '[imagem]' : '[vídeo]'),
         sentAt: new Date(),
         externalId,
         mediaId,
