@@ -318,6 +318,19 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
       `ALTER TABLE "Message" ADD COLUMN IF NOT EXISTS "transcription" TEXT`,
       // 20261027000002_add_lead_won_item
       `ALTER TABLE "PipelineLead" ADD COLUMN IF NOT EXISTS "wonItem" TEXT`,
+      // 20261027000003_add_schedule_block
+      `CREATE TABLE IF NOT EXISTS "ScheduleBlock" (
+        "id" TEXT NOT NULL,
+        "tenantId" TEXT NOT NULL,
+        "title" TEXT,
+        "startAt" TIMESTAMP(3) NOT NULL,
+        "endAt" TIMESTAMP(3) NOT NULL,
+        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT "ScheduleBlock_pkey" PRIMARY KEY ("id"),
+        CONSTRAINT "ScheduleBlock_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id") ON DELETE CASCADE ON UPDATE CASCADE
+      )`,
+      `CREATE INDEX IF NOT EXISTS "ScheduleBlock_tenantId_startAt_idx" ON "ScheduleBlock"("tenantId", "startAt")`,
+      `REVOKE ALL ON TABLE "ScheduleBlock" FROM anon, authenticated`,
     ];
     for (const sql of statements) {
       try {

@@ -13,6 +13,7 @@ import {
 } from './availability';
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MAX_RANGE_DAYS = 62;
 export const MEETING_STATUSES = ['SCHEDULED', 'CANCELLED', 'NO_SHOW', 'COMPLETED'] as const;
@@ -128,12 +129,19 @@ export class SchedulingService {
 
   // ── Horários livres ─────────────────────────────────────────────────────────
 
-  /** Ocupados: agenda do Google + reuniões marcadas aqui (com o intervalo depois de cada uma). */
+  /** Ocupados: agenda do Google + reuniões marcadas aqui (com o intervalo depois de cada uma) + bloqueios manuais. */
   private async busy(page: BookingPage, from: Date, to: Date, ignore?: Meeting): Promise<Interval[]> {
-    const meetings = await this.prisma.meeting.findMany({
-      where: { tenantId: page.tenantId, status: 'SCHEDULED', startAt: { lt: to }, endAt: { gt: new Date(from.getTime() - 24 * 3600_000) } },
-      select: { id: true, startAt: true, endAt: true, bookingPage: { select: { bufferAfterMin: true } } },
-    });
+    const [meetings, blocks] = await Promise.all([
+      this.prisma.meeting.findMany({
+        where: { tenantId: page.tenantId, status: 'SCHEDULED', startAt: { lt: to }, endAt: { gt: new Date(from.getTime() - 24 * 3600_000) } },
+        select: { id: true, startAt: true, endAt: true, bookingPage: { select: { bufferAfterMin: true } } },
+      }),
+      this.prisma.scheduleBlock.findMany({
+        where: { tenantId: page.tenantId, startAt: { lt: to }, endAt: { gt: from } },
+        select: { startAt: true, endAt: true },
+      }),
+    ]);
+    const blocked = blocks.map((b) => ({ start: b.startAt, end: b.endAt }));
     const own = meetings
       .filter((m) => m.id !== ignore?.id)
       .map((m) => ({ start: m.startAt, end: new Date(m.endAt.getTime() + (m.bookingPage?.bufferAfterMin ?? page.bufferAfterMin) * 60_000) }));
@@ -146,7 +154,38 @@ export class SchedulingService {
     }
     // O evento da própria reunião que está sendo remarcada não conta como ocupado
     if (ignore) google = google.filter((b) => !(b.start.getTime() === ignore.startAt.getTime() && b.end.getTime() === ignore.endAt.getTime()));
-    return [...own, ...google];
+    return [...own, ...blocked, ...google];
+  }
+
+  // ── Bloqueios manuais ───────────────────────────────────────────────────────
+
+  /** Bloqueios que ainda não acabaram. */
+  listBlocks(tenantId: string) {
+    return this.prisma.scheduleBlock.findMany({ where: { tenantId, endAt: { gte: new Date() } }, orderBy: { startAt: 'asc' }, take: 200 });
+  }
+
+  /** date YYYY-MM-DD + start/end HH:MM no fuso da página de agendamento. */
+  async createBlock(tenantId: string, body: { date?: string; start?: string; end?: string; title?: string }) {
+    const date = String(body.date ?? '');
+    const start = String(body.start ?? '');
+    const end = String(body.end ?? '');
+    if (!DATE_RE.test(date)) throw new BadRequestException('Escolha a data.');
+    if (!TIME_RE.test(start) || !TIME_RE.test(end)) throw new BadRequestException('Use HH:MM no início e no fim.');
+    if (end <= start) throw new BadRequestException('O fim precisa ser depois do início.');
+    const page = await this.prisma.bookingPage.findFirst({ where: { tenantId }, orderBy: { createdAt: 'asc' }, select: { timezone: true } });
+    const tz = page?.timezone ?? 'America/Sao_Paulo';
+    const toMin = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
+    const startAt = zonedToUtc(date, toMin(start), tz);
+    const endAt = zonedToUtc(date, toMin(end), tz);
+    if (endAt.getTime() <= Date.now()) throw new BadRequestException('Esse horário já passou.');
+    const title = String(body.title ?? '').trim().slice(0, 120) || null;
+    return this.prisma.scheduleBlock.create({ data: { tenantId, startAt, endAt, title } });
+  }
+
+  async deleteBlock(tenantId: string, id: string) {
+    const { count } = await this.prisma.scheduleBlock.deleteMany({ where: { id, tenantId } });
+    if (!count) throw new NotFoundException('Bloqueio não encontrado.');
+    return { ok: true };
   }
 
   async slots(page: BookingPage, from?: string, to?: string, ignore?: Meeting) {

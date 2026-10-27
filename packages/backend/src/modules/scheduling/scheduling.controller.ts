@@ -66,6 +66,21 @@ export class SchedulingController {
     return this.scheduling.updatePage(req.user.tenantId, id, body ?? {});
   }
 
+  @Get('blocks')
+  blocks(@Request() req: any) {
+    return this.scheduling.listBlocks(req.user.tenantId);
+  }
+
+  @Post('blocks')
+  createBlock(@Request() req: any, @Body() body: any) {
+    return this.scheduling.createBlock(req.user.tenantId, body ?? {});
+  }
+
+  @Delete('blocks/:id')
+  deleteBlock(@Request() req: any, @Param('id') id: string) {
+    return this.scheduling.deleteBlock(req.user.tenantId, id);
+  }
+
   @Get('meetings')
   meetings(@Request() req: any, @Query() q: any) {
     return this.scheduling.list(req.user.tenantId, q ?? {});

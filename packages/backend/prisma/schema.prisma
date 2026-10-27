@@ -160,6 +160,7 @@ model Tenant {
   instagramDiagnoses InstagramDiagnosis[]
   planOrders       PlanOrder[]
   meetings         Meeting[]
+  scheduleBlocks   ScheduleBlock[]
   metaCredential   MetaCredential?
   auditLogs        AuditLog[]
   pipelines        Pipeline[]
@@ -692,6 +693,19 @@ model Meeting {
 
   @@index([tenantId, startAt])
   @@index([contactId])
+}
+
+// Período fechado na mão (ex.: reunião presencial com cliente): some da página de agendamento
+model ScheduleBlock {
+  id        String   @id @default(cuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  title     String?
+  startAt   DateTime
+  endAt     DateTime
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, startAt])
 }
 
 // ─── Instagram (API do Instagram com Login do Facebook) ──────────────────────
