@@ -25,7 +25,7 @@ export interface DesiredTask {
 
 export interface RulesSnapshot {
   now: Date;
-  contacts: Record<string, { id: string; name: string | null; phone: string | null; instagramHandle: string | null }>;
+  contacts: Record<string, { id: string; name: string | null; phone: string | null; instagramHandle: string | null; type?: string }>;
   meetings: { id: string; contactId: string; status: string; startAt: Date; endAt: Date; createdAt: Date }[];
   /** Todos os cards dos contatos envolvidos (abertos, ganhos e perdidos). */
   leads: { id: string; contactId: string; stageName: string; stageKind: string; value: number | null; updatedAt: Date }[];
@@ -150,9 +150,12 @@ export function evaluateRules(s: RulesSnapshot): DesiredTask[] {
     const contact = s.contacts[m.contactId];
     const end = m.endAt.getTime();
     const cards = leadsBy.get(m.contactId) ?? [];
+    // Cliente (marcado como cliente, ou com card ganho e nenhum aberto): reunião de acompanhamento,
+    // não de venda. Sem tarefa de proposta nem de cadastro; só a de marcar se a reunião aconteceu.
+    const client = contact?.type === 'CLIENT' || (cards.some((l) => l.stageKind === 'WON') && !cards.some((l) => l.stageKind === 'OPEN'));
 
     // Reunião feita e o card não andou em 24h
-    if (m.status === 'COMPLETED' && now - end >= RULES.meetingNextStepAfter && now - end <= RULES.meetingLookback) {
+    if (!client && m.status === 'COMPLETED' && now - end >= RULES.meetingNextStepAfter && now - end <= RULES.meetingLookback) {
       const moved = cards.some((l) => l.updatedAt.getTime() > end);
       if (!moved) {
         out.push({
@@ -181,7 +184,7 @@ export function evaluateRules(s: RulesSnapshot): DesiredTask[] {
     }
 
     // Reunião de quem não tem card ou não tem @ do Instagram
-    if ((m.status === 'SCHEDULED' || m.status === 'COMPLETED') && now - end <= RULES.meetingLookback) {
+    if (!client && (m.status === 'SCHEDULED' || m.status === 'COMPLETED') && now - end <= RULES.meetingLookback) {
       const missing: string[] = [];
       if (cards.length === 0) missing.push('card no funil');
       if (!contact?.instagramHandle?.trim()) missing.push('@ da marca no Instagram');
