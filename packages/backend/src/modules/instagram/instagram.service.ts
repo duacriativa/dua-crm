@@ -469,6 +469,14 @@ export class InstagramService {
           return url
             ? { ...base, type: 'IMAGE', content: m.text || att.payload?.title || '[post compartilhado]', mediaUrl: url, sharedMedia: true }
             : { ...base, content: m.text || '[post compartilhado]' };
+        case 'template': {
+          // Cartão com botões mandado por outra conta comercial (geralmente automação/propaganda)
+          const text = templateText(att.payload);
+          const img = (att.payload?.generic?.elements ?? att.payload?.elements ?? [])[0]?.image_url ?? null;
+          return img
+            ? { ...base, type: 'IMAGE', content: m.text || text, mediaUrl: img }
+            : { ...base, content: m.text || text };
+        }
         default:
           return { ...base, content: m.text || `[${att.type || 'anexo'}]` };
       }
@@ -824,4 +832,18 @@ export class InstagramService {
     if (!count) throw new NotFoundException('Regra não encontrada.');
     return { ok: true };
   }
+}
+
+/** Texto de um cartão "template" do Instagram: título, subtítulo, texto e botões com link. */
+function templateText(payload: any): string {
+  const elements: any[] = payload?.generic?.elements ?? payload?.elements ?? [];
+  const lines: string[] = [];
+  if (payload?.text) lines.push(payload.text);
+  for (const e of elements) {
+    if (e?.title) lines.push(e.title);
+    if (e?.subtitle) lines.push(e.subtitle);
+    for (const b of e?.buttons ?? []) if (b?.title) lines.push(`🔘 ${b.title}${b.url ? ` — ${b.url}` : ''}`);
+  }
+  for (const b of payload?.buttons ?? []) if (b?.title) lines.push(`🔘 ${b.title}${b.url ? ` — ${b.url}` : ''}`);
+  return lines.length ? lines.join('\n') : '[cartão com botões]';
 }
