@@ -587,6 +587,12 @@ export class WhatsAppCloudService {
   ) {
     if (!customerWaId || !m?.id) return;
     if (m.type === 'reaction' && !m.reaction?.emoji) return; // remoção de reação
+    // Contato apagou uma mensagem ("apagar para todos"): não é mensagem nova. Não grava, não avisa e
+    // não acorda bot. A Meta não diz qual mensagem foi apagada, então a original fica no histórico.
+    if (m.type === 'revoke') {
+      this.logger.log(`[Cloud] Mensagem apagada por ${customerWaId} (${m.id}) — ignorada`);
+      return;
+    }
 
     const already = await this.prisma.message.findFirst({ where: { externalId: m.id }, select: { id: true } });
     if (already) return;
