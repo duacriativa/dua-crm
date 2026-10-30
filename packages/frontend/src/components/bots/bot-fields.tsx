@@ -3,7 +3,7 @@
 import { useState } from "react";
 import {
   X, Timer, MessageSquare, MessageCircle, FileText, ArrowRightLeft, MousePointerClick, Tag, Bell, CornerDownRight, StopCircle, Compass, MapPin,
-  CalendarClock, CalendarCheck,
+  CalendarClock, CalendarCheck, CalendarPlus,
 } from "lucide-react";
 import type { WaTemplate } from "@/components/whatsapp/templates";
 import { BotReminder, BotStep, LeadOrigin, ORIGIN_LABEL, fmtDuration, templateStep } from "./bot-api";
@@ -26,6 +26,7 @@ export const STEP_META: Record<StepType, { label: string; icon: (cls?: string) =
   end: { label: "Encerrar o bot", icon: (c = "w-3.5 h-3.5") => <StopCircle className={c} />, color: "bg-red-50 text-red-600", head: "bg-red-500" },
   wait_meeting: { label: "Esperar o horário da reunião", icon: (c = "w-3.5 h-3.5") => <CalendarClock className={c} />, color: "bg-sky-50 text-sky-700", head: "bg-sky-600" },
   meeting_status: { label: "Reunião aconteceu?", icon: (c = "w-3.5 h-3.5") => <CalendarCheck className={c} />, color: "bg-sky-50 text-sky-700", head: "bg-sky-600" },
+  wait_booking: { label: "Esperar agendamento", icon: (c = "w-3.5 h-3.5") => <CalendarPlus className={c} />, color: "bg-sky-50 text-sky-700", head: "bg-sky-600" },
 };
 
 export const NEW_STEP: Record<StepType, () => BotStep> = {
@@ -43,6 +44,11 @@ export const NEW_STEP: Record<StepType, () => BotStep> = {
   end: () => ({ type: "end" }),
   wait_meeting: () => ({ type: "wait_meeting", seconds: 3600, when: "before" }),
   meeting_status: () => ({ type: "meeting_status", timeoutSeconds: 24 * 3600 }),
+  wait_booking: () => ({
+    type: "wait_booking",
+    timeoutSeconds: 2 * 86400,
+    reminders: [{ afterSeconds: 3 * 3600, type: "send_text", text: "{{primeiro_nome}}, conseguiu escolher um horário? Se nenhum encaixar, me fala o melhor dia que eu vejo com o Daniel 😉" }],
+  }),
 };
 
 export const RUN_STATUS: Record<string, { label: string; cls: string }> = {
@@ -86,6 +92,10 @@ export function stepSummary(s: BotStep): string {
     case "end": return "O bot termina aqui";
     case "wait_meeting": return `Até ${fmtDuration(s.seconds)} ${s.when === "before" ? "antes" : "depois"} do início da reunião`;
     case "meeting_status": return `Espera o time marcar em Agenda → Reuniões (até ${fmtDuration(s.timeoutSeconds || 24 * 3600)} depois do fim)`;
+    case "wait_booking": {
+      const n = s.reminders?.length ?? 0;
+      return `Espera a pessoa agendar por até ${fmtDuration(s.timeoutSeconds || 2 * 86400)}${n ? ` (${n} lembrete${n > 1 ? "s" : ""})` : ""}`;
+    }
     default: return "";
   }
 }
@@ -294,6 +304,27 @@ export function StepFields({ step, set, templates, tplError, stages, onAddButton
           <p className="text-[11px] text-gray-400">
             Segue quando alguém marca a reunião como "Realizada" ou "Não compareceu" em Agenda → Reuniões (se já estiver marcada, segue na hora).
           </p>
+        </>
+      )}
+
+      {step.type === "wait_booking" && (
+        <>
+          <div className="flex items-center gap-2 text-xs text-gray-500 flex-wrap">
+            <span>Esperar a reunião ser marcada por até</span>
+            <DurationInput seconds={step.timeoutSeconds ?? 2 * 86400} onChange={(timeoutSeconds) => set({ timeoutSeconds })} />
+          </div>
+          <p className="text-[11px] text-gray-400">
+            Use logo depois da mensagem com o link de agendamento. Segue por &quot;Agendou&quot; assim que a pessoa marca;
+            por &quot;Escreveu&quot; se ela mandar mensagem (ligue a seta para avisar o time; sem seta, continua esperando);
+            e por &quot;Não agendou&quot; quando o prazo e os lembretes acabam. Lembretes não saem entre 21h e 9h.
+          </p>
+          <ReminderFields
+            reminders={step.reminders ?? []}
+            giveUpSeconds={step.giveUpSeconds}
+            onChange={(patch) => set(patch)}
+            templates={templates}
+            tplError={tplError}
+          />
         </>
       )}
 

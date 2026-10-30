@@ -45,6 +45,9 @@ export type AutomationStep = { id?: string; name?: string; pos?: StepPos } & (
   | { type: 'wait_meeting'; seconds: number; when: 'before' | 'after'; onTime?: StepTarget; onLate?: StepTarget }
   // Depois da reunião: espera o time marcar "realizada" ou "não compareceu" (até timeoutSeconds após o fim; sem onTimeout → encerra)
   | { type: 'meeting_status'; timeoutSeconds?: number; onDone?: StepTarget; onNoShow?: StepTarget; onTimeout?: StepTarget }
+  // Depois de mandar o link de agendamento: espera a pessoa marcar a reunião, com lembretes próprios
+  // (contados a partir deste passo). Agendou → onBooked; escreveu algo → onReply; sem agendar → onTimeout (vazio = encerra).
+  | { type: 'wait_booking'; timeoutSeconds?: number; reminders?: Reminder[]; giveUpSeconds?: number; onBooked?: StepTarget; onReply?: StepTarget; onTimeout?: StepTarget }
 );
 
 /** Passos que só funcionam com uma reunião na sessão. */
@@ -167,7 +170,10 @@ export function sanitizeReminders(input: any, strict = true): Reminder[] {
   return out.sort((a, b) => a.afterSeconds - b.afterSeconds);
 }
 
-export const STEP_TYPES = ['wait', 'wait_reply', 'send_text', 'send_template', 'send_buttons', 'move_stage', 'add_tag', 'notify', 'check_origin', 'set_origin', 'goto', 'end', ...MEETING_STEPS];
+export const STEP_TYPES = ['wait', 'wait_reply', 'send_text', 'send_template', 'send_buttons', 'move_stage', 'add_tag', 'notify', 'check_origin', 'set_origin', 'goto', 'end', 'wait_booking', ...MEETING_STEPS];
+
+/** Espera pelo agendamento sem prazo configurado: 2 dias. */
+export const DEFAULT_BOOKING_TIMEOUT_S = 2 * 24 * 3600;
 
 /** Espera por resposta sem limite configurado: 7 dias e o bot encerra. */
 export const DEFAULT_REPLY_TIMEOUT_S = 7 * 24 * 3600;
@@ -329,6 +335,17 @@ export function sanitizeSteps(input: any, strict = true): AutomationStep[] {
           ...(s.timeoutSeconds ? { timeoutSeconds: secs(s.timeoutSeconds, 30 * 24 * 3600) } : {}),
           ...opt('onDone', s.onDone),
           ...opt('onNoShow', s.onNoShow),
+          ...opt('onTimeout', s.onTimeout),
+        };
+      case 'wait_booking':
+        return {
+          ...base,
+          type: 'wait_booking',
+          ...(s.timeoutSeconds ? { timeoutSeconds: secs(s.timeoutSeconds, 30 * 24 * 3600) } : {}),
+          reminders: sanitizeReminders(s.reminders, strict),
+          ...(s.giveUpSeconds ? { giveUpSeconds: secs(s.giveUpSeconds, 30 * 24 * 3600) } : {}),
+          ...opt('onBooked', s.onBooked),
+          ...opt('onReply', s.onReply),
           ...opt('onTimeout', s.onTimeout),
         };
       default:

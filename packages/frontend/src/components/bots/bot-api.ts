@@ -35,6 +35,7 @@ export type BotStep = { id?: string; name?: string; pos?: { x: number; y: number
   | { type: "end" }
   | { type: "wait_meeting"; seconds: number; when: "before" | "after"; onTime?: string; onLate?: string }
   | { type: "meeting_status"; timeoutSeconds?: number; onDone?: string; onNoShow?: string; onTimeout?: string }
+  | { type: "wait_booking"; timeoutSeconds?: number; reminders?: BotReminder[]; giveUpSeconds?: number; onBooked?: string; onReply?: string; onTimeout?: string }
 );
 
 /** Passos que só existem nos bots com o gatilho "Reunião agendada". */
