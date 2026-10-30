@@ -132,6 +132,28 @@ export class PipelinesController {
     return this.prisma.pipelineStage.deleteMany({ where: { id: stageId } });
   }
 
+  /** Funis (só as etapas) e os cards de um contato: painel da conversa troca a etapa sem abrir o funil. */
+  @Get('contact/:contactId')
+  async forContact(@Request() req: any, @Param('contactId') contactId: string) {
+    const tenantId = req.user.tenantId;
+    const [pipelines, cards] = await Promise.all([
+      this.prisma.pipeline.findMany({
+        where: { tenantId },
+        select: { id: true, name: true, stages: { select: { id: true, name: true, color: true, kind: true }, orderBy: { position: 'asc' } } },
+        orderBy: { createdAt: 'asc' },
+      }),
+      this.prisma.pipelineLead.findMany({
+        where: { contactId, stage: { pipeline: { tenantId } } },
+        select: { id: true, stageId: true, value: true, updatedAt: true, stage: { select: { pipelineId: true } } },
+        orderBy: { updatedAt: 'desc' },
+      }),
+    ]);
+    return {
+      pipelines,
+      cards: cards.map((c) => ({ id: c.id, stageId: c.stageId, pipelineId: c.stage.pipelineId, value: c.value, updatedAt: c.updatedAt })),
+    };
+  }
+
   // ── Leads ──────────────────────────────────────────────────────────────────
 
   @Post('stages/:stageId/leads')

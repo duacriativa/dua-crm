@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { SendTemplateModal } from "@/components/whatsapp/templates";
+import { ContactFunnel } from "@/components/conversations/contact-funnel";
 
 const API_URL = "";
 
@@ -360,6 +361,14 @@ function ConversasInner() {
       .catch(() => {});
     return () => { alive = false; };
   }, [selectedContactId]);
+  // Card movido para etapa de ganho vira cliente: recarrega o contato
+  const reloadContact = () => {
+    if (!selectedContactId) return;
+    authFetch(`${API_URL}/api/v1/contacts/${selectedContactId}`, { headers: authHeaders() })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => { if (data && data.id === selectedRef.current?.contact.id) setContactInfo(data); })
+      .catch(() => {});
+  };
 
   const patchContact = async (data: Partial<Pick<ContactDetails, "type" | "tags">>) => {
     if (!selected || !contactInfo) return;
@@ -1565,6 +1574,7 @@ function ConversasInner() {
           >Editar</button>
         </div>
       </div>
+      <ContactFunnel key={selected.contact.id} contactId={selected.contact.id} onChanged={reloadContact} />
       {contactInfo && (() => {
         const ig = contactInfo.instagramHandle ? igHandle(contactInfo.instagramHandle) : "";
         const utms = [contactInfo.utmSource, contactInfo.utmMedium, contactInfo.utmCampaign].filter((v) => v && v !== "-");
