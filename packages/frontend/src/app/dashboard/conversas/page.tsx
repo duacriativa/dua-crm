@@ -431,6 +431,17 @@ function ConversasInner() {
     if (match) {
       phoneParamUsed.current = true;
       selectConversation(match);
+    } else if (convParam) {
+      // Fora das 50 mais recentes (ex.: link da tela Tarefas): busca a conversa direto
+      phoneParamUsed.current = true;
+      authFetch(`${API_URL}/api/v1/conversations/${convParam}`, { headers: authHeaders() })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((conv: Conversation | null) => {
+          if (!conv) return;
+          setConversations((prev) => (prev.some((c) => c.id === conv.id) ? prev : [conv, ...prev]));
+          selectConversation(conv);
+        })
+        .catch(() => {});
     } else if (!phoneParam) {
       phoneParamUsed.current = true;
     } else {
