@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import {
   Check, X, Loader2, RefreshCw, MessageCircle, User, Sparkles, CalendarClock, FileText, Reply,
-  ClipboardCheck, UserCog, Bot, RotateCcw, AlertTriangle,
+  ClipboardCheck, UserCog, Bot, RotateCcw, AlertTriangle, Gift, Cake, Copy,
 } from "lucide-react";
 import api from "@/lib/api";
 
@@ -15,7 +15,7 @@ interface Task {
   reason: string;
   dueAt: string;
   status: "OPEN" | "DONE" | "DISMISSED";
-  source: "RULE" | "AI";
+  source: "RULE" | "AI" | "BIRTHDAY";
   conversationId: string | null;
   closedAt: string | null;
   closedBy: string | null;
@@ -39,6 +39,8 @@ const KIND: Record<string, { label: string; icon: any; color: string }> = {
   REPLY: { label: "Responder", icon: Reply, color: "text-emerald-400 bg-emerald-500/10" },
   BOT_NOTE: { label: "Aviso do bot", icon: Bot, color: "text-teal-400 bg-teal-500/10" },
   AI: { label: "IA", icon: Sparkles, color: "text-primary bg-primary/10" },
+  BIRTHDAY_GIFT: { label: "Presente", icon: Gift, color: "text-pink-400 bg-pink-500/10" },
+  BIRTHDAY: { label: "Aniversário", icon: Cake, color: "text-pink-400 bg-pink-500/10" },
 };
 
 const errMsg = (e: any) => e?.response?.data?.message || e?.message || "Erro ao carregar.";
@@ -72,6 +74,11 @@ export default function TarefasPage() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [copied, setCopied] = useState<string | null>(null);
+
+  const copy = async (t: Task) => {
+    try { await navigator.clipboard.writeText(t.reason); setCopied(t.id); setTimeout(() => setCopied(null), 2000); } catch { setError("Não deu para copiar."); }
+  };
 
   const load = useCallback(() => {
     setError("");
@@ -113,7 +120,7 @@ export default function TarefasPage() {
         <div className="flex items-start justify-between gap-3">
           <div>
             <h1 className="text-2xl font-bold text-foreground">Tarefas</h1>
-            <p className="text-sm text-muted-foreground mt-0.5">O que o comercial precisa fazer agora · regras automáticas a cada 15 min e leitura da IA nos dias úteis às 8h</p>
+            <p className="text-sm text-muted-foreground mt-0.5">O que o comercial precisa fazer agora · regras automáticas a cada 15 min, leitura da IA nos dias úteis às 8h e aniversários de clientes</p>
           </div>
           <button onClick={refresh} disabled={refreshing} title="Atualizar agora"
             className="p-2 border border-border rounded-xl hover:bg-muted/50 disabled:opacity-50 shrink-0">
@@ -165,7 +172,17 @@ export default function TarefasPage() {
                       <p className={`font-semibold text-sm ${closed ? "text-muted-foreground line-through" : "text-foreground"}`}>{t.title}</p>
                       <span className={`text-[10px] font-semibold uppercase tracking-wide rounded-full px-1.5 py-0.5 ${k.color}`}>{k.label}</span>
                     </div>
-                    <p className="text-xs text-muted-foreground mt-0.5">{t.reason}</p>
+                    {t.kind === "BIRTHDAY" ? (
+                      <div className="mt-1.5 rounded-xl border border-pink-500/20 bg-pink-500/5 p-3">
+                        <p className="text-[10px] font-semibold uppercase tracking-wide text-pink-400 mb-1">Mensagem pronta (revise antes de enviar)</p>
+                        <p className="text-sm text-foreground whitespace-pre-line">{t.reason}</p>
+                        <button onClick={() => copy(t)} className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-pink-400 hover:underline">
+                          {copied === t.id ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />} {copied === t.id ? "Copiada" : "Copiar mensagem"}
+                        </button>
+                      </div>
+                    ) : (
+                      <p className="text-xs text-muted-foreground mt-0.5">{t.reason}</p>
+                    )}
                     <div className="flex items-center gap-3 mt-1.5 text-xs flex-wrap">
                       {closed ? (
                         <span className="text-muted-foreground">

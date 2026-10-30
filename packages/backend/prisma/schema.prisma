@@ -239,6 +239,7 @@ model Contact {
   type                ContactType    @default(LEAD)
   profilePicUrl       String?
   clientSince         DateTime?
+  birthday            String?        // aniversário "MM-DD" (sem ano)
   createdAt           DateTime       @default(now())
   updatedAt           DateTime       @updatedAt
 

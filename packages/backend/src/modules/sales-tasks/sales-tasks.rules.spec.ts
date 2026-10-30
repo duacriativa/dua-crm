@@ -1,7 +1,7 @@
 // Teste das regras da tela Tarefas com dados de exemplo: `npm run test:rules`
 import { test } from 'node:test';
 import * as assert from 'node:assert/strict';
-import { RulesSnapshot, addBusinessMinutes, businessMinutesBetween, evaluateRules, planSync } from './sales-tasks.rules';
+import { RulesSnapshot, addBusinessMinutes, birthdayTasks, businessMinutesBetween, evaluateRules, planSync } from './sales-tasks.rules';
 
 const H = 60 * 60 * 1000;
 // Quinta, 29/10/2026, 15h em Brasília (18h UTC)
@@ -192,4 +192,23 @@ test('sincronização: não duplica, não reabre dispensada e fecha quando a con
   s.meetings[0].status = 'COMPLETED';
   plan = planSync(evaluateRules(s), existing);
   assert.deepEqual(plan.autoClose, ['t2']);
+});
+
+test('aniversário: presente nos 7 dias antes, parabéns no dia, nada fora disso', () => {
+  const c = (id: string, birthday: string | null) => ({ id, name: id, phone: null, birthday });
+  // NOW = qui 29/10/2026 15h de Brasília
+  const out = birthdayTasks([c('hoje', '10-29'), c('em7', '11-05'), c('em8', '11-06'), c('ontem', '10-28'), c('sem', null), c('ruim', '13-40')], NOW);
+  assert.deepEqual(out.map((t) => `${t.contactId}:${t.kind}`).sort(), ['em7:BIRTHDAY_GIFT', 'hoje:BIRTHDAY']);
+  assert.equal(out.find((t) => t.kind === 'BIRTHDAY')!.ruleKey, 'birthday:hoje:2026');
+  // Prazo do presente: 2 dias antes, 12h de Brasília
+  assert.equal(out.find((t) => t.kind === 'BIRTHDAY_GIFT')!.dueAt.toISOString(), '2026-11-03T15:00:00.000Z');
+});
+
+test('aniversário: virada de ano, antes das 8h e 29/02', () => {
+  const c = (id: string, birthday: string) => ({ id, name: id, phone: null, birthday });
+  const dec28 = new Date('2026-12-28T12:00:00Z'); // 9h de Brasília
+  assert.deepEqual(birthdayTasks([c('jan2', '01-02')], dec28).map((t) => t.ruleKey), ['birthday-gift:jan2:2027']);
+  assert.deepEqual(birthdayTasks([c('cedo', '10-29')], new Date('2026-10-29T10:00:00Z')), []); // 7h
+  // 2027 não é bissexto: 29/02 cai em 28/02
+  assert.equal(birthdayTasks([c('bis', '02-29')], new Date('2027-02-28T12:00:00Z'))[0].kind, 'BIRTHDAY');
 });

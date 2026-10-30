@@ -11,7 +11,9 @@ export type SalesTaskKind =
   | 'COMPLETE_PROFILE'
   | 'REPLY'
   | 'BOT_NOTE'
-  | 'AI';
+  | 'AI'
+  | 'BIRTHDAY_GIFT'
+  | 'BIRTHDAY';
 
 export interface DesiredTask {
   ruleKey: string;
@@ -276,4 +278,68 @@ export function planSync(
     create: desired.filter((d) => !known.has(d.ruleKey)),
     autoClose: existing.filter((e) => e.source === 'RULE' && e.status === 'OPEN' && !want.has(e.ruleKey)).map((e) => e.id),
   };
+}
+
+// ── Aniversários ──
+
+/** Aniversário guardado no contato como "MM-DD" (sem ano). */
+export const BIRTHDAY_PATTERN = /^(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
+/** Quantos dias antes abre a tarefa do presente. */
+export const BIRTHDAY_GIFT_DAYS = 7;
+/** As tarefas de aniversário só abrem a partir das 8h de Brasília (o aviso não chega de madrugada). */
+const BIRTHDAY_HOUR = 8;
+
+/**
+ * Tarefas de aniversário que deveriam existir agora: o presente nos 7 dias antes e os parabéns no dia.
+ * A chave leva o ano do aniversário, então cada ano abre de novo e nunca duplica.
+ */
+export function birthdayTasks(
+  contacts: { id: string; name: string | null; phone: string | null; birthday: string | null }[],
+  now: Date,
+): DesiredTask[] {
+  const local = new Date(now.getTime() + BRT_OFFSET);
+  if (local.getUTCHours() < BIRTHDAY_HOUR) return [];
+  const today = Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate());
+  const at = (day: number, hour: number) => new Date(day + hour * HOUR - BRT_OFFSET);
+  const out: DesiredTask[] = [];
+  for (const c of contacts) {
+    if (!c.birthday || !BIRTHDAY_PATTERN.test(c.birthday)) continue;
+    const [month, dayOfMonth] = c.birthday.split('-').map(Number);
+    let year = local.getUTCFullYear();
+    let day = occurrence(year, month, dayOfMonth);
+    if (day < today) day = occurrence(++year, month, dayOfMonth);
+    const days = Math.round((day - today) / DAY);
+    const name = c.name || c.phone || 'Contato';
+    const ddmm = `${String(dayOfMonth).padStart(2, '0')}/${String(month).padStart(2, '0')}`;
+    if (days === 0) {
+      out.push({
+        ruleKey: `birthday:${c.id}:${year}`,
+        kind: 'BIRTHDAY',
+        contactId: c.id,
+        conversationId: null,
+        title: `Mandar parabéns: ${name}`,
+        reason: `Hoje (${ddmm}) é aniversário de ${name}.`,
+        dueAt: at(today, 10),
+      });
+    } else if (days <= BIRTHDAY_GIFT_DAYS) {
+      const weekday = new Date(day).toLocaleDateString('pt-BR', { weekday: 'long', timeZone: 'UTC' });
+      out.push({
+        ruleKey: `birthday-gift:${c.id}:${year}`,
+        kind: 'BIRTHDAY_GIFT',
+        contactId: c.id,
+        conversationId: null,
+        title: `Presente de aniversário: ${name}`,
+        reason: `Faz aniversário ${days === 1 ? 'amanhã' : `em ${days} dias`} (${weekday}, ${ddmm}). Providenciar e enviar o presente a tempo.`,
+        // Prazo: 2 dias antes, para o presente chegar no dia
+        dueAt: new Date(Math.max(now.getTime(), at(day - 2 * DAY, 12).getTime())),
+      });
+    }
+  }
+  return out;
+}
+
+/** Dia do aniversário no ano (UTC 0h); 29/02 cai em 28/02 nos anos não bissextos. */
+function occurrence(year: number, month: number, day: number) {
+  const leap = (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
+  return Date.UTC(year, month - 1, month === 2 && day === 29 && !leap ? 28 : day);
 }
