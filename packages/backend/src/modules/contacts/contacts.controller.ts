@@ -10,6 +10,7 @@ import { AsaasService } from '../asaas/asaas.service';
 import { askClaude, parseJsonObject } from './claude';
 import { DiagnosisService } from './diagnosis.service';
 import { InstagramProfileService, normalizeInstagramHandle } from './instagram-profile.service';
+import { BIRTHDAY_PATTERN } from '../sales-tasks/sales-tasks.rules';
 
 @Controller('contacts')
 @UseGuards(JwtAuthGuard)
@@ -214,9 +215,13 @@ export class ContactsController {
       type?: 'LEAD' | 'CLIENT';
       segment?: 'NEW' | 'ACTIVE' | 'VIP' | 'AT_RISK' | 'DORMANT';
       leadOrigin?: 'ADS' | 'ORGANIC' | 'REFERRAL' | 'OTHER' | null;
+      birthday?: string | null;
     },
   ) {
     const tenantId = req.user.tenantId;
+    if (body.birthday !== undefined && body.birthday !== null && !BIRTHDAY_PATTERN.test(body.birthday)) {
+      throw new BadRequestException('Aniversário inválido (use MM-DD)');
+    }
     if (body.leadOrigin !== undefined && body.leadOrigin !== null && !['ADS', 'ORGANIC', 'REFERRAL', 'OTHER'].includes(body.leadOrigin)) {
       throw new BadRequestException('Origem inválida');
     }
@@ -252,6 +257,7 @@ export class ContactsController {
         ...(body.type !== undefined && { type: body.type }),
         ...(body.segment !== undefined && { segment: body.segment }),
         ...(body.leadOrigin !== undefined && { leadOrigin: body.leadOrigin }),
+        ...(body.birthday !== undefined && { birthday: body.birthday }),
         ...(promotingToClient && { clientSince: new Date() }),
       },
     });

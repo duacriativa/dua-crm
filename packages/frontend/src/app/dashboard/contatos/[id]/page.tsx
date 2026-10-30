@@ -9,7 +9,7 @@ import {
   User, Clock, Globe, Filter, Briefcase, Search,
   Save, ChevronRight, Sparkles, AlertTriangle, TrendingUp,
   Star, Zap, ChevronDown, Check, FileText, Plus, XCircle, CheckCircle2, Copy,
-  Gift, ExternalLink, Eye, Download,
+  Gift, ExternalLink, Eye, Download, Cake,
 } from "lucide-react";
 import api from "@/lib/api";
 
@@ -29,6 +29,7 @@ interface Contact {
   phone?: string | null;
   email?: string | null;
   instagramHandle?: string | null;
+  birthday?: string | null; // "MM-DD"
   tags?: string[];
   notes?: string | null;
   analysisInstagram?: string | null;
@@ -178,12 +179,28 @@ function NotesEditor({ contactId, initialNotes, onSaved }: { contactId: string; 
   );
 }
 
+/** "MM-DD" (banco) → "dd/mm" (tela). */
+function birthdayToForm(b?: string | null) {
+  return b && /^\d{2}-\d{2}$/.test(b) ? `${b.slice(3)}/${b.slice(0, 2)}` : "";
+}
+
+/** "dd/mm" → "MM-DD"; vazio → null; inválido → undefined. */
+function birthdayFromForm(v: string): string | null | undefined {
+  const t = v.trim();
+  if (!t) return null;
+  const m = t.match(/^(\d{1,2})\s*[/.-]\s*(\d{1,2})$/);
+  if (!m) return undefined;
+  const d = Number(m[1]), mo = Number(m[2]);
+  if (mo < 1 || mo > 12 || d < 1 || d > new Date(Date.UTC(2024, mo, 0)).getUTCDate()) return undefined;
+  return `${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+}
+
 /* ── ContactInfoEditor ── */
 function ContactInfoEditor({ contact, onSave }: { contact: any; onSave: (f: any) => void }) {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
-  const [form, setForm] = useState({ phone: contact.phone || "", email: contact.email || "", instagramHandle: contact.instagramHandle || "" });
+  const [form, setForm] = useState({ phone: contact.phone || "", email: contact.email || "", instagramHandle: contact.instagramHandle || "", birthday: birthdayToForm(contact.birthday) });
 
   // Sincroniza o formulário sempre que o contato mudar (ex: após salvar ou recarregar)
   useEffect(() => {
@@ -191,8 +208,9 @@ function ContactInfoEditor({ contact, onSave }: { contact: any; onSave: (f: any)
       phone: contact.phone || "",
       email: contact.email || "",
       instagramHandle: contact.instagramHandle || "",
+      birthday: birthdayToForm(contact.birthday),
     });
-  }, [contact.phone, contact.email, contact.instagramHandle]);
+  }, [contact.phone, contact.email, contact.instagramHandle, contact.birthday]);
 
   const save = async () => {
     setSaving(true);
@@ -201,12 +219,14 @@ function ContactInfoEditor({ contact, onSave }: { contact: any; onSave: (f: any)
       const phone = form.phone.trim() || null;
       const email = form.email.trim() || null;
       const instagramHandle = form.instagramHandle.trim().replace("@", "") || null;
+      const birthday = birthdayFromForm(form.birthday);
+      if (birthday === undefined) { setSaveError("Aniversário inválido. Use dia/mês, ex: 05/11."); return; }
       const res = await authFetch(`${API_URL}/api/v1/contacts/${contact.id}`, {
         method: "PATCH", headers: authHeaders(),
-        body: JSON.stringify({ phone, email, instagramHandle }),
+        body: JSON.stringify({ phone, email, instagramHandle, birthday }),
       });
       if (!res.ok) { setSaveError("Erro ao salvar. Tente novamente."); return; }
-      onSave({ phone, email, instagramHandle });
+      onSave({ phone, email, instagramHandle, birthday });
       setEditing(false);
     } catch { setSaveError("Erro de conexão. Tente novamente."); }
     finally { setSaving(false); }
@@ -242,6 +262,11 @@ function ContactInfoEditor({ contact, onSave }: { contact: any; onSave: (f: any)
             <input value={form.instagramHandle} onChange={e => setForm(f => ({ ...f, instagramHandle: e.target.value }))}
               placeholder="@suamarca" className={inp} />
           </div>
+          <div>
+            <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-tighter block mb-1">Aniversário</label>
+            <input value={form.birthday} onChange={e => setForm(f => ({ ...f, birthday: e.target.value }))}
+              placeholder="dd/mm" inputMode="numeric" maxLength={5} className={inp} />
+          </div>
           {saveError && <p className="text-xs text-red-500 font-medium">{saveError}</p>}
           <div className="flex gap-2 pt-1">
             <button onClick={save} disabled={saving}
@@ -259,6 +284,7 @@ function ContactInfoEditor({ contact, onSave }: { contact: any; onSave: (f: any)
             { label: "WhatsApp", value: contact.phone, icon: <Phone size={18} />, color: "bg-green-500/10 text-green-600" },
             { label: "E-mail", value: contact.email, icon: <Mail size={18} />, color: "bg-blue-500/10 text-blue-600" },
             { label: "Instagram", value: contact.instagramHandle ? `@${contact.instagramHandle.replace("@", "")}` : null, icon: <Instagram size={18} />, color: "bg-pink-500/10 text-pink-500" },
+            { label: "Aniversário", value: birthdayToForm(contact.birthday) || null, icon: <Cake size={18} />, color: "bg-rose-500/10 text-rose-500" },
           ].map(({ label, value, icon, color }) => (
             <div key={label} className="flex items-center gap-3 p-3 rounded-2xl hover:bg-muted/30 transition-colors">
               <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${color}`}>{icon}</div>

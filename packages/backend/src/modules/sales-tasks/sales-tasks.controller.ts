@@ -28,8 +28,10 @@ export class SalesTasksController {
 
   /** Roda as regras agora (botão "Atualizar") */
   @Post('run')
-  run(@Request() req: any) {
-    return this.tasks.runRules(req.user.tenantId);
+  async run(@Request() req: any) {
+    const rules = await this.tasks.runRules(req.user.tenantId);
+    const birthdays = await this.tasks.runBirthdays(req.user.tenantId);
+    return { ...rules, created: rules.created + birthdays.created };
   }
 
   @Post(':id/done')

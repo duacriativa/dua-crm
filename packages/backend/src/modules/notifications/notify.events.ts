@@ -10,6 +10,7 @@ export const NOTIFY_EVENTS = {
   contract_expiring: { label: 'Contrato vencendo', sub: '30 dias antes do fim do contrato' },
   plan_order: { label: 'Plano 90 dias', sub: 'Pix confirmado e plano pronto para revisão' },
   sales_task: { label: 'Tarefas do comercial', sub: 'Tarefa nova na tela Tarefas (regras automáticas e leitura diária da IA)' },
+  birthday: { label: 'Aniversário de cliente', sub: '7 dias antes (presente) e no dia (mensagem de parabéns pronta)' },
 } as const;
 
 export type NotifyEvent = keyof typeof NOTIFY_EVENTS;

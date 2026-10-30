@@ -3,7 +3,7 @@ import { createHash } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { NotifyService } from '../notifications/notify.service';
 import { askClaude, parseJsonObject } from '../contacts/claude';
-import { DesiredTask, RulesSnapshot, evaluateRules, planSync } from './sales-tasks.rules';
+import { DesiredTask, RulesSnapshot, birthdayTasks, evaluateRules, planSync } from './sales-tasks.rules';
 
 const TZ = 'America/Sao_Paulo';
 const HOUR = 60 * 60 * 1000;
@@ -61,6 +61,7 @@ export class SalesTasksService implements OnModuleInit, OnModuleDestroy {
       for (const t of tenants) {
         await this.runRules(t.id).catch((e) => this.logger.error(`[Tarefas] Regras falharam (${t.id}): ${e.message}`));
         await this.maybeDailyAi(t.id).catch((e) => this.logger.error(`[Tarefas] Leitura da IA falhou (${t.id}): ${e.message}`));
+        await this.runBirthdays(t.id).catch((e) => this.logger.error(`[Tarefas] Aniversários falharam (${t.id}): ${e.message}`));
       }
     } finally {
       this.running = false;
@@ -156,7 +157,67 @@ export class SalesTasksService implements OnModuleInit, OnModuleDestroy {
     return { created: created.length, closed: autoClose.length };
   }
 
-  private async createTasks(tenantId: string, tasks: DesiredTask[], source: 'RULE' | 'AI') {
+  // ── Aniversários ────────────────────────────────────────
+
+  /** Presente 7 dias antes e parabéns no dia (com a mensagem pronta da IA). */
+  async runBirthdays(tenantId: string, now = new Date()) {
+    const contacts = await this.prisma.contact.findMany({
+      where: { tenantId, birthday: { not: null } },
+      select: { id: true, name: true, phone: true, birthday: true },
+    });
+    const desired = birthdayTasks(contacts, now);
+    if (!desired.length) return { created: 0 };
+    const known = new Set(
+      (await this.prisma.salesTask.findMany({ where: { tenantId, ruleKey: { in: desired.map((d) => d.ruleKey) } }, select: { ruleKey: true } }))
+        .map((t) => t.ruleKey),
+    );
+    const todo = desired.filter((d) => !known.has(d.ruleKey));
+    for (const t of todo) {
+      const conv = await this.prisma.conversation.findFirst({
+        where: { tenantId, contactId: t.contactId, channel: 'WHATSAPP' },
+        orderBy: { updatedAt: 'desc' },
+        select: { id: true },
+      });
+      t.conversationId = conv?.id ?? null;
+      if (t.kind === 'BIRTHDAY') t.reason = await this.birthdayMessage(contacts.find((c) => c.id === t.contactId)!.name);
+    }
+    const created = await this.createTasks(tenantId, todo, 'BIRTHDAY');
+    for (const t of created) {
+      await this.notifier.send(tenantId, 'birthday', {
+        title: t.kind === 'BIRTHDAY' ? '🎂 Aniversário hoje' : '🎁 Aniversário chegando',
+        body: t.kind === 'BIRTHDAY' ? `${t.title.replace('Mandar parabéns: ', '')} faz aniversário hoje. A mensagem de parabéns está pronta em Tarefas.` : t.reason,
+        url: '/dashboard/tarefas',
+        tag: `birthday-${t.contactId}`,
+      });
+    }
+    return { created: created.length };
+  }
+
+  /** Mensagem de parabéns para o cliente (o time revisa e envia). Sem IA, usa um texto padrão. */
+  private async birthdayMessage(contactName: string | null) {
+    const fallback = `Oi${contactName ? `, ${contactName.split(/[\s\-–|@]+/)[0]}` : ''}! Hoje o dia é seu 🎉 Toda a equipe da Dua deseja um feliz aniversário, com muita saúde, alegria e conquistas. Obrigado por crescer junto com a gente! 💛`;
+    if (!process.env.ANTHROPIC_API_KEY) return fallback;
+    try {
+      const text = await askClaude({
+        system: [
+          'Você escreve, em nome da equipe da Dua Criativa (agência de marketing para marcas de moda), a mensagem de WhatsApp de feliz aniversário para um cliente.',
+          'Tom caloroso e próximo, português do Brasil, 2 a 4 frases curtas, no máximo 2 emojis. Trate pelo primeiro nome.',
+          'Não ofereça serviços, não fale de vendas nem de resultados, não invente fatos sobre a pessoa ou a marca.',
+          'Responda só com o texto da mensagem, sem aspas e sem comentários.',
+        ].join('\n'),
+        prompt: `Cadastro do cliente no CRM: "${contactName || 'cliente'}" (pode trazer o nome da pessoa e da marca juntos).`,
+        maxTokens: 300,
+        timeoutMs: 30000,
+      });
+      const msg = text.trim().replace(/^["“]|["”]$/g, '');
+      return msg.length >= 20 ? msg.slice(0, 1000) : fallback;
+    } catch (e: any) {
+      this.logger.warn(`[Tarefas] Mensagem de aniversário sem IA: ${e.message}`);
+      return fallback;
+    }
+  }
+
+  private async createTasks(tenantId: string, tasks: DesiredTask[], source: 'RULE' | 'AI' | 'BIRTHDAY') {
     const created: DesiredTask[] = [];
     for (const t of tasks) {
       const r = await this.prisma.salesTask.createMany({
