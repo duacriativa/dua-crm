@@ -1,13 +1,13 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
-import { OnEvent } from '@nestjs/event-emitter';
+import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
 import { PrismaService } from '../../prisma/prisma.service';
 import { WhatsAppCloudService } from '../whatsapp-cloud/whatsapp-cloud.service';
 import { NotifyService } from '../notifications/notify.service';
 import { phoneVariants, toBrDigits } from '../../common/phone.util';
 import { MEETING_EVENTS, appUrl } from '../scheduling/scheduling.service';
 import {
-  AutomationConditions, AutomationStep, DEFAULT_MEETING_STATUS_TIMEOUT_S, MEETING_LATE_GRACE_MS, Reminder, StepTarget, WINDOW_MS,
-  dueReminder, giveUpAfter, meetingWaitAt, originFromText, originLabel, salesChannelPhrase, sameAnswer, waitPlan, waitUntil,
+  AutomationConditions, AutomationStep, DEFAULT_BOOKING_TIMEOUT_S, DEFAULT_MEETING_STATUS_TIMEOUT_S, MEETING_LATE_GRACE_MS, Reminder, StepTarget, WINDOW_MS,
+  businessHours, dueReminder, giveUpAfter, meetingWaitAt, originFromText, originLabel, salesChannelPhrase, sameAnswer, waitPlan, waitUntil,
 } from './automation-steps';
 
 const ACTIVE = ['RUNNING', 'WAITING_REPLY'];
@@ -84,6 +84,7 @@ export class AutomationRunner implements OnModuleInit, OnModuleDestroy {
     private readonly prisma: PrismaService,
     private readonly cloud: WhatsAppCloudService,
     private readonly notifier: NotifyService,
+    private readonly events: EventEmitter2,
   ) {}
 
   onModuleInit() {
@@ -111,6 +112,8 @@ export class AutomationRunner implements OnModuleInit, OnModuleDestroy {
   @OnEvent(MEETING_EVENTS.scheduled, { async: true })
   async onMeetingScheduled(e: MeetingEvent) {
     await this.trigger(e.tenantId, 'MEETING_SCHEDULED', e.contactId, { meetingId: e.meetingId });
+    // Quem esperava o agendamento (bot de qualificação) segue pelo "agendou"
+    await this.wakeBookingRuns(e.tenantId, e.contactId);
   }
 
   /** Remarcou: as esperas da reunião recalculam com o novo horário. */
@@ -165,6 +168,28 @@ export class AutomationRunner implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  /** Sessões do contato paradas em "Esperar agendamento" rodam de novo agora (o passo confere reunião e resposta). */
+  private async wakeBookingRuns(tenantId: string, contactId: string) {
+    try {
+      const runs = await this.prisma.automationRun.findMany({
+        where: { tenantId, contactId, status: 'RUNNING' },
+        include: { automation: { select: { actions: true } } },
+      });
+      let woke = 0;
+      for (const r of runs) {
+        if (stepsOf(r.automation.actions)[r.stepIndex]?.type !== 'wait_booking') continue;
+        const { count } = await this.prisma.automationRun.updateMany({
+          where: { id: r.id, status: 'RUNNING', stepIndex: r.stepIndex },
+          data: { nextRunAt: new Date() },
+        });
+        woke += count;
+      }
+      if (woke) this.kick();
+    } catch (err: any) {
+      this.logger.error(`[Bots] Falha ao atualizar a espera de agendamento de ${contactId}: ${err.message}`);
+    }
+  }
+
   @OnEvent('whatsapp.inbound', { async: true })
   async onInbound(e: InboundMessageEvent) {
     try {
@@ -189,6 +214,7 @@ export class AutomationRunner implements OnModuleInit, OnModuleDestroy {
       } else {
         await this.revive(e);
       }
+      await this.wakeBookingRuns(e.tenantId, e.contactId);
     } catch (err: any) {
       this.logger.error(`[Bots] Falha ao tratar resposta de ${e.contactId}: ${err.message}`);
     }
@@ -387,7 +413,7 @@ export class AutomationRunner implements OnModuleInit, OnModuleDestroy {
       where: { id: run.id, status: 'WAITING_REPLY', stepIndex: run.stepIndex },
       data: next === END
         ? { status: 'COMPLETED', finishedAt: now, nextRunAt: null, conversationId }
-        : { status: 'RUNNING', stepIndex: next, nextRunAt: now, conversationId },
+        : { status: 'RUNNING', stepIndex: next, nextRunAt: now, conversationId, waitingSince: null },
     });
   }
 
@@ -488,8 +514,10 @@ export class AutomationRunner implements OnModuleInit, OnModuleDestroy {
         // Entre um passo e outro o time pode ter assumido a conversa
         if (n > 0 && !(await this.stillActive(run.id))) return;
         const step = steps[i];
-        // Só para os contadores do editor ("passaram por"); falha aqui não afeta a sessão
-        if (step.id) {
+        // Só para os contadores do editor ("passaram por"); falha aqui não afeta a sessão.
+        // "Esperar agendamento" volta várias vezes ao mesmo passo para conferir: conta só a chegada.
+        const recheck = step.type === 'wait_booking' && n === 0 && run.status === 'RUNNING' && i === run.stepIndex && !!run.waitingSince;
+        if (step.id && !recheck) {
           await this.prisma.automationRun
             .update({ where: { id: run.id }, data: { visitedSteps: { push: step.id } } })
             .catch(() => {});
@@ -498,7 +526,7 @@ export class AutomationRunner implements OnModuleInit, OnModuleDestroy {
         if (step.type === 'wait') {
           await this.prisma.automationRun.update({
             where: { id: run.id },
-            data: { stepIndex: i + 1, nextRunAt: waitUntil(new Date(), step.seconds, step.alignTo, step.alignWeekends) },
+            data: { stepIndex: i + 1, waitingSince: null, nextRunAt: waitUntil(new Date(), step.seconds, step.alignTo, step.alignWeekends) },
           });
           // Espera curta: acorda na hora certa em vez de esperar o próximo ciclo de 5s
           if (step.seconds <= 300 && !step.alignTo) setTimeout(() => this.kick(), step.seconds * 1000 + 50);
@@ -529,6 +557,43 @@ export class AutomationRunner implements OnModuleInit, OnModuleDestroy {
             return;
           }
           if (i !== END) await this.prisma.automationRun.update({ where: { id: run.id }, data: { stepIndex: i } });
+          continue;
+        }
+
+        if (step.type === 'wait_booking') {
+          const now = Date.now();
+          // Já estava parado aqui (voltou para conferir) ou acabou de chegar: a espera conta a partir da chegada.
+          // Todo outro avanço de passo zera waitingSince, então ele só vem preenchido de uma espera deste passo.
+          const waiting = recheck;
+          const since = waiting ? run.waitingSince! : new Date(now);
+          const cond: AutomationConditions = { reminders: step.reminders ?? [], giveUpSeconds: step.giveUpSeconds };
+          if (await this.bookedSince(run)) i = indexOf(steps, step.onBooked, i);
+          else if (step.onReply && (await this.repliedSince(run, conversationId, since))) i = indexOf(steps, step.onReply, i);
+          else {
+            let sent = waiting ? run.remindersSent : 0;
+            const due = dueReminder(since, sent, cond, now);
+            if (due !== null) {
+              try {
+                await this.remind({ ...run, conversationId }, step, cond.reminders![due]);
+              } catch (err: any) {
+                this.logger.warn(`[Bots] Lembrete ${due + 1} da sessão ${run.id} falhou: ${err.message}`);
+              }
+              sent = due + 1;
+            }
+            const plan = waitPlan(since, sent, { timeoutSeconds: step.timeoutSeconds || DEFAULT_BOOKING_TIMEOUT_S }, cond);
+            // Lembrete atrasado: ainda dá o tempo inteiro para agendar depois dele. O "não agendou" também não sai de madrugada.
+            const until = plan.reminderAt
+              ?? businessHours(due !== null ? new Date(Math.max(plan.deadline.getTime(), giveUpAfter(now, cond).getTime())) : plan.deadline);
+            if (until.getTime() > now) {
+              await this.prisma.automationRun.update({
+                where: { id: run.id },
+                data: { stepIndex: i, waitingSince: since, remindersSent: sent, nextRunAt: until, conversationId },
+              });
+              return;
+            }
+            i = step.onTimeout ? indexOf(steps, step.onTimeout, i) : END;
+          }
+          if (i !== END) await this.prisma.automationRun.update({ where: { id: run.id }, data: { stepIndex: i, waitingSince: null } });
           continue;
         }
 
@@ -571,7 +636,7 @@ export class AutomationRunner implements OnModuleInit, OnModuleDestroy {
         // Grava o avanço a cada passo: se o processo cair, não reenvia o que já foi
         await this.prisma.automationRun.update({
           where: { id: run.id },
-          data: { stepIndex: i + 1, ...(sent ? { sentCount: { increment: 1 }, conversationId: sent } : {}) },
+          data: { stepIndex: i + 1, waitingSince: null, ...(sent ? { sentCount: { increment: 1 }, conversationId: sent } : {}) },
         });
         i++;
       }
@@ -610,6 +675,27 @@ export class AutomationRunner implements OnModuleInit, OnModuleDestroy {
       data: { leadOrigin: hit.leadOrigin, ...(!contact.utmSource && { utmSource: hit.utmSource, utmMedium: hit.utmMedium }) },
     });
     return true;
+  }
+
+  /** O contato marcou uma reunião (não cancelada) desde que a sessão começou? */
+  private async bookedSince(run: { tenantId: string; contactId: string; startedAt: Date }) {
+    const m = await this.prisma.meeting.findFirst({
+      where: { tenantId: run.tenantId, contactId: run.contactId, createdAt: { gte: run.startedAt }, status: { not: 'CANCELLED' } },
+      select: { id: true },
+    });
+    return !!m;
+  }
+
+  /** O contato escreveu desde `since`? */
+  private async repliedSince(run: { tenantId: string; contactId: string }, conversationId: string | null, since: Date) {
+    const m = await this.prisma.message.findFirst({
+      where: {
+        direction: 'INBOUND', sentAt: { gt: since },
+        ...(conversationId ? { conversationId } : { conversation: { tenantId: run.tenantId, contactId: run.contactId } }),
+      },
+      select: { id: true },
+    });
+    return !!m;
   }
 
   /** Reunião da sessão (gatilho "Reunião agendada"). */
@@ -878,6 +964,8 @@ export class AutomationRunner implements OnModuleInit, OnModuleDestroy {
     if (stage.kind === 'WON') {
       await this.prisma.contact.updateMany({ where: { id: contactId, tenantId, type: 'LEAD' }, data: { type: 'CLIENT', clientSince: now } });
     }
+    // Card entrou na etapa pelo bot: dispara os bots daquela etapa, como quando o time arrasta
+    this.events.emit('funnel.stage_entered', { tenantId, contactId, stageId: stage.id });
   }
 }
 

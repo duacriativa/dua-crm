@@ -47,6 +47,11 @@ export function outputsOf(s: BotStep): Output[] {
     { handle: "noshow", kind: "other", label: "Não compareceu" },
     { handle: "timeout", kind: "timeout", label: "Ninguém marcou" },
   ];
+  if (s.type === "wait_booking") return [
+    { handle: "booked", kind: "reply", label: "Agendou" },
+    { handle: "reply", kind: "other", label: "Escreveu" },
+    { handle: "timeout", kind: "timeout", label: "Não agendou" },
+  ];
   if (s.type === "send_buttons") return [
     ...s.buttons.map((b, k) => ({ handle: `b${k}`, kind: "button" as const, label: b.title || `Botão ${k + 1}` })),
     { handle: "other", kind: "other", label: "Escreveu outra coisa" },
@@ -95,6 +100,10 @@ export function toGraph(actions: BotStep[]): BotGraph {
       set(id, "done", resolve(s.onDone, i), !s.onDone);
       set(id, "noshow", resolve(s.onNoShow, i), !s.onNoShow);
       set(id, "timeout", s.onTimeout ? resolve(s.onTimeout, i) : null, !s.onTimeout);
+    } else if (s.type === "wait_booking") {
+      set(id, "booked", resolve(s.onBooked, i), !s.onBooked);
+      set(id, "reply", s.onReply ? resolve(s.onReply, i) : null, !s.onReply);
+      set(id, "timeout", s.onTimeout ? resolve(s.onTimeout, i) : null, !s.onTimeout);
     } else if (s.type === "send_buttons") {
       s.buttons.forEach((b, k) => set(id, `b${k}`, resolve(b.goto, i), !b.goto));
       set(id, "other", resolve(s.onOther, i), !s.onOther);
@@ -108,7 +117,7 @@ export function toGraph(actions: BotStep[]): BotGraph {
 function bare(s: BotStep): BotStep {
   const c: any = { ...s };
   delete c.onReply; delete c.onTimeout; delete c.onOther; delete c.onKnown; delete c.onUnknown; delete c.target; delete c.pos;
-  delete c.onTime; delete c.onLate; delete c.onDone; delete c.onNoShow;
+  delete c.onTime; delete c.onLate; delete c.onDone; delete c.onNoShow; delete c.onBooked;
   if (s.type === "send_buttons") c.buttons = s.buttons.map((b) => ({ title: b.title }));
   return c as BotStep;
 }
@@ -177,6 +186,10 @@ export function toSteps(g: BotGraph, posOf: (id: string) => { x: number; y: numb
     } else if (s.type === "meeting_status") {
       put("onDone", branch("done"));
       put("onNoShow", branch("noshow"));
+      put("onTimeout", timeout("timeout"));
+    } else if (s.type === "wait_booking") {
+      put("onBooked", branch("booked"));
+      put("onReply", timeout("reply")); // sem seta = continua esperando
       put("onTimeout", timeout("timeout"));
     } else if (s.type === "send_buttons") {
       step.buttons = s.buttons.map((b, i) => { const t = branch(`b${i}`); return t ? { title: b.title, goto: t } : { title: b.title }; });
