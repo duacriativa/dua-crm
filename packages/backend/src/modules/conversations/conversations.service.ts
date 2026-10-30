@@ -105,17 +105,35 @@ export class ConversationsService {
     return { conversations: convsWithMeta, total, page, limit };
   }
 
+  /** Mesmo formato de um item da lista: a tela Conversas abre por ?conv= quem não está entre as 50 mais recentes */
   async findOne(tenantId: string, id: string) {
     const conv = await this.prisma.conversation.findFirst({
       where: { id, tenantId },
       include: {
         contact: {
-          select: { id: true, name: true, phone: true, email: true, tags: true, segment: true },
+          select: { id: true, name: true, phone: true, instagramHandle: true, email: true, tags: true, segment: true, profilePicUrl: true, qualification: true, type: true },
+        },
+        messages: {
+          orderBy: { sentAt: 'desc' },
+          take: 1,
+          select: { content: true, direction: true, sentAt: true },
         },
       },
     });
     if (!conv) throw new NotFoundException('Conversa não encontrada.');
-    return conv;
+    const unreadCount = await this.prisma.message.count({
+      where: { conversationId: conv.id, direction: 'INBOUND', readAt: null },
+    });
+    return {
+      ...conv,
+      contactName: conv.contact.name,
+      contactPhone: conv.contact.phone,
+      profilePicUrl: conv.profilePicUrl || conv.contact.profilePicUrl,
+      isGroup: conv.externalId?.endsWith('@g.us'),
+      lastMessage: conv.messages[0]?.content ?? null,
+      unreadCount,
+      messages: undefined,
+    };
   }
 
   async getMessages(
