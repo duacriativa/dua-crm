@@ -185,7 +185,9 @@ export class SalesTasksService implements OnModuleInit, OnModuleDestroy {
     for (const t of created) {
       await this.notifier.send(tenantId, 'birthday', {
         title: t.kind === 'BIRTHDAY' ? '🎂 Aniversário hoje' : '🎁 Aniversário chegando',
-        body: t.kind === 'BIRTHDAY' ? `${t.title.replace('Mandar parabéns: ', '')} faz aniversário hoje. A mensagem de parabéns está pronta em Tarefas.` : t.reason,
+        body: t.kind === 'BIRTHDAY'
+          ? `${t.title.replace('Mandar parabéns: ', '')} faz aniversário hoje. A mensagem de parabéns está pronta em Tarefas.`
+          : `${t.title.replace('Presente de aniversário: ', '')}: ${t.reason}`,
         url: '/dashboard/tarefas',
         tag: `birthday-${t.contactId}`,
       });
