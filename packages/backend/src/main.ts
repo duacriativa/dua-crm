@@ -33,6 +33,8 @@ async function bootstrap() {
 
   // ── Body size limit (envio de mídia em base64 pelo chat) ───────
   // verify guarda o corpo cru — necessário para validar a assinatura do webhook da Meta
+  // Anexo do chat vai em base64 (+33%): PDF de até ~75 MB (a Meta aceita documento de até 100 MB)
+  app.use('/api/v1/conversations/:id/media', json({ limit: '100mb' }));
   app.use(json({ limit: '10mb', verify: (req: any, _res, buf: Buffer) => { req.rawBody = buf; } }));
   app.use(urlencoded({ extended: true, limit: '10mb' }));
 

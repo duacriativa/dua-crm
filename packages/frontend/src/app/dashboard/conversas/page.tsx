@@ -856,6 +856,13 @@ function ConversasInner() {
   ];
 
   const attachFile = (file: File) => {
+    // Limites do WhatsApp: imagem 5 MB, vídeo 16 MB, documento 100 MB (aqui 75 MB por causa do base64)
+    const mb = file.size / 1024 / 1024;
+    const max = file.type.startsWith("image/") ? 5 : file.type.startsWith("video/") ? 16 : 75;
+    if (mb > max) {
+      alert(`Arquivo de ${mb.toFixed(1).replace(".", ",")} MB: o limite para ${file.type.startsWith("image/") ? "imagem" : file.type.startsWith("video/") ? "vídeo" : "documento"} é ${max} MB.${max < 75 ? " Mande como documento ou comprima." : " Comprima o arquivo ou mande um link."}`);
+      return;
+    }
     setPendingFile((prev) => {
       if (prev?.previewUrl) URL.revokeObjectURL(prev.previewUrl);
       return { file, previewUrl: file.type.startsWith("image/") || file.type.startsWith("video/") ? URL.createObjectURL(file) : null };
@@ -919,7 +926,7 @@ function ConversasInner() {
         const saved = await res.json().catch(() => null);
         setMessages((prev) => prev.map((m) => m.id !== optimistic.id ? m
           : res.ok && saved?.id ? { ...saved, mediaUrl: saved.mediaUrl ?? m.mediaUrl }
-          : { ...m, errorCode: "send_failed", errorMessage: [].concat(saved?.message ?? `Erro ${res.status}`).join(" ") }));
+          : { ...m, errorCode: "send_failed", errorMessage: res.status === 413 ? "arquivo grande demais para enviar." : [].concat(saved?.message ?? `Erro ${res.status}`).join(" ") }));
       } catch {
         setMessages((prev) => prev.map((m) => m.id === optimistic.id ? { ...m, errorCode: "send_failed", errorMessage: "Sem conexão com o servidor." } : m));
       } finally {
