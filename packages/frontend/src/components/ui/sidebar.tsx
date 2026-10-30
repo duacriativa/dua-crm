@@ -3,12 +3,13 @@
 import { useState, useEffect, useRef, type ComponentType } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { NotificationsBell } from "@/components/notifications/notifications-bell";
+import api from "@/lib/api";
 import {
   LayoutDashboard, MessageCircle, Users,
   Settings, ChevronLeft, ChevronRight, LogOut, Kanban,
   Menu, X, DollarSign, FileText, Plus,
   Calendar, Bot, Megaphone, Workflow,
-  ChevronUp, ChevronDown, User, CreditCard, ClipboardList,
+  ChevronUp, ChevronDown, User, CreditCard, ClipboardList, ListChecks,
 } from "lucide-react";
 
 type Icon = ComponentType<{ className?: string }>;
@@ -31,12 +32,29 @@ const navItems: NavItem[] = [
   { icon: Users,           label: "Clientes",      href: "/dashboard/contatos" },
   { icon: Kanban,          label: "Funil",         href: "/dashboard/funil" },
   { icon: MessageCircle,   label: "Conversas",     href: "/dashboard/conversas", badge: 12 },
+  { icon: ListChecks,      label: "Tarefas",       href: "/dashboard/tarefas" },
   { icon: Calendar,        label: "Agenda",        href: "/dashboard/agenda" },
   { icon: Workflow,        label: "Automações",    group: automationItems },
   { icon: DollarSign,      label: "Financeiro",    href: "/dashboard/financeiro" },
   { icon: ClipboardList,   label: "Planos 90 dias", href: "/dashboard/planos" },
   { icon: Settings,        label: "Configurações", href: "/dashboard/configuracoes" },
 ];
+
+/** Tarefas abertas do comercial (contador do menu): a cada minuto e quando a tela Tarefas muda algo. */
+function useTaskCount() {
+  const [n, setN] = useState(0);
+  useEffect(() => {
+    const load = () => api.get("/sales-tasks/count").then((r) => setN(r.data?.all ?? 0)).catch(() => {});
+    load();
+    const t = setInterval(load, 60_000);
+    window.addEventListener("sales-tasks-changed", load);
+    return () => { clearInterval(t); window.removeEventListener("sales-tasks-changed", load); };
+  }, []);
+  return n;
+}
+
+/** Contador do item: o da tela Tarefas é real; os demais vêm fixos do menu. */
+const badgeOf = (item: NavItem, tasks: number) => (item.href === "/dashboard/tarefas" ? tasks : item.badge ?? 0);
 
 const isPathActive = (pathname: string, href?: string) =>
   !href ? false : href === "/dashboard" ? pathname === href : pathname.startsWith(href);
@@ -231,7 +249,7 @@ function UserFooter({ collapsed, onLogout }: { collapsed: boolean; onLogout: () 
   );
 }
 
-function DesktopSidebar() {
+function DesktopSidebar({ tasks }: { tasks: number }) {
   const [collapsed, setCollapsed] = useState(false);
   const pathname = usePathname();
   const router = useRouter();
@@ -273,9 +291,9 @@ function DesktopSidebar() {
               className={itemCls(active)}>
               <item.icon className="w-4 h-4 shrink-0" />
               {!collapsed && <span className="flex-1 text-left">{item.label}</span>}
-              {!collapsed && item.badge && (
+              {!collapsed && badgeOf(item, tasks) > 0 && (
                 <span className="bg-primary text-primary-foreground text-[10px] font-bold rounded-full px-1.5 py-0.5 min-w-[18px] text-center">
-                  {item.badge}
+                  {badgeOf(item, tasks)}
                 </span>
               )}
             </button>
@@ -295,7 +313,7 @@ function DesktopSidebar() {
   );
 }
 
-function MobileNav() {
+function MobileNav({ tasks }: { tasks: number }) {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
   const router = useRouter();
@@ -349,9 +367,9 @@ function MobileNav() {
                 className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all text-left ${active ? "bg-sidebar-accent text-foreground font-semibold" : "text-sidebar-foreground hover:bg-sidebar-accent/60 hover:text-foreground"}`}>
                 <item.icon className="w-5 h-5 shrink-0" />
                 <span className="flex-1">{item.label}</span>
-                {item.badge && (
+                {badgeOf(item, tasks) > 0 && (
                   <span className="bg-primary text-primary-foreground text-xs font-bold rounded-full px-1.5 py-0.5 min-w-[20px] text-center">
-                    {item.badge}
+                    {badgeOf(item, tasks)}
                   </span>
                 )}
               </button>
@@ -376,9 +394,9 @@ function MobileNav() {
               className={`flex-1 flex flex-col items-center gap-1 py-2.5 relative transition-colors ${active ? "text-primary" : "text-muted-foreground hover:text-foreground"}`}>
               <item.icon className="w-5 h-5" />
               <span className="text-[10px] font-medium">{item.label}</span>
-              {item.badge && (
+              {badgeOf(item, tasks) > 0 && (
                 <span className="absolute top-1.5 right-[calc(50%-18px)] bg-primary text-primary-foreground text-[9px] font-bold rounded-full w-4 h-4 flex items-center justify-center">
-                  {item.badge}
+                  {badgeOf(item, tasks)}
                 </span>
               )}
             </button>
@@ -394,10 +412,11 @@ function MobileNav() {
 }
 
 export function Sidebar() {
+  const tasks = useTaskCount();
   return (
     <>
-      <DesktopSidebar />
-      <MobileNav />
+      <DesktopSidebar tasks={tasks} />
+      <MobileNav tasks={tasks} />
     </>
   );
 }

@@ -36,3 +36,6 @@ packages/backend/prisma/migrations/*.sql.bak
 import_clientes.js
 import_*.js
 seed_*.js
+
+# Teste das regras de tarefas (npm run test:rules)
+.test-build/
