@@ -112,7 +112,7 @@ export class SalesTasksService implements OnModuleInit, OnModuleDestroy {
 
     const contactIds = [...new Set([...meetings.map((m) => m.contactId), ...leads.map((l) => l.contactId), ...convs.map((c) => c.contactId), ...notes.map((n) => n.contactId)])];
     const contacts = contactIds.length
-      ? await this.prisma.contact.findMany({ where: { tenantId, id: { in: contactIds } }, select: { id: true, name: true, phone: true, instagramHandle: true } })
+      ? await this.prisma.contact.findMany({ where: { tenantId, id: { in: contactIds } }, select: { id: true, name: true, phone: true, instagramHandle: true, type: true } })
       : [];
 
     return {
@@ -251,6 +251,7 @@ export class SalesTasksService implements OnModuleInit, OnModuleDestroy {
     const system = [
       'Você é o assistente comercial da Dua Criativa, agência de marketing para marcas de moda. Lê as conversas do WhatsApp/Instagram e o funil e aponta o que o time precisa fazer.',
       'Crie tarefas só para compromissos e próximos passos que alguém do time precisa cumprir e que ainda não foram cumpridos na conversa: ex. "prometeu enviar o material", "ficou de mandar o orçamento", "cliente pediu para ligar na quinta", "lead pediu um tempo até segunda".',
+      'Contato marcado como cliente já fechou com a Dua: reunião com ele é de acompanhamento. Não crie tarefa de proposta, venda ou próximo passo comercial para cliente; só para algo concreto que o time prometeu a ele.',
       'NÃO crie tarefa para: responder mensagem sem resposta, follow-up de proposta parada, reunião sem status, cadastro incompleto (as regras automáticas já cuidam disso); nada que já esteja na lista de tarefas abertas; nada que o time já fez.',
       'Use só contactId que aparece nos dados. Título curto no imperativo (até 80 caracteres), com o nome do contato. Motivo: 1 frase citando o que foi dito.',
       'Responda só com JSON válido, sem texto fora dele.',

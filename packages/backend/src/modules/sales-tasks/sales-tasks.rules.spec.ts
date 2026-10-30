@@ -57,6 +57,24 @@ test('reunião feita há mais de 24h sem o card andar → próximo passo', () =>
   assert.deepEqual(kinds(s), []);
 });
 
+test('cliente: reunião de acompanhamento não vira tarefa de proposta nem de cadastro', () => {
+  const s = base();
+  // Card em Fechado (ganho) e nenhum aberto: o card nunca vai "andar"
+  s.meetings = [{ id: 'm5', contactId: 'bia', status: 'COMPLETED', startAt: ago(30), endAt: ago(29), createdAt: ago(100) }];
+  s.leads = [{ id: 'l5', contactId: 'bia', stageName: 'Fechado', stageKind: 'WON', value: 2500, updatedAt: ago(200) }];
+  assert.deepEqual(kinds(s), []);
+
+  // Marcado como cliente, mesmo sem card
+  s.leads = [];
+  s.contacts.bia.type = 'CLIENT';
+  assert.deepEqual(kinds(s), []);
+
+  // Mas a reunião que passou e ficou como agendada ainda pede o status
+  s.meetings[0].status = 'SCHEDULED';
+  s.meetings[0].endAt = ago(3);
+  assert.deepEqual(kinds(s), ['MEETING_STATUS']);
+});
+
 test('reunião passou há 2h e continua agendada → marcar se aconteceu', () => {
   const s = base();
   s.leads = [{ id: 'l1', contactId: 'ana', stageName: 'Reunião agendada', stageKind: 'OPEN', value: null, updatedAt: ago(90) }];
