@@ -27,6 +27,7 @@ import { SchedulingModule } from './modules/scheduling/scheduling.module';
 import { MetaAdsModule } from './modules/meta-ads/meta-ads.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { PlanOrdersModule } from './modules/plan-orders/plan-orders.module';
+import { SalesTasksModule } from './modules/sales-tasks/sales-tasks.module';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 
 @Module({
@@ -71,6 +72,7 @@ import { EventEmitterModule } from '@nestjs/event-emitter';
     MetaAdsModule,
     DashboardModule,
     PlanOrdersModule,
+    SalesTasksModule,
     EventEmitterModule.forRoot(),
   ],
   providers: [

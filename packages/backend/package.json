@@ -13,7 +13,8 @@
     "db:generate": "prisma generate",
     "postinstall": "prisma generate",
     "db:seed": "ts-node prisma/seed.ts",
-    "db:seed-contracts": "ts-node prisma/seed-contracts.ts"
+    "db:seed-contracts": "ts-node prisma/seed-contracts.ts",
+    "test:rules": "rm -rf .test-build && tsc --outDir .test-build --module commonjs --target ES2021 --skipLibCheck --types node src/modules/sales-tasks/sales-tasks.rules.spec.ts && node --test .test-build/sales-tasks.rules.spec.js"
   },
   "dependencies": {
     "@nestjs/bullmq": "^10.0.0",

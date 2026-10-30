@@ -5,7 +5,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import {
   Bell, CheckCheck, UserPlus, MessageCircle, Instagram, CalendarClock, StickyNote,
-  CircleDollarSign, AlertTriangle, FileClock, ClipboardList, Settings,
+  CircleDollarSign, AlertTriangle, FileClock, ClipboardList, Settings, ListChecks,
 } from "lucide-react";
 
 function authHeaders() {
@@ -34,6 +34,7 @@ const ICONS: Record<string, { icon: any; color: string }> = {
   payment_overdue: { icon: AlertTriangle, color: "text-red-500 bg-red-500/10" },
   contract_expiring: { icon: FileClock, color: "text-orange-500 bg-orange-500/10" },
   plan_order: { icon: ClipboardList, color: "text-violet-500 bg-violet-500/10" },
+  sales_task: { icon: ListChecks, color: "text-primary bg-primary/10" },
 };
 
 function timeAgo(iso: string) {
