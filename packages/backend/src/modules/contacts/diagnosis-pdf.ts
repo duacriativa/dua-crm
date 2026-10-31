@@ -140,6 +140,29 @@ export function renderDiagnosisPdf(d: InstagramDiagnosis): Promise<Buffer> {
   doc.fillColor(INK).text(resumo, M, doc.y, { width: CW, lineGap: 3 });
   doc.moveDown(1.4);
 
+  // ── Pilares: desejo, valor e direção de compra ───────────────────────
+  if (c.pilares?.length) {
+    need(70);
+    doc.font('Helvetica-Bold').fontSize(14).fillColor(INK).text('Os 3 papéis do seu conteúdo', M, doc.y);
+    doc.font('Helvetica').fontSize(9.5).fillColor(GRAY)
+      .text('Para vender moda, o conteúdo precisa despertar desejo, mostrar valor e dar direção de compra.', { width: CW });
+    doc.moveDown(0.8);
+    for (const p of c.pilares) {
+      const leitura = clean(p.leitura);
+      doc.font('Helvetica').fontSize(10);
+      const h = 30 + doc.heightOfString(leitura, { width: CW, lineGap: 1.5 });
+      need(h + 8);
+      const y = doc.y;
+      doc.font('Helvetica-Bold').fontSize(11).fillColor(INK).text(clean(p.nome), M, y, { lineBreak: false });
+      doc.font('Helvetica-Bold').fontSize(11).fillColor(INK).text(`${p.nota}/100`, M, y, { width: CW, align: 'right', lineBreak: false });
+      doc.roundedRect(M, y + 17, CW, 6, 3).fill(LINE);
+      doc.roundedRect(M, y + 17, Math.max(6, (CW * p.nota) / 100), 6, 3).fill(INK);
+      doc.font('Helvetica').fontSize(10).fillColor(GRAY).text(leitura, M, y + 29, { width: CW, lineGap: 1.5 });
+      doc.y = y + h + 8;
+    }
+    doc.moveDown(0.8);
+  }
+
   // ── Listas ────────────────────────────────────────────────────────────
   const section = (title: string, items: string[], dot: string) => {
     if (!items.length) return;
@@ -181,6 +204,62 @@ export function renderDiagnosisPdf(d: InstagramDiagnosis): Promise<Buffer> {
     doc.y = Math.max(doc.y, y + h) + 10;
   });
   doc.moveDown(0.8);
+
+  // ── Presentes: ideias prontas para a marca ────────────────────────────
+  const g = c.presentes;
+  if (g) {
+    need(80);
+    doc.font('Helvetica-Bold').fontSize(14).fillColor(INK).text('Presentes para a sua marca', M, doc.y);
+    doc.font('Helvetica').fontSize(9.5).fillColor(GRAY).text('Ideias prontas, pensadas para o seu perfil. É só adaptar e postar.');
+    doc.moveDown(0.8);
+    const sub = (t: string) => {
+      need(40);
+      doc.font('Helvetica-Bold').fontSize(11).fillColor(INK).text(t, M, doc.y);
+      doc.moveDown(0.35);
+    };
+    const box = (lines: { text: string; bold?: boolean }[]) => {
+      const inner = CW - 28;
+      const h = lines.reduce((s, l) => {
+        doc.font(l.bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(l.bold ? 10.5 : 9.5);
+        return s + doc.heightOfString(l.text, { width: inner, lineGap: 1.5 }) + 3;
+      }, 0) + 22;
+      need(h + 8);
+      const y = doc.y;
+      doc.roundedRect(M, y, CW, h, 10).fill(SOFT);
+      doc.y = y + 11;
+      for (const l of lines) {
+        doc.font(l.bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(l.bold ? 10.5 : 9.5).fillColor(l.bold ? INK : '#333333')
+          .text(l.text, M + 14, doc.y, { width: inner, lineGap: 1.5 });
+        doc.y += 3;
+      }
+      doc.y = y + h + 8;
+    };
+    if (g.ideias_carrossel.length) {
+      sub('Ideias de carrossel');
+      for (const ic of g.ideias_carrossel) {
+        box([{ text: clean(ic.titulo), bold: true }, ...ic.slides.map((sl, i) => ({ text: `${i + 1}. ${clean(sl)}` }))]);
+      }
+      doc.moveDown(0.4);
+    }
+    if (g.caixinhas.length) {
+      sub('Caixinhas de perguntas para os stories');
+      box(g.caixinhas.map((q) => ({ text: `"${clean(q)}"` })));
+      doc.moveDown(0.4);
+    }
+    if (g.bio_sugerida) {
+      sub('Sugestão de bio');
+      box([{ text: clean(g.bio_sugerida) }]);
+      doc.moveDown(0.4);
+    }
+    if (g.datas.length) {
+      sub('Datas que vendem nas próximas semanas');
+      box(g.datas.flatMap((dt) => [
+        { text: `${dt.data.split('-').reverse().slice(0, 2).join('/')} · ${clean(dt.ocasiao)}`, bold: true },
+        { text: clean(dt.ideia) },
+      ]));
+    }
+    doc.moveDown(0.8);
+  }
 
   // ── Oferta do plano pago (destaque principal) ─────────────────────────
   const plan = planOffer(d.token);

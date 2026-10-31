@@ -5,6 +5,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { appUrl } from '../scheduling/scheduling.service';
 import { askClaude, parseJsonObject } from './claude';
 import { InstagramProfileService } from './instagram-profile.service';
+import { DiagnosisGifts, PILAR_NOME, giftsFromAnalysis, str } from './diagnosis-gifts';
 
 /** Página de agendamento para onde o CTA do diagnóstico leva. */
 const BOOKING_SLUG = process.env.DIAGNOSIS_BOOKING_SLUG || 'especialista';
@@ -25,6 +26,10 @@ export interface DiagnosisContent {
   oportunidades: string[];
   proximos_passos: { titulo: string; descricao: string }[];
   metricas: DiagnosisMetrics | null;
+  /** Desejo, valor e direção de compra: nota + leitura no tom do cliente. Ausente em diagnósticos antigos. */
+  pilares?: { chave: 'desejo' | 'valor' | 'direcao_compra'; nome: string; nota: number; leitura: string }[];
+  /** "Presentes" práticos vindos da análise: o cliente já sai com algo para postar. */
+  presentes?: DiagnosisGifts;
   sourceHash?: string; // hash da análise de origem: mesma análise → reaproveita o diagnóstico
 }
 
@@ -100,11 +105,12 @@ export class DiagnosisService {
     const profile = await this.instagramProfile.fetch(handle.toLowerCase());
     const metricas = profile.data ? this.metrics(profile.data) : null;
     const content = await this.rewriteForClient(handle, analysis, metricas);
+    const presentes = giftsFromAnalysis(analysis);
 
     const diagnosis = await this.prisma.instagramDiagnosis.create({
       data: {
         tenantId, contactId: contact.id, instagramHandle: handle, score,
-        content: { ...content, metricas, sourceHash } as any, token: crypto.randomBytes(24).toString('base64url'),
+        content: { ...content, metricas, presentes, sourceHash } as any, token: crypto.randomBytes(24).toString('base64url'),
       },
     });
     return this.teamView(diagnosis, contact);
@@ -180,6 +186,17 @@ export class DiagnosisService {
       lines.push('*Possíveis pontos de melhoria*', ...c.oportunidades.slice(0, 3).map((o) => `• ${o}`), '');
     }
     lines.push('*Próximos passos*', ...c.proximos_passos.map((p, i) => `${i + 1}. *${p.titulo}*: ${p.descricao}`), '');
+    const g = c.presentes;
+    const extras = [
+      g?.ideias_carrossel.length ? `${g.ideias_carrossel.length} ideias de carrossel prontas` : '',
+      g?.caixinhas.length ? 'caixinhas de perguntas para os stories' : '',
+      g?.bio_sugerida ? 'uma sugestão de bio' : '',
+      g?.datas.length ? 'as datas que mais vendem nas próximas semanas' : '',
+    ].filter(Boolean);
+    if (extras.length) {
+      const lista = extras.length > 1 ? `${extras.slice(0, -1).join(', ')} e ${extras[extras.length - 1]}` : extras[0];
+      lines.push(`🎁 Na análise completa você também encontra ${lista} para a sua marca.`, '');
+    }
     lines.push(`Análise completa: ${url}`, '');
     lines.push(`Quer ajuda para colocar isso em prática? Agende uma conversa gratuita com um especialista: ${bookingUrl()}`, '');
     const plan = planOffer(d.token);
@@ -218,7 +235,11 @@ export class DiagnosisService {
       oportunidades: analysis.oportunidades,
       alertas: analysis.alertas,
       estrategia_recomendada: analysis.estrategia_recomendada,
+      pilares: analysis.pilares,
     };
+    const pilaresIn = (['desejo', 'valor', 'direcao_compra'] as const).filter(
+      (k) => typeof analysis.pilares?.[k]?.nota === 'number',
+    );
     const prompt =
       `Abaixo está a análise INTERNA que a agência Dua Criativa fez do Instagram @${handle}` +
       (metricas ? `, e os números reais do perfil` : '') +
@@ -232,12 +253,17 @@ export class DiagnosisService {
       `Retorne APENAS um JSON válido (sem markdown) com: resumo (2-3 frases, começando pelo que a marca faz bem), ` +
       `nota_explicacao (1 frase simples dizendo o que a nota ${analysis.score}/100 significa para essa marca), ` +
       `pontos_fortes (array, 3 a 4 itens de 1 frase), oportunidades (array, 3 a 4 itens de 1-2 frases), ` +
-      `proximos_passos (array com exatamente 3 objetos { titulo (até 6 palavras), descricao (1-2 frases) }).`;
+      `proximos_passos (array com exatamente 3 objetos { titulo (até 6 palavras), descricao (1-2 frases) })` +
+      (pilaresIn.length
+        ? `, pilares (objeto com as chaves ${pilaresIn.join(', ')}, cada uma com 1 frase acolhedora explicando como a marca está naquele papel ` +
+          `do conteúdo: desejo = fazer a cliente se imaginar usando a peça; valor = mostrar por que vale o preço; ` +
+          `direcao_compra = deixar claro como comprar agora).`
+        : '.');
 
     const text = await askClaude({
       system: 'Você é consultora de marketing digital para marcas de moda brasileiras. Retorne sempre JSON válido, sem markdown.',
       prompt,
-      maxTokens: 2048,
+      maxTokens: 3072,
     });
     const out = parseJsonObject(text);
     const list = (v: any) => (Array.isArray(v) ? v.filter((x) => typeof x === 'string' && x.trim()).slice(0, 4) : []);
@@ -250,7 +276,16 @@ export class DiagnosisService {
     if (!out || typeof out.resumo !== 'string' || steps.length < 3) {
       throw new BadRequestException('A IA não devolveu o diagnóstico completo. Tente de novo.');
     }
+    const pilares = pilaresIn
+      .map((k) => ({
+        chave: k,
+        nome: PILAR_NOME[k],
+        nota: Math.max(0, Math.min(100, Math.round(analysis.pilares[k].nota))),
+        leitura: str(out.pilares?.[k], 300) ?? '',
+      }))
+      .filter((p) => p.leitura);
     return {
+      pilares: pilares.length ? pilares : undefined,
       resumo: out.resumo,
       nota_explicacao: typeof out.nota_explicacao === 'string' ? out.nota_explicacao : '',
       pontos_fortes: list(out.pontos_fortes),

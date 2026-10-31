@@ -10,6 +10,7 @@ import { AsaasService } from '../asaas/asaas.service';
 import { askClaude, parseJsonObject } from './claude';
 import { DiagnosisService } from './diagnosis.service';
 import { InstagramProfileService, normalizeInstagramHandle } from './instagram-profile.service';
+import { ANALYSIS_SYSTEM, buildAnalysisPrompt } from './instagram-analysis';
 import { BIRTHDAY_PATTERN } from '../sales-tasks/sales-tasks.rules';
 
 @Controller('contacts')
@@ -333,26 +334,13 @@ export class ContactsController {
     const instagram = normalizeInstagramHandle(contact.instagramHandle);
     const profile = await this.instagramProfile.fetch(instagram);
 
-    const dados = profile.data
-      ? `Dados reais do perfil, obtidos agora pela API oficial do Instagram:\n${JSON.stringify(profile.data, null, 2)}\n` +
-        `Baseie a análise SOMENTE nesses dados (bio, números, legendas, formatos, frequência e engajamento dos posts). ` +
-        `Cite números concretos quando ajudar.`
-      : `Não foi possível obter dados reais do perfil (${profile.reason}). Não invente números nem fatos sobre a marca: ` +
-        `deixe isso claro no resumo, use score null e foque em pontos a verificar.`;
-
-    const prompt =
-      `Você é especialista em marketing digital para moda brasileira da agência Dua Criativa (Fortaleza). ` +
-      `Analise o perfil @${instagram} no Instagram.\n\n${dados}\n\n` +
-      `Retorne APENAS um JSON válido (sem markdown, sem explicação extra) com: score (0-100), resumo (2-3 frases), ` +
-      `pontos_fortes (array, até 5 itens de 1 frase), oportunidades (array, até 5 itens de 1-2 frases), ` +
-      `alertas (array, até 4 itens de 1 frase), estrategia_recomendada (1 parágrafo), mensagem_whatsapp (mensagem casual e personalizada, ` +
-      `máx 4 linhas, assine como Equipe Dua Criativa).`;
-
+    // Nicho, sinais do perfil e datas comerciais entram no prompt (ver fashion-playbook.ts)
     const analysisText = await askClaude({
-      system: 'Você é especialista em marketing digital para moda brasileira. Retorne sempre JSON válido, sem markdown.',
-      prompt,
-      // Com dados reais do perfil a análise fica mais longa; 2048 cortava o JSON no meio
-      maxTokens: 4096,
+      system: ANALYSIS_SYSTEM,
+      prompt: buildAnalysisPrompt(instagram, profile),
+      // Pilares, ideias de carrossel, stories e calendário deixam a resposta bem maior que antes
+      maxTokens: 8192,
+      timeoutMs: 150_000,
     });
     const parsed = parseJsonObject(analysisText);
 

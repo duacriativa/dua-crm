@@ -12,6 +12,7 @@ import {
   Gift, ExternalLink, Eye, Download, Cake,
 } from "lucide-react";
 import api from "@/lib/api";
+import { AnalysisPlaybook, AnalysisPlaybookView } from "@/components/instagram/analysis-playbook";
 
 const API_URL = "";
 
@@ -52,7 +53,7 @@ interface ClientDiagnosis {
   createdAt: string;
 }
 
-interface InstagramAnalysis {
+interface InstagramAnalysis extends AnalysisPlaybook {
   score?: number | null;
   resumo?: string;
   pontos_fortes?: string[];
@@ -64,8 +65,10 @@ interface InstagramAnalysis {
 
 const LOADING_STEPS = [
   "Buscando perfil...",
-  "Analisando conteúdo...",
-  "Gerando estratégia...",
+  "Identificando o nicho...",
+  "Avaliando desejo, valor e direção de compra...",
+  "Criando ideias de carrossel e stories...",
+  "Montando o calendário...",
   "Escrevendo mensagem...",
 ];
 
@@ -1217,6 +1220,8 @@ export default function ContactProfilePage() {
                       </div>
                     )}
                   </div>
+
+                  <AnalysisPlaybookView a={parsedAnalysis} />
 
                   {parsedAnalysis.mensagem_whatsapp && (
                     <div className="bg-emerald-500/10 rounded-2xl p-4 border border-emerald-500/20">

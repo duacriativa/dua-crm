@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { ArrowRight, CalendarCheck, Download, Instagram, Loader2, Sparkles, Star, TrendingUp } from "lucide-react";
+import { ArrowRight, CalendarCheck, CalendarDays, Download, Gift, Instagram, Loader2, MessageCircleQuestion, Sparkles, Star, TrendingUp, Type } from "lucide-react";
 
 interface Diagnosis {
   instagramHandle: string;
@@ -18,6 +18,15 @@ interface Diagnosis {
   pontos_fortes: string[];
   oportunidades: string[];
   proximos_passos: { titulo: string; descricao: string }[];
+  /** Desejo, valor e direção de compra (diagnósticos antigos não têm) */
+  pilares?: { chave: string; nome: string; nota: number; leitura: string }[];
+  /** Ideias prontas para a marca (diagnósticos antigos não têm) */
+  presentes?: {
+    bio_sugerida: string | null;
+    ideias_carrossel: { titulo: string; slides: string[] }[];
+    caixinhas: string[];
+    datas: { data: string; ocasiao: string; ideia: string }[];
+  };
   createdAt: string;
   bookingUrl: string;
   pdfUrl: string;
@@ -167,6 +176,27 @@ export default function DiagnosticoPage({ params }: { params: { token: string } 
           </section>
         )}
 
+        {d.pilares && d.pilares.length > 0 && (
+          <section className="bg-white rounded-2xl shadow-sm p-5 sm:p-7">
+            <h2 className="text-xl font-black tracking-tight">Os 3 papéis do seu conteúdo</h2>
+            <p className="text-sm text-neutral-500 mt-1">Para vender moda, o conteúdo precisa despertar desejo, mostrar valor e dar direção de compra.</p>
+            <div className="mt-5 space-y-5">
+              {d.pilares.map((p) => (
+                <div key={p.chave}>
+                  <div className="flex items-baseline justify-between gap-3">
+                    <p className="font-bold">{p.nome}</p>
+                    <p className="font-black">{p.nota}<span className="text-xs text-neutral-400 font-semibold">/100</span></p>
+                  </div>
+                  <div className="h-2 rounded-full bg-neutral-100 mt-1.5 overflow-hidden">
+                    <div className="h-full rounded-full bg-neutral-950" style={{ width: `${Math.max(3, p.nota)}%` }} />
+                  </div>
+                  <p className="text-sm text-neutral-600 leading-relaxed mt-2">{p.leitura}</p>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
         <div className="grid sm:grid-cols-2 gap-5">
           {d.pontos_fortes.length > 0 && (
             <section className="bg-white rounded-2xl shadow-sm p-5 sm:p-6">
@@ -210,6 +240,67 @@ export default function DiagnosticoPage({ params }: { params: { token: string } 
             ))}
           </ol>
         </section>
+
+        {d.presentes && (
+          <section className="bg-white rounded-2xl shadow-sm p-5 sm:p-7">
+            <h2 className="flex items-center gap-2 text-xl font-black tracking-tight"><Gift className="w-5 h-5" /> Presentes para a sua marca</h2>
+            <p className="text-sm text-neutral-500 mt-1">Ideias prontas, pensadas para o seu perfil. É só adaptar e postar.</p>
+
+            {d.presentes.ideias_carrossel.length > 0 && (
+              <div className="mt-6">
+                <h3 className="font-bold">Ideias de carrossel</h3>
+                <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                  {d.presentes.ideias_carrossel.map((c, i) => (
+                    <div key={i} className="rounded-xl bg-neutral-100 p-4 min-w-0">
+                      <p className="font-bold leading-snug">{c.titulo}</p>
+                      <ol className="mt-2 space-y-1">
+                        {c.slides.map((s, j) => (
+                          <li key={j} className="text-sm text-neutral-600 flex gap-1.5">
+                            <span className="font-bold text-neutral-900 shrink-0">{j + 1}.</span>{s}
+                          </li>
+                        ))}
+                      </ol>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="mt-6 grid gap-5 sm:grid-cols-2">
+              {d.presentes.caixinhas.length > 0 && (
+                <div>
+                  <h3 className="flex items-center gap-2 font-bold"><MessageCircleQuestion className="w-4 h-4" /> Caixinhas para os stories</h3>
+                  <ul className="mt-3 space-y-2">
+                    {d.presentes.caixinhas.map((q, i) => (
+                      <li key={i} className="text-sm text-neutral-700 rounded-lg bg-neutral-100 px-3 py-2">“{q}”</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              <div className="space-y-5">
+                {d.presentes.bio_sugerida && (
+                  <div>
+                    <h3 className="flex items-center gap-2 font-bold"><Type className="w-4 h-4" /> Sugestão de bio</h3>
+                    <p className="mt-3 text-sm whitespace-pre-wrap leading-relaxed rounded-lg bg-neutral-100 px-3 py-2.5">{d.presentes.bio_sugerida}</p>
+                  </div>
+                )}
+                {d.presentes.datas.length > 0 && (
+                  <div>
+                    <h3 className="flex items-center gap-2 font-bold"><CalendarDays className="w-4 h-4" /> Datas que vendem nas próximas semanas</h3>
+                    <ul className="mt-3 space-y-3">
+                      {d.presentes.datas.map((dt, i) => (
+                        <li key={i} className="text-sm">
+                          <p className="font-bold">{dt.data.split("-").reverse().slice(0, 2).join("/")} · {dt.ocasiao}</p>
+                          <p className="text-neutral-600 leading-relaxed">{dt.ideia}</p>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            </div>
+          </section>
+        )}
 
         {/* Oferta do plano pago: destaque principal */}
         <section className="rounded-2xl p-6 sm:p-8 text-neutral-950" style={{ background: LIME }}>
