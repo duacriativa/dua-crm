@@ -73,7 +73,9 @@ export const LEAD_ORIGINS: LeadOrigin[] = ['ADS', 'ORGANIC', 'REFERRAL', 'OTHER'
  * Texto só sai com a janela de 24h aberta (senão é pulado); template sai sempre.
  */
 export type Reminder = { afterSeconds: number } & (
-  | { type: 'send_text'; text: string }
+  // buttonsText: versão para quando a pergunta tem botões ("é só tocar numa das opções 👇");
+  // sem ela, `text` vale para as duas. Pergunta aberta (sem botões) sempre usa `text`.
+  | { type: 'send_text'; text: string; buttonsText?: string }
   | { type: 'send_template'; templateName: string; language: string; parameterFormat?: 'POSITIONAL' | 'NAMED'; bodyText?: string; params?: { key: string; value: string }[] }
 );
 
@@ -165,9 +167,40 @@ export function sanitizeReminders(input: any, strict = true): Reminder[] {
     }
     const text = String(r?.text ?? '').trim();
     if (!text && strict) throw new Error('Lembrete de texto vazio.');
-    return { afterSeconds, type: 'send_text', text: text.slice(0, 1024) };
+    const buttonsText = String(r?.buttonsText ?? '').trim().slice(0, 1024);
+    return { afterSeconds, type: 'send_text', text: text.slice(0, 1024), ...(buttonsText ? { buttonsText } : {}) };
   });
   return out.sort((a, b) => a.afterSeconds - b.afterSeconds);
+}
+
+/**
+ * A pessoa pediu para pular as perguntas e receber o link de agendamento ("me manda o link",
+ * "quero agendar", "pode pular")? O 2º lembrete oferece isso, então o bot precisa entender.
+ * Só frases claras: "marca" sozinho é a marca do cliente, "horário" aparece em resposta comum.
+ */
+export function wantsBookingLink(answer: string) {
+  const t = (answer || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  if (/\b(nao|nem) (quero|precisa|preciso)\b/.test(t)) return false;
+  return (
+    /\blink\b/.test(t) ||
+    /\bpul(a|ar|e|o)\b/.test(t) ||
+    /\bagend(a|ar|e|o|amento)\b/.test(t) ||
+    /\bmarca(r|mos)? (a |uma )?(call|reuniao|conversa|horario)\b/.test(t) ||
+    /\bescolher (o |um )?horario\b/.test(t)
+  );
+}
+
+/** Id do bloco próprio de quem pediu o link (mensagem e aviso diferentes do convite normal). */
+export const ASKED_LINK_STEP = 'pediu_link';
+
+/**
+ * Para onde vai quem pediu o link: o bloco "pediu_link", se o bot tiver; senão o passo que manda
+ * o link de agendamento (texto com /agendar/), depois de `i`. -1 = o bot não tem.
+ */
+export function bookingLinkStep(steps: { id?: string; type: string; text?: string }[], i: number) {
+  const own = steps.findIndex((s) => s.id === ASKED_LINK_STEP);
+  if (own >= 0) return own === i ? -1 : own;
+  return steps.findIndex((s, n) => n > i && s.type === 'send_text' && /\/agendar\/|\{\{link_agendamento\}\}/.test(s.text ?? ''));
 }
 
 export const STEP_TYPES = ['wait', 'wait_reply', 'send_text', 'send_template', 'send_buttons', 'move_stage', 'add_tag', 'notify', 'check_origin', 'set_origin', 'goto', 'end', 'wait_booking', ...MEETING_STEPS];

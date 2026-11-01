@@ -7,7 +7,7 @@ import { phoneVariants, toBrDigits } from '../../common/phone.util';
 import { MEETING_EVENTS, appUrl } from '../scheduling/scheduling.service';
 import {
   AutomationConditions, AutomationStep, DEFAULT_BOOKING_TIMEOUT_S, DEFAULT_MEETING_STATUS_TIMEOUT_S, MEETING_LATE_GRACE_MS, Reminder, StepTarget, WINDOW_MS,
-  businessHours, dueReminder, giveUpAfter, meetingWaitAt, originFromText, originLabel, salesChannelPhrase, sameAnswer, waitPlan, waitUntil,
+  bookingLinkStep, businessHours, dueReminder, giveUpAfter, meetingWaitAt, originFromText, originLabel, salesChannelPhrase, sameAnswer, waitPlan, waitUntil, wantsBookingLink,
 } from './automation-steps';
 
 const ACTIVE = ['RUNNING', 'WAITING_REPLY'];
@@ -32,7 +32,7 @@ export interface MeetingEvent { tenantId: string; meetingId: string; contactId: 
 
 type RunWithBot = {
   id: string; tenantId: string; contactId: string; conversationId: string | null; status: string; stepIndex: number; startedAt: Date;
-  remindersSent?: number; automation: { actions: any };
+  remindersSent?: number; meetingId?: string | null; automation: { actions: any };
 };
 type RunRef = { id: string; tenantId: string; contactId: string; conversationId: string | null; startedAt: Date; meetingId: string | null };
 
@@ -406,8 +406,14 @@ export class AutomationRunner implements OnModuleInit, OnModuleDestroy {
   /** Sessão esperando resposta recebeu uma: segue para o passo do caminho escolhido. */
   private async resume(run: RunWithBot, answer: string, conversationId: string | null) {
     const steps = stepsOf(run.automation.actions);
-    const again = run.remindersSent && (await this.lastBotWasTemplate(conversationId)) ? askAgainAt(steps, run.stepIndex, answer) : null;
-    const next = again ?? afterReply(steps, run.stepIndex, answer);
+    // Pediu o link (o lembrete oferece pular as perguntas): vai direto para o convite com o link.
+    // Botão tocado vale como resposta normal, mesmo que o título case com as palavras. Bots de reunião ficam de fora.
+    const current = steps[run.stepIndex];
+    const tappedButton = current?.type === 'send_buttons' && current.buttons.some((b) => sameAnswer(b.title, answer));
+    const skip = !run.meetingId && !tappedButton && wantsBookingLink(answer) ? bookingLinkStep(steps, run.stepIndex) : -1;
+    if (skip >= 0) this.logger.log(`[Bots] Sessão ${run.id}: pediu o link de agendamento, pulando as perguntas`);
+    const again = skip < 0 && run.remindersSent && (await this.lastBotWasTemplate(conversationId)) ? askAgainAt(steps, run.stepIndex, answer) : null;
+    const next = skip >= 0 ? skip : again ?? afterReply(steps, run.stepIndex, answer);
     const now = new Date();
     await this.prisma.automationRun.updateMany({
       where: { id: run.id, status: 'WAITING_REPLY', stepIndex: run.stepIndex },
@@ -757,7 +763,7 @@ export class AutomationRunner implements OnModuleInit, OnModuleDestroy {
 
   /**
    * Lembrete para quem não respondeu. Texto: só com a janela aberta (senão pula); numa pergunta
-   * com botões vai com os mesmos botões, para a pessoa só tocar. Template: sai sempre.
+   * com botões vai com os mesmos botões (e o texto de botões, se tiver), para a pessoa só tocar. Template: sai sempre.
    */
   private async remind(run: RunRef, step: AutomationStep, reminder: Reminder | undefined) {
     if (!reminder) return;
@@ -770,8 +776,9 @@ export class AutomationRunner implements OnModuleInit, OnModuleDestroy {
         this.logger.log(`[Bots] Lembrete de texto da sessão ${run.id} pulado: janela de 24h fechada`);
         return;
       }
+      // Pergunta com botões: reenvia os botões (e usa o texto próprio, se tiver). Pergunta aberta: só o texto.
       msg = step.type === 'send_buttons'
-        ? { type: 'send_buttons', text: reminder.text, buttons: step.buttons.map((b) => ({ title: b.title })) }
+        ? { type: 'send_buttons', text: reminder.buttonsText || reminder.text, buttons: step.buttons.map((b) => ({ title: b.title })) }
         : { type: 'send_text', text: reminder.text };
     }
     const sent = await this.execute(run, msg);

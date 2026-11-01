@@ -14,6 +14,7 @@
     "postinstall": "prisma generate",
     "db:seed": "ts-node prisma/seed.ts",
     "db:seed-contracts": "ts-node prisma/seed-contracts.ts",
+    "test:bots": "rm -rf .test-build && tsc --outDir .test-build --module commonjs --target ES2021 --skipLibCheck --types node src/modules/automations/automation-steps.spec.ts && node --test .test-build/automation-steps.spec.js",
     "test:rules": "rm -rf .test-build && tsc --outDir .test-build --module commonjs --target ES2021 --skipLibCheck --types node src/modules/sales-tasks/sales-tasks.rules.spec.ts && node --test .test-build/sales-tasks.rules.spec.js"
   },
   "dependencies": {
