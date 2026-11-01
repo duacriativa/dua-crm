@@ -71,11 +71,6 @@ export class ConversationsService {
           contact: {
             select: { id: true, name: true, phone: true, instagramHandle: true, email: true, tags: true, segment: true, profilePicUrl: true, qualification: true, type: true },
           },
-          messages: {
-            orderBy: { sentAt: 'desc' },
-            take: 1,
-            select: { content: true, direction: true, sentAt: true },
-          },
         },
       }),
       this.prisma.conversation.count({ where }),
@@ -90,6 +85,7 @@ export class ConversationsService {
         })
       : [];
     const unreadByConv = new Map(unread.map((u) => [u.conversationId, u._count._all]));
+    const lastByConv = await this.lastMessages(conversations.map((c) => c.id));
 
     const convsWithMeta = conversations.map((conv) => ({
       ...conv,
@@ -97,12 +93,29 @@ export class ConversationsService {
       contactPhone: conv.contact.phone,
       profilePicUrl: conv.profilePicUrl || conv.contact.profilePicUrl,
       isGroup: conv.externalId?.endsWith('@g.us'),
-      lastMessage: conv.messages[0]?.content ?? null,
+      lastMessage: lastByConv.get(conv.id) ?? null,
       unreadCount: unreadByConv.get(conv.id) ?? 0,
-      messages: undefined, // não retorna array completo
     }));
 
     return { conversations: convsWithMeta, total, page, limit };
+  }
+
+  /**
+   * Última mensagem de cada conversa. Não usar include { messages: { take: 1 } } em lista:
+   * o Prisma busca TODAS as mensagens das conversas e corta em memória (era ~3 GB/dia de egress).
+   */
+  private async lastMessages(conversationIds: string[]): Promise<Map<string, string | null>> {
+    if (!conversationIds.length) return new Map();
+    const rows = await this.prisma.$queryRaw<{ conversationId: string; content: string | null }[]>`
+      SELECT c.id AS "conversationId", m.content
+      FROM unnest(${conversationIds}::text[]) AS c(id)
+      CROSS JOIN LATERAL (
+        SELECT content FROM "Message"
+        WHERE "conversationId" = c.id
+        ORDER BY "sentAt" DESC
+        LIMIT 1
+      ) m`;
+    return new Map(rows.map((r) => [r.conversationId, r.content]));
   }
 
   /** Mesmo formato de um item da lista: a tela Conversas abre por ?conv= quem não está entre as 50 mais recentes */
@@ -113,26 +126,21 @@ export class ConversationsService {
         contact: {
           select: { id: true, name: true, phone: true, instagramHandle: true, email: true, tags: true, segment: true, profilePicUrl: true, qualification: true, type: true },
         },
-        messages: {
-          orderBy: { sentAt: 'desc' },
-          take: 1,
-          select: { content: true, direction: true, sentAt: true },
-        },
       },
     });
     if (!conv) throw new NotFoundException('Conversa não encontrada.');
     const unreadCount = await this.prisma.message.count({
       where: { conversationId: conv.id, direction: 'INBOUND', readAt: null },
     });
+    const lastByConv = await this.lastMessages([conv.id]);
     return {
       ...conv,
       contactName: conv.contact.name,
       contactPhone: conv.contact.phone,
       profilePicUrl: conv.profilePicUrl || conv.contact.profilePicUrl,
       isGroup: conv.externalId?.endsWith('@g.us'),
-      lastMessage: conv.messages[0]?.content ?? null,
+      lastMessage: lastByConv.get(conv.id) ?? null,
       unreadCount,
-      messages: undefined,
     };
   }
 
