@@ -28,3 +28,14 @@ test('acha o passo do link depois da pergunta atual', () => {
   assert.equal(bookingLinkStep(steps, 3), -1);
   assert.equal(bookingLinkStep([{ type: 'send_text', text: 'sem link' }], -1), -1);
 });
+
+test('bloco próprio "pediu_link" tem preferência, mesmo no fim da lista', () => {
+  const steps = [
+    { type: 'wait_reply' },
+    { id: 'convite', type: 'send_text', text: 'https://x/agendar/especialista' },
+    { type: 'end' },
+    { id: 'pediu_link', type: 'add_tag' },
+    { type: 'send_text', text: 'https://x/agendar/especialista' },
+  ];
+  assert.equal(bookingLinkStep(steps, 0), 3);
+});

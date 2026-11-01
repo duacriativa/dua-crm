@@ -222,6 +222,21 @@ function qualifySteps(momentoText: string): BotStep[] {
 }
 
 /**
+ * Quem pediu o link no meio das perguntas ("me manda o link", "quero agendar"): o bot pula para cá.
+ * Fica no fim do bot (só se chega por esse pulo). O id "pediu_link" é o que o executor procura.
+ */
+const LINK_AGENDAMENTO = "https://crm.duacriativa.com.br/agendar/especialista";
+export const ASKED_LINK_STEPS: BotStep[] = [
+  { id: "pediu_link", name: "Pediu o link", type: "add_tag", tag: "pulou as perguntas" },
+  {
+    id: "convite_direto", type: "send_text",
+    text: `Claro, {{primeiro_nome}}! 💜\n\nQuem vai conversar com você é o *Daniel*, que cuida da estratégia aqui na Dua. São 45 min por vídeo: ele entende o momento da sua marca, te mostra como a gente trabalha e, se fizer sentido pros dois lados, vocês veem os próximos passos.\n\nEscolhe o melhor horário aqui: ${LINK_AGENDAMENTO}`,
+  },
+  { id: "aviso_pediu_link", type: "notify", to: "Daniel", text: "{{primeiro_nome}} pediu pra pular as perguntas e já recebeu o link de agendamento. Vale olhar a conversa antes da call.\n\nO que respondeu até agora:\n{{respostas}}" },
+  { id: "fim_pediu_link", type: "end" },
+];
+
+/**
  * Qualificação de quem preencheu o formulário, seguindo o roteiro da call do Dua Lab:
  * 1ª mensagem → follow-up se não responder → marca já vende ou está começando →
  * 2 perguntas de diagnóstico de cada caminho → convite para a call com o Daniel (link de agendamento).
@@ -248,7 +263,7 @@ export function formQualifyPreset(first: WaTemplate | undefined, followup: WaTem
     description: "1ª mensagem + follow-up, entende se a marca já vende ou está começando e convida para a call com o Daniel",
     trigger: "LEAD_FORM_SUBMITTED",
     active: false,
-    actions: steps,
+    actions: [...steps, ...ASKED_LINK_STEPS],
   };
 }
 
@@ -289,7 +304,7 @@ export function whatsappQualifyPreset(): Partial<Bot> {
     description: "Quem chama direto no WhatsApp: descobre a origem (ou pergunta), entende se a marca já vende ou está começando e convida para a call",
     trigger: "WHATSAPP_FIRST_MESSAGE",
     active: false,
-    actions: steps,
+    actions: [...steps, ...ASKED_LINK_STEPS],
   };
 }
 

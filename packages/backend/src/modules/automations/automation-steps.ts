@@ -190,10 +190,17 @@ export function wantsBookingLink(answer: string) {
   );
 }
 
-/** Passo que manda o link de agendamento (texto com /agendar/), depois de `i`. -1 = o bot não tem. */
-export function bookingLinkStep(steps: { type: string; text?: string }[], i: number) {
-  const k = steps.findIndex((s, n) => n > i && s.type === 'send_text' && /\/agendar\/|\{\{link_agendamento\}\}/.test(s.text ?? ''));
-  return k;
+/** Id do bloco próprio de quem pediu o link (mensagem e aviso diferentes do convite normal). */
+export const ASKED_LINK_STEP = 'pediu_link';
+
+/**
+ * Para onde vai quem pediu o link: o bloco "pediu_link", se o bot tiver; senão o passo que manda
+ * o link de agendamento (texto com /agendar/), depois de `i`. -1 = o bot não tem.
+ */
+export function bookingLinkStep(steps: { id?: string; type: string; text?: string }[], i: number) {
+  const own = steps.findIndex((s) => s.id === ASKED_LINK_STEP);
+  if (own >= 0) return own === i ? -1 : own;
+  return steps.findIndex((s, n) => n > i && s.type === 'send_text' && /\/agendar\/|\{\{link_agendamento\}\}/.test(s.text ?? ''));
 }
 
 export const STEP_TYPES = ['wait', 'wait_reply', 'send_text', 'send_template', 'send_buttons', 'move_stage', 'add_tag', 'notify', 'check_origin', 'set_origin', 'goto', 'end', 'wait_booking', ...MEETING_STEPS];
