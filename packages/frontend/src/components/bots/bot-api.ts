@@ -48,7 +48,10 @@ export const ORIGIN_LABEL: Record<LeadOrigin, string> = { ADS: "Anúncio", ORGAN
 export const newStepId = () => `s${Math.random().toString(36).slice(2, 8)}`;
 
 /** Lembrete para quem não respondeu (vale para toda espera por resposta do bot). Texto só com a janela de 24h aberta. */
-export type BotReminder = { afterSeconds: number } & Extract<BotStep, { type: "send_text" } | { type: "send_template" }>;
+export type BotReminder = { afterSeconds: number } & (
+  | (Extract<BotStep, { type: "send_text" }> & { buttonsText?: string }) // buttonsText: versão para pergunta com botões
+  | Extract<BotStep, { type: "send_template" }>
+);
 
 export interface BotConditions { onlyPhones?: string[]; reminders?: BotReminder[]; giveUpSeconds?: number; stageId?: string }
 

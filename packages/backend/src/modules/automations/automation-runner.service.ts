@@ -757,7 +757,7 @@ export class AutomationRunner implements OnModuleInit, OnModuleDestroy {
 
   /**
    * Lembrete para quem não respondeu. Texto: só com a janela aberta (senão pula); numa pergunta
-   * com botões vai com os mesmos botões, para a pessoa só tocar. Template: sai sempre.
+   * com botões vai com os mesmos botões (e o texto de botões, se tiver), para a pessoa só tocar. Template: sai sempre.
    */
   private async remind(run: RunRef, step: AutomationStep, reminder: Reminder | undefined) {
     if (!reminder) return;
@@ -770,8 +770,9 @@ export class AutomationRunner implements OnModuleInit, OnModuleDestroy {
         this.logger.log(`[Bots] Lembrete de texto da sessão ${run.id} pulado: janela de 24h fechada`);
         return;
       }
+      // Pergunta com botões: reenvia os botões (e usa o texto próprio, se tiver). Pergunta aberta: só o texto.
       msg = step.type === 'send_buttons'
-        ? { type: 'send_buttons', text: reminder.text, buttons: step.buttons.map((b) => ({ title: b.title })) }
+        ? { type: 'send_buttons', text: reminder.buttonsText || reminder.text, buttons: step.buttons.map((b) => ({ title: b.title })) }
         : { type: 'send_text', text: reminder.text };
     }
     const sent = await this.execute(run, msg);

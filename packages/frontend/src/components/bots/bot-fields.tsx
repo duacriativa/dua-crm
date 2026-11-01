@@ -380,6 +380,19 @@ export function ReminderFields({ reminders, giveUpSeconds, onChange, templates, 
             onAddButton={() => {}}
             onRemoveButton={() => {}}
           />
+          {r.type === "send_text" && (
+            <div className="space-y-1">
+              <label className="text-[11px] font-medium text-gray-500">Quando a pergunta tem botões (opcional)</label>
+              <textarea
+                rows={3}
+                value={r.buttonsText ?? ""}
+                onChange={(e) => set(k, { buttonsText: e.target.value } as Partial<BotReminder>)}
+                placeholder="Ex.: Oi, {{primeiro_nome}}! Conseguiu ver minha mensagem? É só tocar numa das opções 👇"
+                className={inp}
+              />
+              <p className="text-[11px] text-gray-400">Vai junto com os botões da pergunta. Em pergunta aberta (sem botões) sai o texto de cima, então não fale em &quot;tocar&quot; nele.</p>
+            </div>
+          )}
         </div>
       ))}
       {reminders.length < 5 && <button onClick={add} className="text-xs text-brand-600 font-medium">+ lembrete</button>}

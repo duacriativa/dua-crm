@@ -73,7 +73,9 @@ export const LEAD_ORIGINS: LeadOrigin[] = ['ADS', 'ORGANIC', 'REFERRAL', 'OTHER'
  * Texto só sai com a janela de 24h aberta (senão é pulado); template sai sempre.
  */
 export type Reminder = { afterSeconds: number } & (
-  | { type: 'send_text'; text: string }
+  // buttonsText: versão para quando a pergunta tem botões ("é só tocar numa das opções 👇");
+  // sem ela, `text` vale para as duas. Pergunta aberta (sem botões) sempre usa `text`.
+  | { type: 'send_text'; text: string; buttonsText?: string }
   | { type: 'send_template'; templateName: string; language: string; parameterFormat?: 'POSITIONAL' | 'NAMED'; bodyText?: string; params?: { key: string; value: string }[] }
 );
 
@@ -165,7 +167,8 @@ export function sanitizeReminders(input: any, strict = true): Reminder[] {
     }
     const text = String(r?.text ?? '').trim();
     if (!text && strict) throw new Error('Lembrete de texto vazio.');
-    return { afterSeconds, type: 'send_text', text: text.slice(0, 1024) };
+    const buttonsText = String(r?.buttonsText ?? '').trim().slice(0, 1024);
+    return { afterSeconds, type: 'send_text', text: text.slice(0, 1024), ...(buttonsText ? { buttonsText } : {}) };
   });
   return out.sort((a, b) => a.afterSeconds - b.afterSeconds);
 }
