@@ -173,6 +173,29 @@ export function sanitizeReminders(input: any, strict = true): Reminder[] {
   return out.sort((a, b) => a.afterSeconds - b.afterSeconds);
 }
 
+/**
+ * A pessoa pediu para pular as perguntas e receber o link de agendamento ("me manda o link",
+ * "quero agendar", "pode pular")? O 2º lembrete oferece isso, então o bot precisa entender.
+ * Só frases claras: "marca" sozinho é a marca do cliente, "horário" aparece em resposta comum.
+ */
+export function wantsBookingLink(answer: string) {
+  const t = (answer || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  if (/\b(nao|nem) (quero|precisa|preciso)\b/.test(t)) return false;
+  return (
+    /\blink\b/.test(t) ||
+    /\bpul(a|ar|e|o)\b/.test(t) ||
+    /\bagend(a|ar|e|o|amento)\b/.test(t) ||
+    /\bmarca(r|mos)? (a |uma )?(call|reuniao|conversa|horario)\b/.test(t) ||
+    /\bescolher (o |um )?horario\b/.test(t)
+  );
+}
+
+/** Passo que manda o link de agendamento (texto com /agendar/), depois de `i`. -1 = o bot não tem. */
+export function bookingLinkStep(steps: { type: string; text?: string }[], i: number) {
+  const k = steps.findIndex((s, n) => n > i && s.type === 'send_text' && /\/agendar\/|\{\{link_agendamento\}\}/.test(s.text ?? ''));
+  return k;
+}
+
 export const STEP_TYPES = ['wait', 'wait_reply', 'send_text', 'send_template', 'send_buttons', 'move_stage', 'add_tag', 'notify', 'check_origin', 'set_origin', 'goto', 'end', 'wait_booking', ...MEETING_STEPS];
 
 /** Espera pelo agendamento sem prazo configurado: 2 dias. */
