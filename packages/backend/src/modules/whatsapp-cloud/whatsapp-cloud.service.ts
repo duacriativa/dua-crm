@@ -10,6 +10,9 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { phoneVariants, toBrDigits } from '../../common/phone.util';
 import { originFromText, originLabel } from '../automations/automation-steps';
 
+/** Texto gravado quando a API não entrega o conteúdo da mensagem (tipo "unsupported"). */
+const UNSUPPORTED_TEXT = 'Mensagem que o WhatsApp não mostra aqui (enquete, visualização única ou propaganda). Veja no celular.';
+
 type MsgType = 'TEXT' | 'IMAGE' | 'VIDEO' | 'AUDIO' | 'DOCUMENT' | 'INTERACTIVE';
 
 interface ParsedMessage {
@@ -571,6 +574,9 @@ export class WhatsAppCloudService {
         return { type: 'TEXT', content: `👤 ${m.contacts?.map((c: any) => c.name?.formatted_name).join(', ') || 'contato'}`, mediaId: null, quotedExternalId };
       case 'reaction':
         return { type: 'TEXT', content: `${m.reaction?.emoji || ''} (reação)`, mediaId: null, quotedExternalId: m.reaction?.message_id ?? null };
+      // A API não entrega o conteúdo: enquete, visualização única ou propaganda de outra empresa
+      case 'unsupported':
+        return { type: 'TEXT', content: UNSUPPORTED_TEXT, mediaId: null, quotedExternalId };
       default:
         return { type: 'TEXT', content: `[${m.type || 'mensagem'}]`, mediaId: null, quotedExternalId };
     }
@@ -691,13 +697,22 @@ export class WhatsAppCloudService {
     }
 
     if (direction === 'INBOUND' && !opts.history) {
+      // Mensagem que a API não mostra: fica na conversa e avisa o time, mas não acorda bot (a resposta
+      // não faria sentido e, se for propaganda de empresa, nem é entregue). Como 1ª mensagem do número
+      // quase sempre é propaganda, então também não vira card: se for gente, o card sai na próxima.
+      const unsupported = m.type === 'unsupported';
+      if (unsupported) this.logger.log(`[Cloud] Mensagem não suportada de ${customerWaId} (${m.id}): sem bot${firstMessage ? ' e sem card' : ''}`);
       // Alimenta o funil: lead novo que chamou agora cai na 1ª etapa
       const origin = referral
         ? `Origem: Anúncio${contact.adHeadline ? ` — ${contact.adHeadline}` : ''}`
         : fromLink ? `Origem: WhatsApp — ${originLabel(contact)}` : 'Origem: WhatsApp';
-      await this.funnel.ensureLead(tenantId, contact.id, isNewContact || referral || fromLink ? origin : undefined);
+      if (!(unsupported && firstMessage)) {
+        await this.funnel.ensureLead(tenantId, contact.id, isNewContact || referral || fromLink ? origin : undefined);
+      }
       // Bots esperando a resposta desse contato seguem o fluxo
-      this.events.emit('whatsapp.inbound', { tenantId, contactId: contact.id, conversationId: conv.id, firstMessage });
+      if (!unsupported) {
+        this.events.emit('whatsapp.inbound', { tenantId, contactId: contact.id, conversationId: conv.id, firstMessage });
+      }
       // Notifica os aparelhos com o PWA instalado
       this.notify.send(tenantId, 'message_whatsapp', {
         title: contact.name || phone,
