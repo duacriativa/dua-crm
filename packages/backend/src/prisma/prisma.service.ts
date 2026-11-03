@@ -397,6 +397,9 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
       `CREATE UNIQUE INDEX IF NOT EXISTS "ClientProfile_contactId_key" ON "ClientProfile"("contactId")`,
       `CREATE INDEX IF NOT EXISTS "ClientProfile_tenantId_status_idx" ON "ClientProfile"("tenantId", "status")`,
       `REVOKE ALL ON TABLE "ClientProfile" FROM anon, authenticated`,
+      // As tabelas acima são do dua_app; o postgres (Supabase MCP) precisa delas para importações e correções
+      `GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE "Notification", "PushSubscription", "SalesTask", "ClientProfile",
+        "AppSetting", "InstagramDiagnosis", "PlanOrder", "InstagramAccount", "InstagramAutomation", "InstagramCommentReply" TO postgres`,
     ];
     for (const sql of statements) {
       try {
