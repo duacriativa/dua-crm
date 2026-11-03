@@ -5,7 +5,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import {
   Bell, CheckCheck, UserPlus, MessageCircle, Instagram, CalendarClock, StickyNote,
-  CircleDollarSign, AlertTriangle, FileClock, ClipboardList, Settings, ListChecks, Cake,
+  CircleDollarSign, AlertTriangle, FileClock, ClipboardList, Settings, ListChecks, Cake, Contact,
 } from "lucide-react";
 
 function authHeaders() {
@@ -36,6 +36,7 @@ const ICONS: Record<string, { icon: any; color: string }> = {
   plan_order: { icon: ClipboardList, color: "text-violet-500 bg-violet-500/10" },
   sales_task: { icon: ListChecks, color: "text-primary bg-primary/10" },
   birthday: { icon: Cake, color: "text-pink-500 bg-pink-500/10" },
+  client_profile: { icon: Contact, color: "text-emerald-500 bg-emerald-500/10" },
 };
 
 function timeAgo(iso: string) {
