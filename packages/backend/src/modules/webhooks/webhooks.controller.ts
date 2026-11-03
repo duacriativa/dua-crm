@@ -6,6 +6,7 @@ import { normalizePhone, phoneVariants } from '../../common/phone.util';
 import { kommoOffKey } from '../kommo/kommo.controller';
 import { PlanOrdersService } from '../plan-orders/plan-orders.service';
 import { NotifyService } from '../notifications/notify.service';
+import { AsaasSyncService } from '../financial/asaas-sync.service';
 
 @Controller('webhooks')
 export class WebhooksController {
@@ -17,6 +18,7 @@ export class WebhooksController {
     private readonly funnel: FunnelService,
     private readonly planOrders: PlanOrdersService,
     private readonly notify: NotifyService,
+    private readonly asaasSync: AsaasSyncService,
   ) {}
 
   @Post('asaas')
@@ -33,24 +35,10 @@ export class WebhooksController {
       // Pedido do plano de 90 dias (Pix da página /plano-90-dias)
       await this.planOrders.handleAsaasEvent(event, payment, accessToken);
 
-      // Atualiza FinancialEntry se existir
-      if (payment.id) {
-        const entry = await this.prisma.financialEntry.findUnique({
-          where: { asaasPaymentId: payment.id },
-        });
-        if (entry) {
-          if (event === 'PAYMENT_RECEIVED' || event === 'PAYMENT_CONFIRMED') {
-            await this.prisma.financialEntry.update({
-              where: { id: entry.id },
-              data: { status: 'PAID', paidAt: new Date() },
-            });
-          } else if (event === 'PAYMENT_OVERDUE') {
-            await this.prisma.financialEntry.update({
-              where: { id: entry.id },
-              data: { status: 'OVERDUE' },
-            });
-          }
-        }
+      // Grava/atualiza a cobrança no contrato vinculado (relê da API, não confia no corpo)
+      if (payment.id && String(event).startsWith('PAYMENT_')) {
+        await this.asaasSync.syncPaymentById(String(payment.id))
+          .catch((err) => this.logger.warn(`Asaas sync ${payment.id}: ${err.message}`));
       }
 
       // Emite evento SSE para notificação no browser

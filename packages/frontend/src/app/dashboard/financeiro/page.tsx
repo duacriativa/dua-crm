@@ -6,7 +6,7 @@ import { LoaderOne } from "@/components/ui/loader-one";
 import {
   TrendingUp, TrendingDown, AlertCircle,
   CheckCircle2, Clock, RefreshCw, ChevronDown, ChevronUp,
-  Users, BarChart3, Plus,
+  Users, BarChart3, Plus, Link2, X,
 } from "lucide-react";
 
 function fmt(val: number) {
@@ -70,6 +70,7 @@ interface ClientEntry {
   paidAt: string | null;
   dueDate: string;
   value: number;
+  paid: number;
   source: "asaas" | "manual";
 }
 
@@ -79,6 +80,7 @@ interface ClientRow {
   serviceType: string;
   serviceLabel: string;
   monthlyValue: number;
+  linked: boolean;
   entry: ClientEntry | null;
 }
 
@@ -87,6 +89,20 @@ interface ClientesData {
   totals: { contratado: number; recebido: number; pendente: number };
   byService: Record<string, { label: string; contratado: number; recebido: number; pendente: number }>;
   clients: ClientRow[];
+  clientCount: number;
+  unlinkedCount: number;
+}
+
+interface LinksData {
+  customers: { id: string; name: string; cpfCnpj: string | null }[];
+  contracts: {
+    id: string;
+    clientName: string;
+    serviceType: string;
+    monthlyValue: number;
+    asaasCustomerId: string | null;
+    suggestedCustomerId: string | null;
+  }[];
 }
 
 // ─── Dashboard Tab ────────────────────────────────────────────────────────────
@@ -282,6 +298,8 @@ function ClientesTab({ hideValues }: { hideValues: boolean }) {
   const [addDueDate, setAddDueDate] = useState("");
   const [addValue, setAddValue] = useState("");
   const [saving, setSaving] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [showLinks, setShowLinks] = useState(false);
 
   const load = useCallback(async (m: string) => {
     setLoading(true);
@@ -329,6 +347,18 @@ function ClientesTab({ hideValues }: { hideValues: boolean }) {
     }
   };
 
+  const syncAsaas = async () => {
+    setSyncing(true);
+    try {
+      await api.post("/financial/asaas/sync");
+      await load(month);
+    } catch (e: any) {
+      setError(e?.response?.data?.message || e.message || "Erro ao sincronizar com o Asaas");
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   const changeMonth = (dir: "prev" | "next") => {
     setMonth((m) => dir === "prev" ? prevMonth(m) : nextMonth(m));
   };
@@ -362,9 +392,25 @@ function ClientesTab({ hideValues }: { hideValues: boolean }) {
             className="text-muted-foreground hover:text-foreground px-2 py-1 rounded-lg border border-border text-sm disabled:opacity-30"
           >›</button>
         </div>
-        <button onClick={() => load(month)} className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground/80 border border-border rounded-lg px-3 py-1.5 transition-colors">
-          <RefreshCw className="w-4 h-4" /> Atualizar
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowLinks(true)}
+            className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground/80 border border-border rounded-lg px-3 py-1.5 transition-colors"
+          >
+            <Link2 className="w-4 h-4" /> Vincular Asaas
+            {data.unlinkedCount > 0 && (
+              <span className="text-[10px] font-semibold bg-amber-100 text-amber-700 rounded-full px-1.5 py-0.5">{data.unlinkedCount}</span>
+            )}
+          </button>
+          <button
+            onClick={syncAsaas}
+            disabled={syncing}
+            title="Puxa as cobranças do Asaas de 2 meses atrás até o mês que vem"
+            className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground/80 border border-border rounded-lg px-3 py-1.5 transition-colors disabled:opacity-50"
+          >
+            <RefreshCw className={`w-4 h-4 ${syncing ? "animate-spin" : ""}`} /> {syncing ? "Sincronizando..." : "Sincronizar"}
+          </button>
+        </div>
       </div>
 
       {/* Totals */}
@@ -372,7 +418,7 @@ function ClientesTab({ hideValues }: { hideValues: boolean }) {
         <div className="bg-card rounded-xl border border-border p-4">
           <p className="text-xs text-muted-foreground mb-1">Contratado</p>
           <p className="text-2xl font-semibold text-foreground">{hideValues ? "R$ •••" : fmt(data.totals.contratado)}</p>
-          <p className="text-xs text-muted-foreground mt-1">{data.clients.length} clientes ativos</p>
+          <p className="text-xs text-muted-foreground mt-1">{data.clientCount} clientes · {data.clients.length} contratos</p>
         </div>
         <div className="bg-card rounded-xl border border-border p-4">
           <p className="text-xs text-muted-foreground mb-1">Recebido</p>
@@ -415,7 +461,12 @@ function ClientesTab({ hideValues }: { hideValues: boolean }) {
                       {client.clientName.charAt(0).toUpperCase()}
                     </div>
                     <div>
-                      <p className="text-sm font-medium text-foreground">{client.clientName}</p>
+                      <p className="text-sm font-medium text-foreground">
+                        {client.clientName}
+                        {!client.linked && (
+                          <span title="Contrato sem cliente do Asaas: o pagamento não entra sozinho" className="ml-2 text-[10px] font-normal text-amber-600">sem Asaas</span>
+                        )}
+                      </p>
                       {client.entry?.dueDate && (
                         <p className="text-xs text-muted-foreground">
                           vence {new Date(client.entry.dueDate).toLocaleDateString("pt-BR")}
@@ -492,6 +543,10 @@ function ClientesTab({ hideValues }: { hideValues: boolean }) {
         </div>
       )}
 
+      {showLinks && (
+        <LinksModal onClose={() => { setShowLinks(false); load(month); }} />
+      )}
+
       {/* Add entry modal */}
       {addingFor && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
@@ -533,6 +588,135 @@ function ClientesTab({ hideValues }: { hideValues: boolean }) {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ─── Vínculo contrato ↔ cliente do Asaas ─────────────────────────────────────
+
+function LinksModal({ onClose }: { onClose: () => void }) {
+  const [data, setData] = useState<LinksData | null>(null);
+  const [error, setError] = useState("");
+  const [choice, setChoice] = useState<Record<string, string>>({});
+  const [savingId, setSavingId] = useState<string | null>(null);
+  const [savingAll, setSavingAll] = useState(false);
+
+  const load = useCallback(async () => {
+    setError("");
+    try {
+      const res = await api.get<LinksData>("/financial/asaas/vinculos");
+      setData(res.data);
+      setChoice(Object.fromEntries(res.data.contracts.map((c) => [c.id, c.asaasCustomerId ?? c.suggestedCustomerId ?? ""])));
+    } catch (e: any) {
+      setError(e?.response?.data?.message || e.message || "Erro ao carregar clientes do Asaas");
+    }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const save = async (contractId: string) => {
+    setSavingId(contractId);
+    try {
+      await api.patch(`/financial/asaas/vinculos/${contractId}`, { asaasCustomerId: choice[contractId] || null });
+      setData((d) => d && {
+        ...d,
+        contracts: d.contracts.map((c) => c.id === contractId ? { ...c, asaasCustomerId: choice[contractId] || null } : c),
+      });
+    } finally {
+      setSavingId(null);
+    }
+  };
+
+  const pending = data?.contracts.filter((c) => (choice[c.id] || null) !== c.asaasCustomerId) ?? [];
+
+  const saveAll = async () => {
+    setSavingAll(true);
+    try {
+      for (const c of pending) await save(c.id);
+    } finally {
+      setSavingAll(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="bg-card border border-border rounded-2xl w-full max-w-3xl max-h-[85vh] flex flex-col shadow-xl">
+        <div className="flex items-start justify-between p-5 border-b border-border">
+          <div>
+            <h3 className="text-base font-semibold text-foreground">Vincular contratos ao Asaas</h3>
+            <p className="text-sm text-muted-foreground mt-1">
+              Com o vínculo, toda cobrança do cliente no Asaas entra sozinha no contrato. Cliente com Redes e Anúncios:
+              vincule os dois contratos ao mesmo cliente, cada cobrança vai para o contrato de mesmo valor.
+            </p>
+          </div>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground"><X className="w-5 h-5" /></button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto">
+          {error ? (
+            <div className="m-5 bg-red-50 border border-red-200 rounded-xl p-4 text-red-700 text-sm">{error}</div>
+          ) : !data ? (
+            <div className="flex items-center justify-center h-40"><LoaderOne /></div>
+          ) : (
+            <div className="divide-y divide-border">
+              {data.contracts.map((c) => {
+                const value = choice[c.id] ?? "";
+                const dirty = (value || null) !== c.asaasCustomerId;
+                const isSuggestion = !c.asaasCustomerId && !!value && value === c.suggestedCustomerId;
+                return (
+                  <div key={c.id} className="flex items-center gap-3 px-5 py-2.5">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-foreground truncate">{c.clientName}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {c.serviceType === "SOCIAL_MEDIA" ? "G. Redes" : c.serviceType === "PAID_TRAFFIC" ? "G. Anúncios" : c.serviceType} · {fmt(c.monthlyValue)}
+                      </p>
+                    </div>
+                    <select
+                      value={value}
+                      onChange={(e) => setChoice((s) => ({ ...s, [c.id]: e.target.value }))}
+                      className={`w-40 sm:w-64 px-2 py-1.5 rounded-lg border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/40 ${
+                        isSuggestion ? "border-violet-400" : "border-border"
+                      }`}
+                    >
+                      <option value="">— sem vínculo —</option>
+                      {data.customers.map((cu) => (
+                        <option key={cu.id} value={cu.id}>{cu.name}</option>
+                      ))}
+                    </select>
+                    <div className="w-20 text-right">
+                      {dirty ? (
+                        <button
+                          onClick={() => save(c.id)}
+                          disabled={savingId === c.id || savingAll}
+                          className="text-xs font-medium px-2.5 py-1.5 rounded-lg bg-violet-600 hover:bg-violet-500 text-white disabled:opacity-50"
+                        >{savingId === c.id ? "..." : isSuggestion ? "Aceitar" : "Salvar"}</button>
+                      ) : c.asaasCustomerId ? (
+                        <span className="text-xs text-green-600 flex items-center justify-end gap-1"><CheckCircle2 className="w-3 h-3" /> ok</span>
+                      ) : null}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        <div className="flex items-center justify-between gap-2 p-4 border-t border-border">
+          <p className="text-xs text-muted-foreground">
+            {data ? `${data.contracts.filter((c) => c.asaasCustomerId).length} de ${data.contracts.length} contratos vinculados` : ""}
+          </p>
+          <div className="flex gap-2">
+            {pending.length > 0 && (
+              <button
+                onClick={saveAll}
+                disabled={savingAll}
+                className="py-2 px-4 text-sm rounded-lg bg-violet-600 hover:bg-violet-500 text-white font-medium disabled:opacity-50"
+              >{savingAll ? "Salvando..." : `Salvar ${pending.length} alteraç${pending.length === 1 ? "ão" : "ões"}`}</button>
+            )}
+            <button onClick={onClose} className="py-2 px-4 text-sm rounded-lg border border-border text-muted-foreground hover:bg-muted/30">Fechar</button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
