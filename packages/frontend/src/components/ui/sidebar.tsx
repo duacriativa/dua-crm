@@ -9,7 +9,7 @@ import {
   Settings, ChevronLeft, ChevronRight, LogOut, Kanban,
   Menu, X, DollarSign, FileText, Plus,
   Calendar, Bot, Megaphone, Workflow,
-  ChevronUp, ChevronDown, User, CreditCard, ClipboardList, ListChecks,
+  ChevronUp, ChevronDown, User, CreditCard, ClipboardList, ListChecks, Contact,
 } from "lucide-react";
 
 type Icon = ComponentType<{ className?: string }>;
@@ -30,6 +30,7 @@ const automationItems: GroupItem[] = [
 const navItems: NavItem[] = [
   { icon: LayoutDashboard, label: "Dashboard",     href: "/dashboard" },
   { icon: Users,           label: "Clientes",      href: "/dashboard/contatos" },
+  { icon: Contact,         label: "Cadastros",     href: "/dashboard/cadastros" },
   { icon: Kanban,          label: "Funil",         href: "/dashboard/funil" },
   { icon: MessageCircle,   label: "Conversas",     href: "/dashboard/conversas", badge: 12 },
   { icon: ListChecks,      label: "Tarefas",       href: "/dashboard/tarefas" },
