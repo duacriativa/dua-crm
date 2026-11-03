@@ -3,6 +3,7 @@ import { AsaasService } from '../asaas/asaas.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { MetaAdsService } from '../meta-ads/meta-ads.service';
 import { diaBR, somaDias } from '../../common/periodo-br.util';
+import { normalizeName } from './asaas-sync.service';
 
 @Injectable()
 export class FinancialService {
@@ -139,77 +140,40 @@ export class FinancialService {
     };
   }
 
+  /**
+   * Painel mês a mês: lê só do banco. As cobranças do Asaas chegam como FinancialEntry pelo
+   * AsaasSyncService (webhook + varredura); quem paga fora do Asaas segue com o lançamento manual.
+   */
   async getClientes(tenantId: string, month?: string) {
     const now = new Date();
     const [year, mon] = month
       ? month.split('-').map(Number)
       : [now.getFullYear(), now.getMonth() + 1];
 
-    const startOfMonth = new Date(year, mon - 1, 1);
-    const endOfMonth = new Date(year, mon, 0, 23, 59, 59);
-    const isCurrentMonth = year === now.getFullYear() && mon === now.getMonth() + 1;
+    // Vencimentos do Asaas são gravados ao meio-dia UTC, então o mês é recortado em UTC
+    const startOfMonth = new Date(Date.UTC(year, mon - 1, 1));
+    const endOfMonth = new Date(Date.UTC(year, mon, 1));
+    const inMonth = { gte: startOfMonth, lt: endOfMonth };
 
+    // Contrato cancelado depois não some dos meses em que estava ativo
     const contracts = await this.prisma.contract.findMany({
-      where: { tenantId, status: 'ACTIVE' },
+      where: {
+        tenantId,
+        startsAt: { lt: endOfMonth },
+        OR: [
+          { status: 'ACTIVE' },
+          { cancelledAt: { gte: startOfMonth } },
+          { financialEntries: { some: { dueDate: inMonth, isCommission: false, status: { not: 'CANCELLED' } } } },
+        ],
+      },
       orderBy: { clientName: 'asc' },
       include: {
         financialEntries: {
-          where: { dueDate: { gte: startOfMonth, lte: endOfMonth }, isCommission: false },
+          where: { dueDate: inMonth, isCommission: false, status: { not: 'CANCELLED' } },
           orderBy: { dueDate: 'asc' },
         },
       },
     });
-
-    // Cruza com pagamentos reais do Asaas (só faz sentido pro mês corrente,
-    // já que a API do Asaas sempre retorna a competência atual)
-    const normalize = (s: string) =>
-      s
-        .normalize('NFD').replace(/[̀-ͯ]/g, '')
-        .toLowerCase()
-        .replace(/\b(ltda|me|eireli|mei|epp|sa|s\/a|comercio|comércio|confeccoes|confecções|store|shop|moda|modas)\b/g, '')
-        .replace(/[^a-z0-9\s]/g, '')
-        .replace(/\s+/g, ' ')
-        .trim();
-
-    // Casa nome do contrato com nome do cliente no Asaas: exato primeiro,
-    // depois por contenção (um nome dentro do outro) — nomes de empresa no
-    // Asaas raramente batem 100% com o apelido usado no contrato.
-    const findAsaasMatch = <T,>(clientName: string, map: Map<string, T>): T | undefined => {
-      const target = normalize(clientName);
-      if (!target) return undefined;
-      if (map.has(target)) return map.get(target);
-      let best: { key: string; val: T } | null = null;
-      for (const [key, val] of map.entries()) {
-        if (key.length < 3 || target.length < 3) continue;
-        if (key.includes(target) || target.includes(key)) {
-          if (!best || key.length > best.key.length) best = { key, val };
-        }
-      }
-      return best?.val;
-    };
-
-    const asaasByClient = new Map<string, { status: 'PAID' | 'PENDING' | 'OVERDUE'; value: number; date?: string }>();
-    if (isCurrentMonth) {
-      try {
-        const asaasSummary = await this.asaas.getMonthlySummary();
-        // Prioridade: pago > atrasado > pendente (se tiver mais de uma cobrança, a "melhor" vence)
-        const applyBucket = (items: any[], status: 'PAID' | 'PENDING' | 'OVERDUE', dateField: string) => {
-          for (const item of items) {
-            const key = normalize(item.customerName ?? item.customer ?? '');
-            if (!key) continue;
-            const existing = asaasByClient.get(key);
-            if (!existing || (status === 'PAID' && existing.status !== 'PAID')) {
-              asaasByClient.set(key, { status, value: item.value, date: item[dateField] });
-            }
-          }
-        };
-        applyBucket(asaasSummary.pending.items, 'PENDING', 'dueDate');
-        applyBucket(asaasSummary.overdue.items, 'OVERDUE', 'dueDate');
-        applyBucket(asaasSummary.paid.items, 'PAID', 'paymentDate');
-      } catch (err: any) {
-        this.logger.error('Erro ao cruzar Asaas em getClientes: ' + err.message);
-      }
-    }
 
     const SERVICE_LABELS: Record<string, string> = {
       SOCIAL_MEDIA: 'G. Redes',
@@ -220,23 +184,25 @@ export class FinancialService {
     };
 
     const clients = contracts.map((c) => {
-      const manualEntry = c.financialEntries[0] ?? null;
-      const asaasMatch = findAsaasMatch(c.clientName, asaasByClient);
-
-      // Asaas manda quando existe (é o dado real); lançamento manual é fallback
-      // para clientes não cobrados por lá (ex: pagamento direto, PIX combinado etc).
-      let entry: { id: string | null; status: string; paidAt: Date | string | null; dueDate: Date | string | null; value: number; source: 'asaas' | 'manual' } | null = null;
-      if (asaasMatch) {
+      const entries = c.financialEntries;
+      let entry: {
+        id: string | null; status: string; paidAt: Date | null; dueDate: Date | null;
+        value: number; paid: number; source: 'asaas' | 'manual';
+      } | null = null;
+      if (entries.length) {
+        const open = entries.filter((e) => e.status !== 'PAID');
+        const paid = entries.filter((e) => e.status === 'PAID');
+        const paidAts = paid.map((e) => e.paidAt).filter(Boolean) as Date[];
         entry = {
-          id: manualEntry?.id ?? null,
-          status: asaasMatch.status,
-          paidAt: asaasMatch.status === 'PAID' ? (asaasMatch.date ?? null) : null,
-          dueDate: asaasMatch.status !== 'PAID' ? (asaasMatch.date ?? null) : null,
-          value: asaasMatch.value,
-          source: 'asaas',
+          // id da cobrança em aberto (o botão Pago/Pendente do lançamento manual usa ele)
+          id: (open[0] ?? entries[0]).id,
+          status: !open.length ? 'PAID' : open.some((e) => e.status === 'OVERDUE') ? 'OVERDUE' : 'PENDING',
+          paidAt: paidAts.length ? new Date(Math.max(...paidAts.map((d) => d.getTime()))) : null,
+          dueDate: (open[0] ?? entries[0]).dueDate,
+          value: entries.reduce((s, e) => s + e.value, 0),
+          paid: paid.reduce((s, e) => s + e.value, 0),
+          source: entries.some((e) => e.asaasPaymentId) ? 'asaas' : 'manual',
         };
-      } else if (manualEntry) {
-        entry = { ...manualEntry, source: 'manual' };
       }
 
       return {
@@ -245,34 +211,32 @@ export class FinancialService {
         serviceType: c.serviceType,
         serviceLabel: SERVICE_LABELS[c.serviceType] ?? c.serviceType,
         monthlyValue: c.monthlyValue,
+        linked: !!c.asaasCustomerId,
         entry,
       };
     });
 
-    const contratado = clients.reduce((s, c) => s + c.monthlyValue, 0);
-    const recebido = clients
-      .filter((c) => c.entry?.status === 'PAID')
-      .reduce((s, c) => s + (c.entry?.value ?? c.monthlyValue), 0);
-    const pendente = clients
-      .filter((c) => !c.entry || c.entry.status === 'PENDING' || c.entry.status === 'OVERDUE')
-      .reduce((s, c) => s + c.monthlyValue, 0);
+    const received = (c: (typeof clients)[number]) => c.entry?.paid ?? 0;
+    const missing = (c: (typeof clients)[number]) =>
+      c.entry?.status === 'PAID' ? 0 : Math.max(c.monthlyValue - received(c), 0);
 
     const byService: Record<string, { label: string; contratado: number; recebido: number; pendente: number }> = {};
     for (const c of clients) {
-      if (!byService[c.serviceType]) {
-        byService[c.serviceType] = { label: c.serviceLabel, contratado: 0, recebido: 0, pendente: 0 };
-      }
-      byService[c.serviceType].contratado += c.monthlyValue;
-      if (c.entry?.status === 'PAID') {
-        byService[c.serviceType].recebido += c.entry.value;
-      } else {
-        byService[c.serviceType].pendente += c.monthlyValue;
-      }
+      const svc = (byService[c.serviceType] ??= { label: c.serviceLabel, contratado: 0, recebido: 0, pendente: 0 });
+      svc.contratado += c.monthlyValue;
+      svc.recebido += received(c);
+      svc.pendente += missing(c);
     }
 
     return {
       month: `${year}-${String(mon).padStart(2, '0')}`,
-      totals: { contratado, recebido, pendente },
+      totals: {
+        contratado: clients.reduce((s, c) => s + c.monthlyValue, 0),
+        recebido: clients.reduce((s, c) => s + received(c), 0),
+        pendente: clients.reduce((s, c) => s + missing(c), 0),
+      },
+      clientCount: new Set(clients.map((c) => normalizeName(c.clientName))).size,
+      unlinkedCount: clients.filter((c) => !c.linked).length,
       byService,
       clients,
     };
@@ -292,14 +256,15 @@ export class FinancialService {
         description: dto.description ?? 'Mensalidade',
         value: dto.value,
         status: 'PENDING',
-        dueDate: new Date(dto.dueDate),
+        dueDate: new Date(`${dto.dueDate.slice(0, 10)}T12:00:00Z`),
       },
     });
   }
 
   async togglePay(tenantId: string, entryId: string, paid: boolean) {
     return this.prisma.financialEntry.updateMany({
-      where: { id: entryId, tenantId },
+      // Cobrança do Asaas só muda pelo Asaas
+      where: { id: entryId, tenantId, asaasPaymentId: null },
       data: {
         status: paid ? 'PAID' : 'PENDING',
         paidAt: paid ? new Date() : null,

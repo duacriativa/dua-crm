@@ -77,6 +77,20 @@ export class AsaasService {
     );
   }
 
+  /** Todas as cobranças com vencimento no intervalo (YYYY-MM-DD), paginando. */
+  async getPaymentsByDueRange(from: string, to: string): Promise<AsaasPayment[]> {
+    const all: AsaasPayment[] = [];
+    const limit = 100;
+    for (let offset = 0; ; offset += limit) {
+      const page = await this.fetch<{ data: AsaasPayment[]; hasMore: boolean }>(
+        `/payments?dueDate[ge]=${from}&dueDate[le]=${to}&limit=${limit}&offset=${offset}`,
+      );
+      all.push(...(page.data || []));
+      if (!page.hasMore || (page.data || []).length < limit) break;
+    }
+    return all;
+  }
+
   async getSubscriptions() {
     return this.fetch<{ data: AsaasSubscription[]; totalCount: number }>(
       `/subscriptions?limit=100`,
@@ -175,9 +189,13 @@ export interface AsaasPayment {
   customer: string;
   customerName?: string;
   value: number;
-  status: 'PENDING' | 'RECEIVED' | 'CONFIRMED' | 'OVERDUE' | 'REFUNDED' | 'RECEIVED_IN_CASH';
+  originalValue?: number | null;
+  status: 'PENDING' | 'RECEIVED' | 'CONFIRMED' | 'OVERDUE' | 'REFUNDED' | 'RECEIVED_IN_CASH' | string;
+  deleted?: boolean;
   dueDate: string;
   paymentDate?: string;
+  clientPaymentDate?: string;
+  confirmedDate?: string;
   description?: string;
   billingType: string;
   invoiceUrl?: string;
