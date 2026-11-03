@@ -183,8 +183,30 @@ export class FinancialService {
       OTHER: 'Outro',
     };
 
+    // Cobrança única que cobre Redes + Anúncios (valor ≈ soma dos contratos do mesmo cliente
+    // do Asaas) é repartida entre eles na proporção do valor; as demais ficam no próprio contrato.
+    type Part = { id: string; status: string; value: number; dueDate: Date; paidAt: Date | null; asaas: boolean };
+    const parts = new Map<string, Part[]>(contracts.map((c) => [c.id, []]));
+    const groups = new Map<string, typeof contracts>();
+    for (const c of contracts) {
+      if (c.asaasCustomerId) groups.set(c.asaasCustomerId, [...(groups.get(c.asaasCustomerId) ?? []), c]);
+    }
+    const groupOf = (c: (typeof contracts)[number]) => (c.asaasCustomerId ? groups.get(c.asaasCustomerId)! : [c]);
+    for (const c of contracts) {
+      const group = groupOf(c);
+      const groupTotal = group.reduce((sum, g) => sum + g.monthlyValue, 0);
+      for (const e of c.financialEntries) {
+        const part = { id: e.id, status: e.status, dueDate: e.dueDate, paidAt: e.paidAt, asaas: !!e.asaasPaymentId };
+        if (group.length > 1 && e.asaasPaymentId && e.value >= 0.8 * groupTotal) {
+          for (const g of group) parts.get(g.id)!.push({ ...part, value: (e.value * g.monthlyValue) / groupTotal });
+        } else {
+          parts.get(c.id)!.push({ ...part, value: e.value });
+        }
+      }
+    }
+
     const clients = contracts.map((c) => {
-      const entries = c.financialEntries;
+      const entries = parts.get(c.id)!.sort((a, b) => a.dueDate.getTime() - b.dueDate.getTime());
       let entry: {
         id: string | null; status: string; paidAt: Date | null; dueDate: Date | null;
         value: number; paid: number; source: 'asaas' | 'manual';
@@ -201,7 +223,7 @@ export class FinancialService {
           dueDate: (open[0] ?? entries[0]).dueDate,
           value: entries.reduce((s, e) => s + e.value, 0),
           paid: paid.reduce((s, e) => s + e.value, 0),
-          source: entries.some((e) => e.asaasPaymentId) ? 'asaas' : 'manual',
+          source: entries.some((e) => e.asaas) ? 'asaas' : 'manual',
         };
       }
 

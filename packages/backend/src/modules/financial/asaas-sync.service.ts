@@ -105,12 +105,8 @@ export class AsaasSyncService implements OnModuleInit, OnModuleDestroy {
     if (!p?.id) return false;
     const existing = await this.prisma.financialEntry.findUnique({ where: { asaasPaymentId: p.id } });
 
-    let contract = existing?.contractId
-      ? await this.prisma.contract.findUnique({ where: { id: existing.contractId } })
-      : null;
-    if (!contract || contract.asaasCustomerId !== p.customer) {
-      contract = await this.pickContract(p);
-    }
+    // Sempre recalcula: o resultado não pode depender da ordem em que os contratos foram vinculados
+    const contract = await this.pickContract(p);
     if (!contract) {
       // Cliente desvinculado: o lançamento antigo não vale mais para nenhum contrato
       if (existing?.asaasPaymentId && existing.contractId) {
