@@ -6,7 +6,7 @@ import type { WaTemplate } from "@/components/whatsapp/templates";
 
 export type BotStep = { id?: string; name?: string; pos?: { x: number; y: number } } & (
   | { type: "wait"; seconds: number; alignTo?: string; alignWeekends?: boolean }
-  | { type: "wait_reply"; timeoutSeconds?: number; alignTo?: string; alignWeekends?: boolean; onReply?: string; onTimeout?: string }
+  | { type: "wait_reply"; timeoutSeconds?: number; alignTo?: string; alignWeekends?: boolean; buttons?: { title: string; goto?: string }[]; onReply?: string; onTimeout?: string }
   | { type: "send_text"; text: string }
   | {
       type: "send_template";
@@ -36,6 +36,7 @@ export type BotStep = { id?: string; name?: string; pos?: { x: number; y: number
   | { type: "wait_meeting"; seconds: number; when: "before" | "after"; onTime?: string; onLate?: string }
   | { type: "meeting_status"; timeoutSeconds?: number; onDone?: string; onNoShow?: string; onTimeout?: string }
   | { type: "wait_booking"; timeoutSeconds?: number; reminders?: BotReminder[]; giveUpSeconds?: number; onBooked?: string; onReply?: string; onTimeout?: string }
+  | { type: "wait_payment"; timeoutSeconds?: number; reminders?: BotReminder[]; giveUpSeconds?: number; onPaid?: string; onReply?: string; onTimeout?: string }
 );
 
 /** Passos que só existem nos bots com o gatilho "Reunião agendada". */
@@ -309,51 +310,87 @@ export function whatsappQualifyPreset(): Partial<Bot> {
 }
 
 /**
- * Templates (MARKETING, pt_BR) da oferta de consultoria. {{1}} = primeiro nome.
- * Criar em Configurações → Templates com estes nomes e textos.
+ * Templates (MARKETING, pt_BR) do Plano 90 Dias. {{1}} = primeiro nome.
+ * A oferta leva os botões de resposta rápida de PLANO_BUTTONS, com o mesmo texto.
  */
-export const CONSULTORIA_TEMPLATES = {
+export const PLANO_BUTTONS = ["Quero o plano", "Tenho uma dúvida", "Agora não"];
+export const PLANO_TEMPLATES = {
   oferta: {
-    name: "oferta_consultoria",
-    body: "Oi, {{1}}! Aqui é a Duda, da Dua 💜\n\nLembrei de você por aqui. Pra marcas que estão estruturando o marketing agora, abrimos uma *consultoria estratégica*: com um investimento bem menor que a gestão completa, você sai com um plano claro de posicionamento, conteúdo e vendas pra colocar em prática.\n\nQuer que eu te conte como funciona?",
+    name: "plano_90_dias_oferta",
+    body: "Oi, {{1}}! Aqui é o Daniel, da Dua 💜\n\nCriamos um Plano de Conteúdo de 90 dias pra quem quer organizar o Instagram da marca e colocar a mão na massa.\n\nSão 3 meses feitos só pra sua marca, com o que postar, roteiros, stories e o que contratar. Vai tudo bem detalhado pra você executar por aí.\n\nÉ R$ 297 no Pix, pagamento único, e chega em até 24h.",
   },
   lembrete: {
-    name: "oferta_consultoria_lembrete",
-    body: "Oi, {{1}}! Passando pra ver se você viu minha mensagem sobre a consultoria estratégica da Dua 😊\n\nAs vagas deste mês são poucas. Se fizer sentido pro momento da sua marca, me responde aqui que eu te explico tudo.",
+    name: "plano_90_dias_lembrete",
+    body: "Oi, {{1}}! Não sei se você chegou a ver minha mensagem sobre o plano de 90 dias. Se não for o momento, tudo bem! Se quiser saber mais, é só me responder aqui.",
   },
 };
 
-/** Template aprovado com esse nome (os da consultoria), ou passo vazio para escolher depois. */
+/** Template aprovado com esse nome, ou passo vazio para escolher depois. */
 const namedTemplate = (templates: WaTemplate[], name: string): BotStep => {
   const t = templates.find((x) => x.status === "APPROVED" && x.name === name);
   return t ? templateStep(t) : { type: "send_template", templateName: "", language: "pt_BR", params: [] };
 };
 
-/**
- * Oferta de consultoria para quem esfriou e não tem perfil para o pacote completo:
- * o time arrasta o card para a etapa escolhida e o bot manda o template, um lembrete
- * se não responder e avisa o Daniel quando a pessoa responder (o time assume a conversa).
- */
-export function consultoriaPreset(templates: WaTemplate[], stageId?: string): Partial<Bot> {
-  const steps: BotStep[] = [
-    { id: "msg1", name: "Oferta", ...namedTemplate(templates, CONSULTORIA_TEMPLATES.oferta.name) } as BotStep,
-    { id: "espera1", type: "wait_reply", timeoutSeconds: 2 * 24 * H, alignTo: "10:00", alignWeekends: true, onReply: "respondeu", onTimeout: "lembrete" },
-    { id: "lembrete", name: "Lembrete", ...namedTemplate(templates, CONSULTORIA_TEMPLATES.lembrete.name) } as BotStep,
-    { id: "espera2", type: "wait_reply", timeoutSeconds: 3 * 24 * H, onReply: "respondeu", onTimeout: "sem_resposta" },
-    { id: "sem_resposta", name: "Não respondeu", type: "add_tag", tag: "consultoria sem resposta" },
+/** Passos do Plano 90 Dias, com o nome dos templates já aprovados e a etapa de quem desistiu. */
+export function planoSteps(oferta: BotStep, lembrete: BotStep, coldStage = "Esfriou 🧊"): BotStep[] {
+  const buttons = [
+    { title: PLANO_BUTTONS[0], goto: "quero" },
+    { title: PLANO_BUTTONS[1], goto: "duvida" },
+    { title: PLANO_BUTTONS[2], goto: "agora_nao" },
+  ];
+  return [
+    { id: "oferta", name: "Oferta", ...oferta } as BotStep,
+    { id: "espera1", type: "wait_reply", timeoutSeconds: 2 * 24 * H, alignTo: "10:00", alignWeekends: true, buttons, onReply: "escreveu", onTimeout: "lembrete" },
+    { id: "lembrete", name: "Lembrete", ...lembrete } as BotStep,
+    { id: "espera2", type: "wait_reply", timeoutSeconds: 3 * 24 * H, buttons, onReply: "escreveu", onTimeout: "sem_resposta" },
+    { id: "sem_resposta", name: "Não respondeu", type: "add_tag", tag: "plano sem resposta" },
     { id: "fim_sem_resposta", type: "end" },
 
-    { id: "respondeu", name: "Respondeu", type: "add_tag", tag: "interesse consultoria" },
-    { id: "aviso", type: "notify", to: "Daniel", text: "{{primeiro_nome}} respondeu a oferta da consultoria:\n{{respostas}}" },
-    { id: "fim", type: "end" },
+    { id: "escreveu", name: "Escreveu outra coisa", type: "notify", to: "Daniel", text: "{{primeiro_nome}} respondeu a oferta do Plano 90 dias:\n{{respostas}}" },
+    { id: "fim_escreveu", type: "end" },
+
+    { id: "quero", name: "Quero o plano", type: "send_text", text: "Boa, {{primeiro_nome}}! Fico feliz 💜" },
+    { id: "pausa_quero", type: "wait", seconds: 8 },
+    { id: "link", name: "Link", type: "send_text", text: "Pra montar o seu, preciso entender um pouco da sua marca. São umas perguntinhas rápidas, e no final já sai o Pix:\nhttps://crm.duacriativa.com.br/plano-90-dias" },
+    { id: "aviso_quero", type: "notify", to: "Daniel", text: "{{primeiro_nome}} quer o Plano 90 dias. O link já foi enviado." },
+    {
+      id: "espera_pagamento", name: "Esperar pagamento", type: "wait_payment", timeoutSeconds: 72 * H, giveUpSeconds: 48 * H,
+      // 23h30: qualquer hora, antes de a janela de 24h do WhatsApp fechar
+      reminders: [{ afterSeconds: 23.5 * H, type: "send_text", text: "Oi, {{primeiro_nome}}! Conseguiu dar uma olhada? Se travou em alguma parte ou ficou alguma dúvida, me fala aqui." }],
+      onPaid: "pagou", onReply: "escreveu_pagamento", onTimeout: "nao_pagou",
+    },
+    { id: "pagou", name: "Pagou", type: "send_text", text: "Caiu aqui, {{primeiro_nome}}! 🙌 Já vou começar o seu plano e em até 24h te mando por aqui mesmo." },
+    { id: "fim_pagou", type: "end" },
+    { id: "escreveu_pagamento", type: "notify", to: "Daniel", text: "{{primeiro_nome}} escreveu enquanto o bot esperava o pagamento do plano:\n{{respostas}}" },
+    { id: "volta_pagamento", type: "goto", target: "espera_pagamento" },
+    { id: "nao_pagou", name: "Não pagou", type: "add_tag", tag: "plano sem pagamento" },
+    { id: "esfriou_pagamento", type: "move_stage", stageName: coldStage },
+    { id: "fim_nao_pagou", type: "end" },
+
+    { id: "duvida", name: "Tenho uma dúvida", type: "send_text", text: "Claro! Me conta, o que você quer saber?" },
+    { id: "espera_duvida", type: "wait_reply", timeoutSeconds: 7 * 24 * H, onReply: "aviso_duvida" },
+    { id: "aviso_duvida", type: "notify", to: "Daniel", text: "{{primeiro_nome}} tem uma dúvida sobre o Plano 90 dias:\n{{respostas}}" },
+    { id: "fim_duvida", type: "end" },
+
+    { id: "agora_nao", name: "Agora não", type: "send_text", text: "Tranquilo, {{primeiro_nome}}! Obrigado por responder 💜 Se mudar de ideia, é só me chamar aqui." },
+    { id: "tag_recusou", type: "add_tag", tag: "plano recusado" },
+    { id: "esfriou_recusou", type: "move_stage", stageName: coldStage },
+    { id: "fim_recusou", type: "end" },
   ];
+}
+
+/**
+ * Plano 90 Dias para quem não tem perfil para a gestão completa: o time arrasta o card para a etapa
+ * e o bot apresenta o plano com botões, manda o link, confere o pagamento e avisa o Daniel.
+ */
+export function planoPreset(templates: WaTemplate[], stageId?: string): Partial<Bot> {
   return {
-    name: "Oferta de consultoria",
-    description: "Card arrastado para a etapa: manda a oferta da consultoria, um lembrete se não responder e avisa o Daniel quando responder",
+    name: "Plano de 90 dias",
+    description: "Card arrastado para a etapa: apresenta o plano com botões, manda o link, confere o pagamento e avisa o Daniel",
     trigger: "LEAD_STAGE_ENTERED",
     conditions: stageId ? { stageId } : {},
     active: false,
-    actions: steps,
+    actions: planoSteps(namedTemplate(templates, PLANO_TEMPLATES.oferta.name), namedTemplate(templates, PLANO_TEMPLATES.lembrete.name)),
   };
 }
 

@@ -109,7 +109,7 @@ export function ContactFunnel({ contactId, onChanged }: { contactId: string; onC
         })
       )}
       {cards && cards.length > 0 && (
-        <p className="text-[10px] text-gray-400 leading-snug">Etapa com bot (ex.: Oferta Consultoria) dispara a mensagem assim que o card entra.</p>
+        <p className="text-[10px] text-gray-400 leading-snug">Etapa com bot (ex.: Plano 90 dias) dispara a mensagem assim que o card entra.</p>
       )}
       {error && <p className="text-[11px] text-red-500">{error}</p>}
     </div>

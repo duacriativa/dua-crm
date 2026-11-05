@@ -14,7 +14,9 @@ export type StepPos = { x: number; y: number };
 
 export type AutomationStep = { id?: string; name?: string; pos?: StepPos } & (
   | ({ type: 'wait'; seconds: number } & Align)
-  | ({ type: 'wait_reply'; timeoutSeconds?: number; onReply?: StepTarget; onTimeout?: StepTarget } & Align) // sem onTimeout → encerra
+  // `buttons`: botões de resposta rápida do template enviado antes; cada um pode desviar para um passo.
+  // Qualquer outra resposta segue por onReply. Sem onTimeout → encerra.
+  | ({ type: 'wait_reply'; timeoutSeconds?: number; buttons?: { title: string; goto?: StepTarget }[]; onReply?: StepTarget; onTimeout?: StepTarget } & Align)
   | { type: 'send_text'; text: string }
   | {
       type: 'send_template';
@@ -48,6 +50,9 @@ export type AutomationStep = { id?: string; name?: string; pos?: StepPos } & (
   // Depois de mandar o link de agendamento: espera a pessoa marcar a reunião, com lembretes próprios
   // (contados a partir deste passo). Agendou → onBooked; escreveu algo → onReply; sem agendar → onTimeout (vazio = encerra).
   | { type: 'wait_booking'; timeoutSeconds?: number; reminders?: Reminder[]; giveUpSeconds?: number; onBooked?: StepTarget; onReply?: StepTarget; onTimeout?: StepTarget }
+  // Depois de mandar o link do Plano 90 Dias: espera o pagamento, com lembretes próprios.
+  // Pagou → onPaid; escreveu algo → onReply (vazio = continua esperando); sem pagar → onTimeout (vazio = encerra).
+  | { type: 'wait_payment'; timeoutSeconds?: number; reminders?: Reminder[]; giveUpSeconds?: number; onPaid?: StepTarget; onReply?: StepTarget; onTimeout?: StepTarget }
 );
 
 /** Passos que só funcionam com uma reunião na sessão. */
@@ -83,6 +88,7 @@ export interface AutomationConditions {
   onlyPhones?: string[]; // modo teste: só dispara para esses números
   reminders?: Reminder[]; // valem para toda espera por resposta do bot, em ordem de tempo
   giveUpSeconds?: number; // depois do último lembrete, quanto esperar antes do "sem resposta"
+  anyHour?: boolean; // lembretes saem na hora certa mesmo de madrugada ("Esperar pagamento")
   stageId?: string; // gatilho LEAD_STAGE_ENTERED: a etapa que dispara o bot
 }
 
@@ -103,6 +109,12 @@ export function businessHours(d: Date) {
   return new Date(at.getTime() + OFFSET);
 }
 
+/** Quando o lembrete sai: fora do horário comercial vai para as 9h, a não ser que o bot libere qualquer hora. */
+function reminderAt(since: Date, r: Reminder, cond: AutomationConditions) {
+  const at = new Date(since.getTime() + r.afterSeconds * 1000);
+  return cond.anyHour ? at : businessHours(at);
+}
+
 /**
  * Agenda de uma espera por resposta que começou em `since`: quando sai o próximo lembrete
  * (null = já saíram todos) e quando vence o "sem resposta". Com lembretes, o prazo do passo
@@ -117,7 +129,7 @@ export function waitPlan(
   const timeoutAt = waitUntil(since, step.timeoutSeconds || DEFAULT_REPLY_TIMEOUT_S, step.alignTo, step.alignWeekends);
   const reminders = cond.reminders ?? [];
   if (!reminders.length) return { reminderAt: null, deadline: timeoutAt };
-  const at = (r: Reminder) => businessHours(new Date(since.getTime() + r.afterSeconds * 1000));
+  const at = (r: Reminder) => reminderAt(since, r, cond);
   const afterLast = at(reminders[reminders.length - 1]).getTime() + (cond.giveUpSeconds ?? DEFAULT_GIVE_UP_S) * 1000;
   return {
     reminderAt: sent < reminders.length ? at(reminders[sent]) : null,
@@ -133,7 +145,7 @@ export function dueReminder(since: Date, sent: number, cond: AutomationCondition
   const reminders = cond.reminders ?? [];
   let due: number | null = null;
   for (let k = sent; k < reminders.length; k++) {
-    if (businessHours(new Date(since.getTime() + reminders[k].afterSeconds * 1000)).getTime() <= now) due = k;
+    if (reminderAt(since, reminders[k], cond).getTime() <= now) due = k;
   }
   return due;
 }
@@ -203,7 +215,7 @@ export function bookingLinkStep(steps: { id?: string; type: string; text?: strin
   return steps.findIndex((s, n) => n > i && s.type === 'send_text' && /\/agendar\/|\{\{link_agendamento\}\}/.test(s.text ?? ''));
 }
 
-export const STEP_TYPES = ['wait', 'wait_reply', 'send_text', 'send_template', 'send_buttons', 'move_stage', 'add_tag', 'notify', 'check_origin', 'set_origin', 'goto', 'end', 'wait_booking', ...MEETING_STEPS];
+export const STEP_TYPES = ['wait', 'wait_reply', 'send_text', 'send_template', 'send_buttons', 'move_stage', 'add_tag', 'notify', 'check_origin', 'set_origin', 'goto', 'end', 'wait_booking', 'wait_payment', ...MEETING_STEPS];
 
 /** Espera pelo agendamento sem prazo configurado: 2 dias. */
 export const DEFAULT_BOOKING_TIMEOUT_S = 2 * 24 * 3600;
@@ -265,6 +277,15 @@ export function sanitizeSteps(input: any, strict = true): AutomationStep[] {
     return t ? { [key]: t } : {};
   };
 
+  const buttonsOf = (list: any) => {
+    const buttons = (Array.isArray(list) ? list : [])
+      .map((b: any) => ({ title: String(b?.title ?? '').trim(), ...opt('goto', b?.goto) }))
+      .filter((b: any) => b.title || !strict);
+    if (buttons.some((b: any) => b.title.length > 20)) throw new Error('Texto do botão com mais de 20 caracteres (limite do WhatsApp).');
+    if (new Set(buttons.map((b: any) => b.title.toLowerCase())).size !== buttons.length) throw new Error('Botões repetidos.');
+    return buttons;
+  };
+
   return input.map((s: any, i: number): AutomationStep => {
     const base: { id: string; name?: string; pos?: StepPos } = { id: ids[i] };
     const name = String(s?.name ?? '').trim().slice(0, 60);
@@ -280,6 +301,7 @@ export function sanitizeSteps(input: any, strict = true): AutomationStep[] {
           type: 'wait_reply',
           ...(s.timeoutSeconds ? { timeoutSeconds: secs(s.timeoutSeconds, 90 * 24 * 3600) } : {}),
           ...align(s),
+          ...(Array.isArray(s.buttons) && s.buttons.length ? { buttons: buttonsOf(s.buttons).slice(0, 10) } : {}),
           ...opt('onReply', s.onReply),
           ...opt('onTimeout', s.onTimeout),
         };
@@ -303,16 +325,23 @@ export function sanitizeSteps(input: any, strict = true): AutomationStep[] {
             : [],
         };
       }
+      case 'wait_payment':
+        return {
+          ...base,
+          type: 'wait_payment',
+          ...(s.timeoutSeconds ? { timeoutSeconds: secs(s.timeoutSeconds, 30 * 24 * 3600) } : {}),
+          reminders: sanitizeReminders(s.reminders, strict),
+          ...(s.giveUpSeconds ? { giveUpSeconds: secs(s.giveUpSeconds, 30 * 24 * 3600) } : {}),
+          ...opt('onPaid', s.onPaid),
+          ...opt('onReply', s.onReply),
+          ...opt('onTimeout', s.onTimeout),
+        };
       case 'send_buttons': {
         const text = String(s.text ?? '').trim();
         if (!text && strict) throw new Error('Mensagem com botões sem texto.');
         if (text.length > 1024) throw new Error('A mensagem com botões passa de 1024 caracteres.');
-        const buttons = (Array.isArray(s.buttons) ? s.buttons : [])
-          .map((b: any) => ({ title: String(b?.title ?? '').trim(), ...opt('goto', b?.goto) }))
-          .filter((b: any) => b.title || !strict);
+        const buttons = buttonsOf(s.buttons);
         if (strict && (buttons.length < 1 || buttons.length > 3)) throw new Error('Use de 1 a 3 botões.');
-        if (buttons.some((b: any) => b.title.length > 20)) throw new Error('Texto do botão com mais de 20 caracteres (limite do WhatsApp).');
-        if (new Set(buttons.map((b: any) => b.title.toLowerCase())).size !== buttons.length) throw new Error('Botões repetidos.');
         return {
           ...base,
           type: 'send_buttons',
@@ -414,6 +443,12 @@ export function waitUntil(from: Date, seconds: number, alignTo?: string, weekend
   if (at < local) at.setUTCDate(at.getUTCDate() + 1);
   while (!weekends && (at.getUTCDay() === 0 || at.getUTCDay() === 6)) at.setUTCDate(at.getUTCDate() + 1);
   return new Date(at.getTime() + OFFSET);
+}
+
+/** Destino de uma resposta em "Aguardar resposta": o botão do template que ela tocou ou, senão, onReply. */
+export function waitReplyTarget(step: { buttons?: { title: string; goto?: StepTarget }[]; onReply?: StepTarget }, answer: string): StepTarget {
+  const chosen = step.buttons?.find((b) => sameAnswer(b.title, answer));
+  return chosen ? chosen.goto : step.onReply;
 }
 
 /** Compara a resposta com o texto do botão ignorando maiúsculas, acentos, emoji e pontuação. */
