@@ -3,7 +3,7 @@
 import { useState } from "react";
 import {
   X, Timer, MessageSquare, MessageCircle, FileText, ArrowRightLeft, MousePointerClick, Tag, Bell, CornerDownRight, StopCircle, Compass, MapPin,
-  CalendarClock, CalendarCheck, CalendarPlus,
+  CalendarClock, CalendarCheck, CalendarPlus, Wallet,
 } from "lucide-react";
 import type { WaTemplate } from "@/components/whatsapp/templates";
 import { BotReminder, BotStep, LeadOrigin, ORIGIN_LABEL, fmtDuration, templateStep } from "./bot-api";
@@ -27,9 +27,11 @@ export const STEP_META: Record<StepType, { label: string; icon: (cls?: string) =
   wait_meeting: { label: "Esperar o horário da reunião", icon: (c = "w-3.5 h-3.5") => <CalendarClock className={c} />, color: "bg-sky-50 text-sky-700", head: "bg-sky-600" },
   meeting_status: { label: "Reunião aconteceu?", icon: (c = "w-3.5 h-3.5") => <CalendarCheck className={c} />, color: "bg-sky-50 text-sky-700", head: "bg-sky-600" },
   wait_booking: { label: "Esperar agendamento", icon: (c = "w-3.5 h-3.5") => <CalendarPlus className={c} />, color: "bg-sky-50 text-sky-700", head: "bg-sky-600" },
+  wait_payment: { label: "Esperar pagamento do plano", icon: (c = "w-3.5 h-3.5") => <Wallet className={c} />, color: "bg-emerald-50 text-emerald-700", head: "bg-emerald-600" },
 };
 
 export const NEW_STEP: Record<StepType, () => BotStep> = {
+  wait_payment: () => ({ type: "wait_payment", timeoutSeconds: 3 * 86400, reminders: [] }),
   wait: () => ({ type: "wait", seconds: 60 }),
   wait_reply: () => ({ type: "wait_reply", timeoutSeconds: 4 * 3600 }),
   send_template: () => ({ type: "send_template", templateName: "", language: "pt_BR", params: [] }),
@@ -95,6 +97,10 @@ export function stepSummary(s: BotStep): string {
     case "wait_booking": {
       const n = s.reminders?.length ?? 0;
       return `Espera a pessoa agendar por até ${fmtDuration(s.timeoutSeconds || 2 * 86400)}${n ? ` (${n} lembrete${n > 1 ? "s" : ""})` : ""}`;
+    }
+    case "wait_payment": {
+      const n = s.reminders?.length ?? 0;
+      return `Espera o pagamento do plano por até ${fmtDuration(s.timeoutSeconds || 2 * 86400)}${n ? ` (${n} lembrete${n > 1 ? "s" : ""})` : ""}`;
     }
     default: return "";
   }
@@ -174,6 +180,18 @@ export function StepFields({ step, set, templates, tplError, stages, onAddButton
             <DurationInput seconds={step.timeoutSeconds ?? 7 * 86400} onChange={(timeoutSeconds) => set({ timeoutSeconds })} />
           </div>
           <AlignInput value={step.alignTo} weekends={step.alignWeekends} onChange={(patch) => set(patch)} />
+          {(step.buttons ?? []).map((b, k) => (
+            <div key={k} className="flex items-center gap-2">
+              <input
+                value={b.title} maxLength={20} placeholder="Texto igual ao botão do template"
+                onChange={(e) => set({ buttons: (step.buttons ?? []).map((x, m) => (m === k ? { ...x, title: e.target.value } : x)) })}
+                className={inp}
+              />
+              <button onClick={() => onRemoveButton(k)} className="p-1 rounded hover:bg-red-50 text-red-400 shrink-0"><X className="w-3.5 h-3.5" /></button>
+            </div>
+          ))}
+          <button onClick={onAddButton} className="text-xs text-brand-600 font-medium">+ botão do template</button>
+          <p className="text-[11px] text-gray-400">Se o template anterior tem botões de resposta rápida, adicione aqui com o mesmo texto para cada um ter o seu caminho.</p>
         </>
       )}
 
@@ -317,6 +335,27 @@ export function StepFields({ step, set, templates, tplError, stages, onAddButton
             Use logo depois da mensagem com o link de agendamento. Segue por &quot;Agendou&quot; assim que a pessoa marca;
             por &quot;Escreveu&quot; se ela mandar mensagem (ligue a seta para avisar o time; sem seta, continua esperando);
             e por &quot;Não agendou&quot; quando o prazo e os lembretes acabam. Lembretes não saem entre 21h e 9h.
+          </p>
+          <ReminderFields
+            reminders={step.reminders ?? []}
+            giveUpSeconds={step.giveUpSeconds}
+            onChange={(patch) => set(patch)}
+            templates={templates}
+            tplError={tplError}
+          />
+        </>
+      )}
+
+      {step.type === "wait_payment" && (
+        <>
+          <div className="flex items-center gap-2 text-xs text-gray-500 flex-wrap">
+            <span>Esperar o pagamento por até</span>
+            <DurationInput seconds={step.timeoutSeconds ?? 2 * 86400} onChange={(timeoutSeconds) => set({ timeoutSeconds })} />
+          </div>
+          <p className="text-[11px] text-gray-400">
+            Use logo depois da mensagem com o link do plano. Segue por &quot;Pagou&quot; assim que o Pix confirma;
+            por &quot;Escreveu&quot; se a pessoa mandar mensagem (sem seta, continua esperando);
+            e por &quot;Não pagou&quot; quando o prazo e os lembretes acabam. Lembretes não saem entre 21h e 9h.
           </p>
           <ReminderFields
             reminders={step.reminders ?? []}

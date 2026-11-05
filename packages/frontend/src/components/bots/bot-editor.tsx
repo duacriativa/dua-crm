@@ -481,7 +481,7 @@ export function BotEditor({ bot, onSaved }: { bot: Bot; onSaved: () => Promise<B
                 templates={templates}
                 tplError={tplError}
                 stages={stages}
-                onAddButton={() => sel.type === "send_buttons" && setStep(sel.id!, { buttons: [...sel.buttons, { title: "" }] })}
+                onAddButton={() => (sel.type === "send_buttons" || sel.type === "wait_reply") && setStep(sel.id!, { buttons: [...(sel.buttons ?? []), { title: "" }] })}
                 onRemoveButton={(k) => change((g) => removeButton(g, sel.id!, k))}
                 meeting={isMeetingBot}
               />

@@ -7,7 +7,7 @@ import { phoneVariants, toBrDigits } from '../../common/phone.util';
 import { MEETING_EVENTS, appUrl } from '../scheduling/scheduling.service';
 import {
   AutomationConditions, AutomationStep, DEFAULT_BOOKING_TIMEOUT_S, DEFAULT_MEETING_STATUS_TIMEOUT_S, MEETING_LATE_GRACE_MS, Reminder, StepTarget, WINDOW_MS,
-  bookingLinkStep, businessHours, dueReminder, giveUpAfter, meetingWaitAt, originFromText, originLabel, salesChannelPhrase, sameAnswer, waitPlan, waitUntil, wantsBookingLink,
+  bookingLinkStep, businessHours, dueReminder, giveUpAfter, meetingWaitAt, originFromText, originLabel, salesChannelPhrase, sameAnswer, waitPlan, waitReplyTarget, waitUntil, wantsBookingLink,
 } from './automation-steps';
 
 const ACTIVE = ['RUNNING', 'WAITING_REPLY'];
@@ -29,6 +29,7 @@ export interface InboundMessageEvent { tenantId: string; contactId: string; conv
 export interface HumanMessageEvent { tenantId: string; conversationId: string }
 export interface StageEnteredEvent { tenantId: string; contactId: string; stageId: string }
 export interface MeetingEvent { tenantId: string; meetingId: string; contactId: string; startAt: Date }
+export interface PlanPaidEvent { tenantId: string; contactId: string }
 
 type RunWithBot = {
   id: string; tenantId: string; contactId: string; conversationId: string | null; status: string; stepIndex: number; startedAt: Date;
@@ -53,7 +54,7 @@ function afterReply(steps: AutomationStep[], i: number, answer: string) {
     const chosen = step.buttons.find((b) => sameAnswer(b.title, answer));
     return indexOf(steps, chosen ? chosen.goto : step.onOther, i);
   }
-  if (step?.type === 'wait_reply') return indexOf(steps, step.onReply, i);
+  if (step?.type === 'wait_reply') return indexOf(steps, waitReplyTarget(step, answer), i);
   return i + 1;
 }
 
@@ -116,6 +117,12 @@ export class AutomationRunner implements OnModuleInit, OnModuleDestroy {
     await this.wakeBookingRuns(e.tenantId, e.contactId);
   }
 
+  /** Pix do Plano 90 Dias confirmado: quem esperava o pagamento segue pelo "pagou". */
+  @OnEvent('plan.paid', { async: true })
+  async onPlanPaid(e: PlanPaidEvent) {
+    await this.wakeBookingRuns(e.tenantId, e.contactId);
+  }
+
   /** Remarcou: as esperas da reunião recalculam com o novo horário. */
   @OnEvent(MEETING_EVENTS.rescheduled, { async: true })
   async onMeetingRescheduled(e: MeetingEvent) {
@@ -168,7 +175,7 @@ export class AutomationRunner implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  /** Sessões do contato paradas em "Esperar agendamento" rodam de novo agora (o passo confere reunião e resposta). */
+  /** Sessões do contato paradas em "Esperar agendamento" ou "Esperar pagamento" rodam de novo agora (o passo confere o evento e a resposta). */
   private async wakeBookingRuns(tenantId: string, contactId: string) {
     try {
       const runs = await this.prisma.automationRun.findMany({
@@ -177,7 +184,8 @@ export class AutomationRunner implements OnModuleInit, OnModuleDestroy {
       });
       let woke = 0;
       for (const r of runs) {
-        if (stepsOf(r.automation.actions)[r.stepIndex]?.type !== 'wait_booking') continue;
+        const type = stepsOf(r.automation.actions)[r.stepIndex]?.type;
+        if (type !== 'wait_booking' && type !== 'wait_payment') continue;
         const { count } = await this.prisma.automationRun.updateMany({
           where: { id: r.id, status: 'RUNNING', stepIndex: r.stepIndex },
           data: { nextRunAt: new Date() },
@@ -409,7 +417,7 @@ export class AutomationRunner implements OnModuleInit, OnModuleDestroy {
     // Pediu o link (o lembrete oferece pular as perguntas): vai direto para o convite com o link.
     // Botão tocado vale como resposta normal, mesmo que o título case com as palavras. Bots de reunião ficam de fora.
     const current = steps[run.stepIndex];
-    const tappedButton = current?.type === 'send_buttons' && current.buttons.some((b) => sameAnswer(b.title, answer));
+    const tappedButton = (current?.type === 'send_buttons' || current?.type === 'wait_reply') && !!current.buttons?.some((b) => sameAnswer(b.title, answer));
     const skip = !run.meetingId && !tappedButton && wantsBookingLink(answer) ? bookingLinkStep(steps, run.stepIndex) : -1;
     if (skip >= 0) this.logger.log(`[Bots] Sessão ${run.id}: pediu o link de agendamento, pulando as perguntas`);
     const again = skip < 0 && run.remindersSent && (await this.lastBotWasTemplate(conversationId)) ? askAgainAt(steps, run.stepIndex, answer) : null;
@@ -521,8 +529,8 @@ export class AutomationRunner implements OnModuleInit, OnModuleDestroy {
         if (n > 0 && !(await this.stillActive(run.id))) return;
         const step = steps[i];
         // Só para os contadores do editor ("passaram por"); falha aqui não afeta a sessão.
-        // "Esperar agendamento" volta várias vezes ao mesmo passo para conferir: conta só a chegada.
-        const recheck = step.type === 'wait_booking' && n === 0 && run.status === 'RUNNING' && i === run.stepIndex && !!run.waitingSince;
+        // "Esperar agendamento" e "Esperar pagamento" voltam várias vezes ao mesmo passo para conferir: conta só a chegada.
+        const recheck = (step.type === 'wait_booking' || step.type === 'wait_payment') && n === 0 && run.status === 'RUNNING' && i === run.stepIndex && !!run.waitingSince;
         if (step.id && !recheck) {
           await this.prisma.automationRun
             .update({ where: { id: run.id }, data: { visitedSteps: { push: step.id } } })
@@ -566,14 +574,16 @@ export class AutomationRunner implements OnModuleInit, OnModuleDestroy {
           continue;
         }
 
-        if (step.type === 'wait_booking') {
+        if (step.type === 'wait_booking' || step.type === 'wait_payment') {
           const now = Date.now();
           // Já estava parado aqui (voltou para conferir) ou acabou de chegar: a espera conta a partir da chegada.
           // Todo outro avanço de passo zera waitingSince, então ele só vem preenchido de uma espera deste passo.
           const waiting = recheck;
           const since = waiting ? run.waitingSince! : new Date(now);
           const cond: AutomationConditions = { reminders: step.reminders ?? [], giveUpSeconds: step.giveUpSeconds };
-          if (await this.bookedSince(run)) i = indexOf(steps, step.onBooked, i);
+          if (step.type === 'wait_booking' ? await this.bookedSince(run) : await this.paidSince(run)) {
+            i = indexOf(steps, step.type === 'wait_booking' ? step.onBooked : step.onPaid, i);
+          }
           else if (step.onReply && (await this.repliedSince(run, conversationId, since))) i = indexOf(steps, step.onReply, i);
           else {
             let sent = waiting ? run.remindersSent : 0;
@@ -690,6 +700,15 @@ export class AutomationRunner implements OnModuleInit, OnModuleDestroy {
       select: { id: true },
     });
     return !!m;
+  }
+
+  /** O contato pagou um pedido do Plano 90 Dias desde que a sessão começou? */
+  private async paidSince(run: { tenantId: string; contactId: string; startedAt: Date }) {
+    const o = await this.prisma.planOrder.findFirst({
+      where: { tenantId: run.tenantId, contactId: run.contactId, paidAt: { gte: run.startedAt } },
+      select: { id: true },
+    });
+    return !!o;
   }
 
   /** O contato escreveu desde `since`? */

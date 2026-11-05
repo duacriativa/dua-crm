@@ -31,7 +31,8 @@ export const linkOf = (g: BotGraph, id: string, handle: string) => g.links[linkK
 export function outputsOf(s: BotStep): Output[] {
   if (isLinear(s)) return [{ handle: "next", kind: "next", label: "Depois" }];
   if (s.type === "wait_reply") return [
-    { handle: "reply", kind: "reply", label: "Respondeu" },
+    ...(s.buttons ?? []).map((b, k) => ({ handle: `b${k}`, kind: "button" as const, label: b.title || `Botão ${k + 1}` })),
+    { handle: "reply", kind: "reply", label: s.buttons?.length ? "Escreveu outra coisa" : "Respondeu" },
     { handle: "timeout", kind: "timeout", label: "Não respondeu" },
   ];
   if (s.type === "check_origin") return [
@@ -51,6 +52,11 @@ export function outputsOf(s: BotStep): Output[] {
     { handle: "booked", kind: "reply", label: "Agendou" },
     { handle: "reply", kind: "other", label: "Escreveu" },
     { handle: "timeout", kind: "timeout", label: "Não agendou" },
+  ];
+  if (s.type === "wait_payment") return [
+    { handle: "paid", kind: "reply", label: "Pagou" },
+    { handle: "reply", kind: "other", label: "Escreveu" },
+    { handle: "timeout", kind: "timeout", label: "Não pagou" },
   ];
   if (s.type === "send_buttons") return [
     ...s.buttons.map((b, k) => ({ handle: `b${k}`, kind: "button" as const, label: b.title || `Botão ${k + 1}` })),
@@ -88,6 +94,7 @@ export function toGraph(actions: BotStep[]): BotGraph {
       set(id, "next", land(i + 1), true);
       if (steps[i + 1]?.type === "goto") gotoAfter[id] = steps[i + 1].id!;
     } else if (s.type === "wait_reply") {
+      (s.buttons ?? []).forEach((b, k) => set(id, `b${k}`, resolve(b.goto, i), !b.goto));
       set(id, "reply", resolve(s.onReply, i), !s.onReply);
       set(id, "timeout", s.onTimeout ? resolve(s.onTimeout, i) : null, !s.onTimeout);
     } else if (s.type === "check_origin") {
@@ -104,6 +111,10 @@ export function toGraph(actions: BotStep[]): BotGraph {
       set(id, "booked", resolve(s.onBooked, i), !s.onBooked);
       set(id, "reply", s.onReply ? resolve(s.onReply, i) : null, !s.onReply);
       set(id, "timeout", s.onTimeout ? resolve(s.onTimeout, i) : null, !s.onTimeout);
+    } else if (s.type === "wait_payment") {
+      set(id, "paid", resolve(s.onPaid, i), !s.onPaid);
+      set(id, "reply", s.onReply ? resolve(s.onReply, i) : null, !s.onReply);
+      set(id, "timeout", s.onTimeout ? resolve(s.onTimeout, i) : null, !s.onTimeout);
     } else if (s.type === "send_buttons") {
       s.buttons.forEach((b, k) => set(id, `b${k}`, resolve(b.goto, i), !b.goto));
       set(id, "other", resolve(s.onOther, i), !s.onOther);
@@ -117,8 +128,8 @@ export function toGraph(actions: BotStep[]): BotGraph {
 function bare(s: BotStep): BotStep {
   const c: any = { ...s };
   delete c.onReply; delete c.onTimeout; delete c.onOther; delete c.onKnown; delete c.onUnknown; delete c.target; delete c.pos;
-  delete c.onTime; delete c.onLate; delete c.onDone; delete c.onNoShow; delete c.onBooked;
-  if (s.type === "send_buttons") c.buttons = s.buttons.map((b) => ({ title: b.title }));
+  delete c.onTime; delete c.onLate; delete c.onDone; delete c.onNoShow; delete c.onBooked; delete c.onPaid;
+  if (s.type === "send_buttons" || (s.type === "wait_reply" && s.buttons)) c.buttons = s.buttons!.map((b) => ({ title: b.title }));
   return c as BotStep;
 }
 
@@ -175,6 +186,7 @@ export function toSteps(g: BotGraph, posOf: (id: string) => { x: number; y: numb
     const put = (key: string, v: string | undefined) => { if (v) step[key] = v; };
 
     if (s.type === "wait_reply") {
+      if (s.buttons?.length) step.buttons = s.buttons.map((b, i) => { const t = branch(`b${i}`); return t ? { title: b.title, goto: t } : { title: b.title }; });
       put("onReply", branch("reply"));
       put("onTimeout", timeout("timeout"));
     } else if (s.type === "check_origin") {
@@ -189,6 +201,10 @@ export function toSteps(g: BotGraph, posOf: (id: string) => { x: number; y: numb
       put("onTimeout", timeout("timeout"));
     } else if (s.type === "wait_booking") {
       put("onBooked", branch("booked"));
+      put("onReply", timeout("reply")); // sem seta = continua esperando
+      put("onTimeout", timeout("timeout"));
+    } else if (s.type === "wait_payment") {
+      put("onPaid", branch("paid"));
       put("onReply", timeout("reply")); // sem seta = continua esperando
       put("onTimeout", timeout("timeout"));
     } else if (s.type === "send_buttons") {
@@ -223,7 +239,7 @@ export function removeNode(g: BotGraph, id: string): BotGraph {
 export function removeButton(g: BotGraph, id: string, k: number): BotGraph {
   const links = { ...g.links };
   const nodes = g.nodes.map((n) => {
-    if (n.id !== id || n.type !== "send_buttons") return n;
+    if (n.id !== id || (n.type !== "send_buttons" && n.type !== "wait_reply") || !n.buttons) return n;
     for (let i = k; i < n.buttons.length; i++) {
       const nxt = links[linkKey(id, `b${i + 1}`)];
       if (nxt) links[linkKey(id, `b${i}`)] = nxt; else delete links[linkKey(id, `b${i}`)];

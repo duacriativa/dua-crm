@@ -4,6 +4,7 @@ import { PlanOrder } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AsaasService } from '../asaas/asaas.service';
 import { FunnelService } from '../pipelines/funnel.service';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { NotifyService } from '../notifications/notify.service';
 import { InstagramProfileService, normalizeInstagramHandle } from '../contacts/instagram-profile.service';
 import { normalizePhone, phoneVariants } from '../../common/phone.util';
@@ -62,6 +63,7 @@ export class PlanOrdersService {
     private readonly funnel: FunnelService,
     private readonly notify: NotifyService,
     private readonly instagramProfile: InstagramProfileService,
+    private readonly events: EventEmitter2,
   ) {}
 
   private async tenantId() {
@@ -260,6 +262,7 @@ export class PlanOrdersService {
       url: `/dashboard/planos/${order.id}`,
       tag: `plan-${order.id}`,
     });
+    this.events.emit('plan.paid', { tenantId: order.tenantId, contactId: order.contactId });
     this.startGeneration(order.id);
     return order;
   }
@@ -439,7 +442,7 @@ export class PlanOrdersService {
       `Baixe o plano completo em PDF: ${planPdfUrl(o.token)}`,
       '',
       'Qualquer dúvida, é só responder aqui. Bora colocar em prática! 🚀',
-      'Equipe Dua Criativa',
+      'Daniel, da Dua',
     ].join('\n');
   }
 

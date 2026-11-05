@@ -1,7 +1,7 @@
 // Teste do "pular as perguntas e mandar o link": `npm run test:bots`
 import { test } from 'node:test';
 import * as assert from 'node:assert/strict';
-import { bookingLinkStep, wantsBookingLink } from './automation-steps';
+import { bookingLinkStep, sanitizeSteps, waitReplyTarget, wantsBookingLink } from './automation-steps';
 
 test('entende pedido do link', () => {
   for (const t of [
@@ -38,4 +38,24 @@ test('bloco próprio "pediu_link" tem preferência, mesmo no fim da lista', () =
     { type: 'send_text', text: 'https://x/agendar/especialista' },
   ];
   assert.equal(bookingLinkStep(steps, 0), 3);
+});
+
+test('botão de template desvia pelo caminho dele; outra resposta segue por onReply', () => {
+  const step = { onReply: 'escreveu', buttons: [{ title: 'Quero o plano', goto: 'quero' }, { title: 'Agora não', goto: 'agora_nao' }] };
+  assert.equal(waitReplyTarget(step, 'Quero o plano'), 'quero');
+  assert.equal(waitReplyTarget(step, 'agora nao'), 'agora_nao');
+  assert.equal(waitReplyTarget(step, 'não sei ainda'), 'escreveu');
+  assert.equal(waitReplyTarget({ onReply: 'escreveu' }, 'Quero o plano'), 'escreveu');
+});
+
+test('salvar o bot mantém os botões da espera e o passo de pagamento', () => {
+  const [espera, pagamento] = sanitizeSteps([
+    { id: 'espera', type: 'wait_reply', onReply: 'fim', buttons: [{ title: 'Quero o plano', goto: 'pag' }] },
+    { id: 'pag', type: 'wait_payment', timeoutSeconds: 3600, reminders: [{ afterSeconds: 60, type: 'send_text', text: 'oi' }], onPaid: 'fim', onTimeout: 'end' },
+    { id: 'fim', type: 'end' },
+  ]) as any[];
+  assert.deepEqual(espera.buttons, [{ title: 'Quero o plano', goto: 'pag' }]);
+  assert.equal(pagamento.type, 'wait_payment');
+  assert.equal(pagamento.onPaid, 'fim');
+  assert.equal(pagamento.reminders.length, 1);
 });

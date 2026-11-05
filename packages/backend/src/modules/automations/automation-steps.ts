@@ -14,7 +14,9 @@ export type StepPos = { x: number; y: number };
 
 export type AutomationStep = { id?: string; name?: string; pos?: StepPos } & (
   | ({ type: 'wait'; seconds: number } & Align)
-  | ({ type: 'wait_reply'; timeoutSeconds?: number; onReply?: StepTarget; onTimeout?: StepTarget } & Align) // sem onTimeout → encerra
+  // `buttons`: botões de resposta rápida do template enviado antes; cada um pode desviar para um passo.
+  // Qualquer outra resposta segue por onReply. Sem onTimeout → encerra.
+  | ({ type: 'wait_reply'; timeoutSeconds?: number; buttons?: { title: string; goto?: StepTarget }[]; onReply?: StepTarget; onTimeout?: StepTarget } & Align)
   | { type: 'send_text'; text: string }
   | {
       type: 'send_template';
@@ -48,6 +50,9 @@ export type AutomationStep = { id?: string; name?: string; pos?: StepPos } & (
   // Depois de mandar o link de agendamento: espera a pessoa marcar a reunião, com lembretes próprios
   // (contados a partir deste passo). Agendou → onBooked; escreveu algo → onReply; sem agendar → onTimeout (vazio = encerra).
   | { type: 'wait_booking'; timeoutSeconds?: number; reminders?: Reminder[]; giveUpSeconds?: number; onBooked?: StepTarget; onReply?: StepTarget; onTimeout?: StepTarget }
+  // Depois de mandar o link do Plano 90 Dias: espera o pagamento, com lembretes próprios.
+  // Pagou → onPaid; escreveu algo → onReply (vazio = continua esperando); sem pagar → onTimeout (vazio = encerra).
+  | { type: 'wait_payment'; timeoutSeconds?: number; reminders?: Reminder[]; giveUpSeconds?: number; onPaid?: StepTarget; onReply?: StepTarget; onTimeout?: StepTarget }
 );
 
 /** Passos que só funcionam com uma reunião na sessão. */
@@ -203,7 +208,7 @@ export function bookingLinkStep(steps: { id?: string; type: string; text?: strin
   return steps.findIndex((s, n) => n > i && s.type === 'send_text' && /\/agendar\/|\{\{link_agendamento\}\}/.test(s.text ?? ''));
 }
 
-export const STEP_TYPES = ['wait', 'wait_reply', 'send_text', 'send_template', 'send_buttons', 'move_stage', 'add_tag', 'notify', 'check_origin', 'set_origin', 'goto', 'end', 'wait_booking', ...MEETING_STEPS];
+export const STEP_TYPES = ['wait', 'wait_reply', 'send_text', 'send_template', 'send_buttons', 'move_stage', 'add_tag', 'notify', 'check_origin', 'set_origin', 'goto', 'end', 'wait_booking', 'wait_payment', ...MEETING_STEPS];
 
 /** Espera pelo agendamento sem prazo configurado: 2 dias. */
 export const DEFAULT_BOOKING_TIMEOUT_S = 2 * 24 * 3600;
@@ -265,6 +270,15 @@ export function sanitizeSteps(input: any, strict = true): AutomationStep[] {
     return t ? { [key]: t } : {};
   };
 
+  const buttonsOf = (list: any) => {
+    const buttons = (Array.isArray(list) ? list : [])
+      .map((b: any) => ({ title: String(b?.title ?? '').trim(), ...opt('goto', b?.goto) }))
+      .filter((b: any) => b.title || !strict);
+    if (buttons.some((b: any) => b.title.length > 20)) throw new Error('Texto do botão com mais de 20 caracteres (limite do WhatsApp).');
+    if (new Set(buttons.map((b: any) => b.title.toLowerCase())).size !== buttons.length) throw new Error('Botões repetidos.');
+    return buttons;
+  };
+
   return input.map((s: any, i: number): AutomationStep => {
     const base: { id: string; name?: string; pos?: StepPos } = { id: ids[i] };
     const name = String(s?.name ?? '').trim().slice(0, 60);
@@ -280,6 +294,7 @@ export function sanitizeSteps(input: any, strict = true): AutomationStep[] {
           type: 'wait_reply',
           ...(s.timeoutSeconds ? { timeoutSeconds: secs(s.timeoutSeconds, 90 * 24 * 3600) } : {}),
           ...align(s),
+          ...(Array.isArray(s.buttons) && s.buttons.length ? { buttons: buttonsOf(s.buttons).slice(0, 10) } : {}),
           ...opt('onReply', s.onReply),
           ...opt('onTimeout', s.onTimeout),
         };
@@ -303,16 +318,23 @@ export function sanitizeSteps(input: any, strict = true): AutomationStep[] {
             : [],
         };
       }
+      case 'wait_payment':
+        return {
+          ...base,
+          type: 'wait_payment',
+          ...(s.timeoutSeconds ? { timeoutSeconds: secs(s.timeoutSeconds, 30 * 24 * 3600) } : {}),
+          reminders: sanitizeReminders(s.reminders, strict),
+          ...(s.giveUpSeconds ? { giveUpSeconds: secs(s.giveUpSeconds, 30 * 24 * 3600) } : {}),
+          ...opt('onPaid', s.onPaid),
+          ...opt('onReply', s.onReply),
+          ...opt('onTimeout', s.onTimeout),
+        };
       case 'send_buttons': {
         const text = String(s.text ?? '').trim();
         if (!text && strict) throw new Error('Mensagem com botões sem texto.');
         if (text.length > 1024) throw new Error('A mensagem com botões passa de 1024 caracteres.');
-        const buttons = (Array.isArray(s.buttons) ? s.buttons : [])
-          .map((b: any) => ({ title: String(b?.title ?? '').trim(), ...opt('goto', b?.goto) }))
-          .filter((b: any) => b.title || !strict);
+        const buttons = buttonsOf(s.buttons);
         if (strict && (buttons.length < 1 || buttons.length > 3)) throw new Error('Use de 1 a 3 botões.');
-        if (buttons.some((b: any) => b.title.length > 20)) throw new Error('Texto do botão com mais de 20 caracteres (limite do WhatsApp).');
-        if (new Set(buttons.map((b: any) => b.title.toLowerCase())).size !== buttons.length) throw new Error('Botões repetidos.');
         return {
           ...base,
           type: 'send_buttons',
@@ -414,6 +436,12 @@ export function waitUntil(from: Date, seconds: number, alignTo?: string, weekend
   if (at < local) at.setUTCDate(at.getUTCDate() + 1);
   while (!weekends && (at.getUTCDay() === 0 || at.getUTCDay() === 6)) at.setUTCDate(at.getUTCDate() + 1);
   return new Date(at.getTime() + OFFSET);
+}
+
+/** Destino de uma resposta em "Aguardar resposta": o botão do template que ela tocou ou, senão, onReply. */
+export function waitReplyTarget(step: { buttons?: { title: string; goto?: StepTarget }[]; onReply?: StepTarget }, answer: string): StepTarget {
+  const chosen = step.buttons?.find((b) => sameAnswer(b.title, answer));
+  return chosen ? chosen.goto : step.onReply;
 }
 
 /** Compara a resposta com o texto do botão ignorando maiúsculas, acentos, emoji e pontuação. */
