@@ -1,8 +1,20 @@
 "use client";
 import { authFetch } from "@/lib/auth-fetch";
 
-import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo, Suspense, type ReactNode, type TouchEvent as ReactTouchEvent } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo, useSyncExternalStore, Suspense, type ReactNode, type TouchEvent as ReactTouchEvent } from "react";
 import { useSearchParams } from "next/navigation";
+
+// Tela de computador (lg). O painel da conversa é montado em um layout só:
+// montado nos dois (desktop + mobile escondido), os refs de rolagem apontavam
+// para a cópia escondida e a conversa abria no topo em vez do fim.
+const DESKTOP_QUERY = "(min-width: 1024px)";
+function useIsDesktop() {
+  return useSyncExternalStore(
+    (cb) => { const mq = window.matchMedia(DESKTOP_QUERY); mq.addEventListener("change", cb); return () => mq.removeEventListener("change", cb); },
+    () => window.matchMedia(DESKTOP_QUERY).matches,
+    () => false,
+  );
+}
 
 // Converte *negrito* do WhatsApp em <strong>
 function formatWhatsApp(text?: string | null) {
@@ -220,6 +232,7 @@ function ConversasInner() {
   };
   const [sending, setSending] = useState(false);
   const [mobileView, setMobileView] = useState<MobileView>("list");
+  const isDesktop = useIsDesktop();
   // Celular: arrastar o dedo para a direita volta uma tela (chat → lista, info → chat)
   const swipeStart = useRef<{ x: number; y: number } | null>(null);
   const onSwipeStart = (e: ReactTouchEvent) => {
@@ -607,7 +620,7 @@ function ConversasInner() {
       container.removeEventListener("wheel", release);
       container.removeEventListener("touchmove", release);
     };
-  }, [selected?.id]);
+  }, [selected?.id, isDesktop, mobileView]);
 
   // ── Enviar mensagem ───────────────────────────────────────────────────────
   const sendMessage = useCallback(async () => {
@@ -1636,17 +1649,20 @@ function ConversasInner() {
   return (
     <div className="flex h-full overflow-hidden">
       {/* Desktop: 3 colunas */}
-      <div className="hidden lg:flex w-full h-full">
-        {ConvList}
-        {ChatPanel}
-        {selected && InfoPanel}
-      </div>
-      {/* Mobile: 1 coluna por vez */}
-      <div className="lg:hidden flex flex-col w-full h-full" onTouchStart={onSwipeStart} onTouchEnd={onSwipeEnd}>
-        {mobileView === "list" && ConvList}
-        {mobileView === "chat" && ChatPanel}
-        {mobileView === "info" && InfoPanel}
-      </div>
+      {isDesktop ? (
+        <div className="flex w-full h-full">
+          {ConvList}
+          {ChatPanel}
+          {selected && InfoPanel}
+        </div>
+      ) : (
+        /* Mobile: 1 coluna por vez */
+        <div className="flex flex-col w-full h-full" onTouchStart={onSwipeStart} onTouchEnd={onSwipeEnd}>
+          {mobileView === "list" && ConvList}
+          {mobileView === "chat" && ChatPanel}
+          {mobileView === "info" && InfoPanel}
+        </div>
+      )}
 
       {/* Modal Editar Contato */}
       {editingContact && selected && (
