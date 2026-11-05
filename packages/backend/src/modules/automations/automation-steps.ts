@@ -88,6 +88,7 @@ export interface AutomationConditions {
   onlyPhones?: string[]; // modo teste: só dispara para esses números
   reminders?: Reminder[]; // valem para toda espera por resposta do bot, em ordem de tempo
   giveUpSeconds?: number; // depois do último lembrete, quanto esperar antes do "sem resposta"
+  anyHour?: boolean; // lembretes saem na hora certa mesmo de madrugada ("Esperar pagamento")
   stageId?: string; // gatilho LEAD_STAGE_ENTERED: a etapa que dispara o bot
 }
 
@@ -108,6 +109,12 @@ export function businessHours(d: Date) {
   return new Date(at.getTime() + OFFSET);
 }
 
+/** Quando o lembrete sai: fora do horário comercial vai para as 9h, a não ser que o bot libere qualquer hora. */
+function reminderAt(since: Date, r: Reminder, cond: AutomationConditions) {
+  const at = new Date(since.getTime() + r.afterSeconds * 1000);
+  return cond.anyHour ? at : businessHours(at);
+}
+
 /**
  * Agenda de uma espera por resposta que começou em `since`: quando sai o próximo lembrete
  * (null = já saíram todos) e quando vence o "sem resposta". Com lembretes, o prazo do passo
@@ -122,7 +129,7 @@ export function waitPlan(
   const timeoutAt = waitUntil(since, step.timeoutSeconds || DEFAULT_REPLY_TIMEOUT_S, step.alignTo, step.alignWeekends);
   const reminders = cond.reminders ?? [];
   if (!reminders.length) return { reminderAt: null, deadline: timeoutAt };
-  const at = (r: Reminder) => businessHours(new Date(since.getTime() + r.afterSeconds * 1000));
+  const at = (r: Reminder) => reminderAt(since, r, cond);
   const afterLast = at(reminders[reminders.length - 1]).getTime() + (cond.giveUpSeconds ?? DEFAULT_GIVE_UP_S) * 1000;
   return {
     reminderAt: sent < reminders.length ? at(reminders[sent]) : null,
@@ -138,7 +145,7 @@ export function dueReminder(since: Date, sent: number, cond: AutomationCondition
   const reminders = cond.reminders ?? [];
   let due: number | null = null;
   for (let k = sent; k < reminders.length; k++) {
-    if (businessHours(new Date(since.getTime() + reminders[k].afterSeconds * 1000)).getTime() <= now) due = k;
+    if (reminderAt(since, reminders[k], cond).getTime() <= now) due = k;
   }
   return due;
 }

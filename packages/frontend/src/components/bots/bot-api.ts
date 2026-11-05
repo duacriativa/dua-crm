@@ -354,8 +354,9 @@ export function planoSteps(oferta: BotStep, lembrete: BotStep, coldStage = "Esfr
     { id: "link", name: "Link", type: "send_text", text: "Pra montar o seu, preciso entender um pouco da sua marca. São umas perguntinhas rápidas, e no final já sai o Pix:\nhttps://crm.duacriativa.com.br/plano-90-dias" },
     { id: "aviso_quero", type: "notify", to: "Daniel", text: "{{primeiro_nome}} quer o Plano 90 dias. O link já foi enviado." },
     {
-      id: "espera_pagamento", name: "Esperar pagamento", type: "wait_payment", timeoutSeconds: 68 * H, giveUpSeconds: 48 * H,
-      reminders: [{ afterSeconds: 20 * H, type: "send_text", text: "Oi, {{primeiro_nome}}! Conseguiu dar uma olhada? Se travou em alguma parte ou ficou alguma dúvida, me fala aqui." }],
+      id: "espera_pagamento", name: "Esperar pagamento", type: "wait_payment", timeoutSeconds: 72 * H, giveUpSeconds: 48 * H,
+      // 23h30: qualquer hora, antes de a janela de 24h do WhatsApp fechar
+      reminders: [{ afterSeconds: 23.5 * H, type: "send_text", text: "Oi, {{primeiro_nome}}! Conseguiu dar uma olhada? Se travou em alguma parte ou ficou alguma dúvida, me fala aqui." }],
       onPaid: "pagou", onReply: "escreveu_pagamento", onTimeout: "nao_pagou",
     },
     { id: "pagou", name: "Pagou", type: "send_text", text: "Caiu aqui, {{primeiro_nome}}! 🙌 Já vou começar o seu plano e em até 24h te mando por aqui mesmo." },

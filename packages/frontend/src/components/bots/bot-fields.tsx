@@ -355,7 +355,7 @@ export function StepFields({ step, set, templates, tplError, stages, onAddButton
           <p className="text-[11px] text-gray-400">
             Use logo depois da mensagem com o link do plano. Segue por &quot;Pagou&quot; assim que o Pix confirma;
             por &quot;Escreveu&quot; se a pessoa mandar mensagem (sem seta, continua esperando);
-            e por &quot;Não pagou&quot; quando o prazo e os lembretes acabam. Lembretes não saem entre 21h e 9h.
+            e por &quot;Não pagou&quot; quando o prazo e os lembretes acabam. Aqui os lembretes saem a qualquer hora.
           </p>
           <ReminderFields
             reminders={step.reminders ?? []}

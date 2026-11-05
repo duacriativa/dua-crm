@@ -580,7 +580,7 @@ export class AutomationRunner implements OnModuleInit, OnModuleDestroy {
           // Todo outro avanço de passo zera waitingSince, então ele só vem preenchido de uma espera deste passo.
           const waiting = recheck;
           const since = waiting ? run.waitingSince! : new Date(now);
-          const cond: AutomationConditions = { reminders: step.reminders ?? [], giveUpSeconds: step.giveUpSeconds };
+          const cond: AutomationConditions = { reminders: step.reminders ?? [], giveUpSeconds: step.giveUpSeconds, anyHour: step.type === 'wait_payment' };
           if (step.type === 'wait_booking' ? await this.bookedSince(run) : await this.paidSince(run)) {
             i = indexOf(steps, step.type === 'wait_booking' ? step.onBooked : step.onPaid, i);
           }
@@ -598,8 +598,8 @@ export class AutomationRunner implements OnModuleInit, OnModuleDestroy {
             }
             const plan = waitPlan(since, sent, { timeoutSeconds: step.timeoutSeconds || DEFAULT_BOOKING_TIMEOUT_S }, cond);
             // Lembrete atrasado: ainda dá o tempo inteiro para agendar depois dele. O "não agendou" também não sai de madrugada.
-            const until = plan.reminderAt
-              ?? businessHours(due !== null ? new Date(Math.max(plan.deadline.getTime(), giveUpAfter(now, cond).getTime())) : plan.deadline);
+            const deadline = due !== null ? new Date(Math.max(plan.deadline.getTime(), giveUpAfter(now, cond).getTime())) : plan.deadline;
+            const until = plan.reminderAt ?? (cond.anyHour ? deadline : businessHours(deadline));
             if (until.getTime() > now) {
               await this.prisma.automationRun.update({
                 where: { id: run.id },
