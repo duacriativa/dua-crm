@@ -1,7 +1,7 @@
 "use client";
 import { authFetch } from "@/lib/auth-fetch";
 
-import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo, useSyncExternalStore, Suspense, type ReactNode, type TouchEvent as ReactTouchEvent } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo, useSyncExternalStore, Suspense, type ReactNode, type TouchEvent as ReactTouchEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { useSearchParams } from "next/navigation";
 
 // Tela de computador (lg). O painel da conversa é montado em um layout só:
@@ -762,6 +762,12 @@ function ConversasInner() {
   const recorderRef = useRef<MediaRecorder | null>(null);
   const recordChunksRef = useRef<Blob[]>([]);
   const recordCancelRef = useRef(false);
+  // Igual ao WhatsApp: tocar no microfone grava até tocar em enviar; segurar grava e envia ao soltar
+  const micHeldRef = useRef(false);
+  const holdModeRef = useRef(false);
+  const recordStartRef = useRef(0);
+  const [holdMode, setHoldModeState] = useState(false);
+  const setHoldMode = (v: boolean) => { holdModeRef.current = v; setHoldModeState(v); };
   useEffect(() => {
     if (!recording) return;
     const t = setInterval(() => setRecordSeconds((s) => s + 1), 1000);
@@ -796,8 +802,29 @@ function ConversasInner() {
     rec.start();
     setRecordSeconds(0);
     setRecording(true);
+    recordStartRef.current = Date.now();
+    // Ainda segurando quando a gravação começou: soltar envia
+    setHoldMode(micHeldRef.current);
+  };
+  const handleMicPointerDown = (e: ReactPointerEvent) => {
+    if (e.button !== 0 || recording || sendingMedia) return;
+    e.preventDefault();
+    micHeldRef.current = true;
+    const onUp = () => {
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+      micHeldRef.current = false;
+      // Segurou por mais de meio segundo depois de começar a gravar: envia. Toque rápido: continua gravando.
+      const held = holdModeRef.current;
+      setHoldMode(false);
+      if (held && recorderRef.current?.state === "recording" && Date.now() - recordStartRef.current > 500) stopRecording(false);
+    };
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
+    startRecording();
   };
   const stopRecording = (cancel: boolean) => {
+    setHoldMode(false);
     recordCancelRef.current = cancel;
     if (recorderRef.current?.state === "recording") recorderRef.current.stop();
   };
@@ -1483,6 +1510,7 @@ function ConversasInner() {
             className="hidden"
             onChange={handleFileChange}
           />
+          {!recording && (<>
           <button
             onClick={() => fileInputRef.current?.click()}
             disabled={sendingMedia || noteMode || isInstagram}
@@ -1521,12 +1549,13 @@ function ConversasInner() {
             <option value="__add">+ Novo nome…</option>
             {signature && <option value="__remove">Remover "{signature}"</option>}
           </select>
+          </>)}
           {recording ? (
-            <div className="flex-1 flex items-center gap-3 h-[42px] bg-red-50 border border-red-200 rounded-2xl px-4 text-sm text-red-700">
+            <div className="flex-1 min-w-0 flex items-center gap-3 h-[42px] bg-red-50 border border-red-200 rounded-2xl px-4 text-sm text-red-700">
               <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse" />
               <span className="font-semibold tabular-nums">{Math.floor(recordSeconds / 60)}:{String(recordSeconds % 60).padStart(2, "0")}</span>
-              <span className="text-xs text-red-500">Gravando áudio…</span>
-              <button onClick={() => stopRecording(true)} title="Descartar áudio" className="ml-auto p-1 text-red-400 hover:text-red-600">
+              <span className="text-xs text-red-500 truncate">{holdMode ? "Solte para enviar" : "Gravando áudio…"}</span>
+              <button onClick={() => stopRecording(true)} title="Descartar áudio" className="ml-auto shrink-0 p-1 text-red-400 hover:text-red-600">
                 <Trash2 className="w-4 h-4" />
               </button>
             </div>
@@ -1541,7 +1570,7 @@ function ConversasInner() {
               {savingNote ? <RefreshCw className="w-4 h-4 animate-spin" /> : <StickyNote className="w-4 h-4" />}{noteRecipient ? "Enviar" : "Salvar nota"}
             </button>
           ) : recording ? (
-            <button onClick={() => stopRecording(false)} title="Parar e enviar áudio" className="p-2.5 bg-brand-600 text-white rounded-2xl hover:bg-brand-700 transition-colors">
+            <button key="rec-send" onClick={() => stopRecording(false)} title="Parar e enviar áudio" className="shrink-0 p-2.5 bg-brand-600 text-white rounded-2xl hover:bg-brand-700 transition-colors">
               <Send className="w-4 h-4" />
             </button>
           ) : pendingFile ? (
@@ -1549,7 +1578,10 @@ function ConversasInner() {
               <Send className="w-4 h-4" />
             </button>
           ) : !newMessage.trim() ? (
-            <button onClick={startRecording} disabled={sendingMedia} title="Gravar áudio" className="p-2.5 bg-brand-600 text-white rounded-2xl hover:bg-brand-700 disabled:opacity-40 transition-colors">
+            <button key="mic" onPointerDown={handleMicPointerDown} onContextMenu={(e) => e.preventDefault()} disabled={sendingMedia}
+              title="Toque para gravar ou segure e solte para enviar"
+              style={{ touchAction: "none", WebkitTouchCallout: "none", WebkitUserSelect: "none", userSelect: "none" }}
+              className="shrink-0 p-2.5 bg-brand-600 text-white rounded-2xl hover:bg-brand-700 disabled:opacity-40 transition-colors">
               {sendingMedia ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Mic className="w-4 h-4" />}
             </button>
           ) : (
