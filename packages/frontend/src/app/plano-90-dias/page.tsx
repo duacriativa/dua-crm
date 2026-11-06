@@ -1,23 +1,20 @@
 "use client";
 
 import { Suspense, useEffect, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import {
   ArrowRight, CalendarDays, Camera, Clapperboard, Compass, Layers, Loader2, MessageSquareText,
   ShieldCheck, Sparkles, Target, Timer, Zap,
 } from "lucide-react";
-import { maskPhone } from "@/components/scheduling/booking-ui";
 
 interface Info {
   productName: string;
   price: number;
   deliveryHours: number;
-  options: { quemPosta: string[]; verba: string[]; objetivo: string[]; ondeVende: string[] };
-  prefill: { name: string; phone: string; email: string; instagramHandle: string } | null;
 }
 
 const LIME = "#B5FB3D";
-const inp = "w-full px-3 py-2.5 text-sm bg-white border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900/20 focus:border-neutral-900 placeholder:text-neutral-400";
 const brl = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL", minimumFractionDigits: v % 1 ? 2 : 0 });
 
 const INCLUDED = [
@@ -31,78 +28,18 @@ const INCLUDED = [
   { icon: Target, t: "Metas de 90 dias", d: "Metas mês a mês, com números, e um checklist para a primeira semana." },
 ];
 
-function cpfMask(v: string) {
-  const d = v.replace(/\D/g, "").slice(0, 14);
-  if (d.length <= 11) {
-    return d.replace(/(\d{3})(\d)/, "$1.$2").replace(/(\d{3})(\d)/, "$1.$2").replace(/(\d{3})(\d{1,2})$/, "$1-$2");
-  }
-  return d.replace(/^(\d{2})(\d)/, "$1.$2").replace(/^(\d{2})\.(\d{3})(\d)/, "$1.$2.$3").replace(/\.(\d{3})(\d)/, ".$1/$2").replace(/(\d{4})(\d)/, "$1-$2");
-}
-
-function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
-  return (
-    <label className="block">
-      <span className="text-sm font-semibold">{label}</span>
-      {hint && <span className="block text-xs text-neutral-500 mt-0.5">{hint}</span>}
-      <div className="mt-1.5">{children}</div>
-    </label>
-  );
-}
-
 function PlanoPage() {
-  const router = useRouter();
   const diagnosisToken = useSearchParams().get("d") ?? "";
   const [info, setInfo] = useState<Info | null>(null);
   const [failed, setFailed] = useState(false);
-  const [sending, setSending] = useState(false);
-  const [error, setError] = useState("");
-  const [f, setF] = useState({
-    name: "", phone: "", email: "", cpfCnpj: "", instagramHandle: "",
-    nicho: "", ticket: "", publico: "", quemPosta: "", verba: "", objetivo: "", referencias: "", observacoes: "",
-  });
-  const [ondeVende, setOndeVende] = useState<string[]>([]);
-  const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
-    setF((s) => ({ ...s, [k]: e.target.value }));
+  const formUrl = `/plano-90-dias/questionario${diagnosisToken ? `?d=${encodeURIComponent(diagnosisToken)}` : ""}`;
 
   useEffect(() => {
-    fetch(`/api/v1/public/plano${diagnosisToken ? `?d=${encodeURIComponent(diagnosisToken)}` : ""}`)
+    fetch("/api/v1/public/plano")
       .then((r) => (r.ok ? r.json() : Promise.reject()))
-      .then((i: Info) => {
-        setInfo(i);
-        if (i.prefill) {
-          setF((s) => ({
-            ...s,
-            name: s.name || i.prefill!.name,
-            phone: s.phone || maskPhone(i.prefill!.phone),
-            email: s.email || i.prefill!.email,
-            instagramHandle: s.instagramHandle || i.prefill!.instagramHandle,
-          }));
-        }
-      })
+      .then((i: Info) => setInfo(i))
       .catch(() => setFailed(true));
-  }, [diagnosisToken]);
-
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!ondeVende.length) { setError("Marque onde a marca vende hoje."); return; }
-    setSending(true); setError("");
-    try {
-      const res = await fetch("/api/v1/public/plano/pedido", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...f, ondeVende, diagnosisToken: diagnosisToken || undefined }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        const msg = Array.isArray(data?.message) ? data.message[0] : data?.message;
-        throw new Error(res.status === 429 ? "Muitas tentativas. Aguarde um minuto." : msg || "Algo deu errado. Tente de novo.");
-      }
-      router.push(`/plano-90-dias/pedido/${data.token}`);
-    } catch (err: any) {
-      setError(err.message);
-      setSending(false);
-    }
-  };
+  }, []);
 
   if (failed) {
     return (
@@ -137,9 +74,9 @@ function PlanoPage() {
               Você sabe exatamente o que postar, quando e por quê.
             </p>
             <div className="mt-8 flex flex-col sm:flex-row sm:items-center gap-4">
-              <a href="#comprar" className="inline-flex items-center justify-center gap-2 px-7 py-4 rounded-full font-bold text-neutral-950 hover:opacity-90 transition-opacity" style={{ background: LIME }}>
+              <Link href={formUrl} className="inline-flex items-center justify-center gap-2 px-7 py-4 rounded-full font-bold text-neutral-950 hover:opacity-90 transition-opacity" style={{ background: LIME }}>
                 Quero meu plano por {price} <ArrowRight className="w-4 h-4" />
-              </a>
+              </Link>
               <p className="text-sm text-white/60">Pagamento único no Pix · sem mensalidade</p>
             </div>
           </div>
@@ -167,7 +104,7 @@ function PlanoPage() {
           <h2 className="text-2xl sm:text-3xl font-black tracking-tight">Como funciona</h2>
           <ol className="mt-8 grid sm:grid-cols-4 gap-4">
             {[
-              ["Conte sobre a marca", "Preencha o formulário abaixo em 2 minutos."],
+              ["Conte sobre a marca", "Responda o questionário em uns 6 minutos, uma pergunta por vez."],
               ["Pague no Pix", `${price}, confirmação na hora.`],
               ["A equipe Dua monta", "Analisamos seu Instagram e montamos o plano no DUA LAB, nosso sistema com a mais alta tecnologia de IA. A equipe revisa tudo antes de enviar."],
               ["Receba no WhatsApp", `O PDF chega em até ${info.deliveryHours}h depois do pagamento.`],
@@ -183,101 +120,21 @@ function PlanoPage() {
           </ol>
         </section>
 
-        {/* Formulário */}
+        {/* Chamada para o questionário */}
         <section id="comprar" className="pb-16 scroll-mt-6">
           <div className="grid lg:grid-cols-[1fr_320px] gap-6 items-start">
-            <form onSubmit={submit} className="bg-white rounded-2xl shadow-sm p-5 sm:p-8 space-y-6">
-              <div>
-                <h2 className="text-2xl font-black tracking-tight">Sobre você e a sua marca</h2>
-                <p className="text-sm text-neutral-500 mt-1">Quanto mais detalhe, mais personalizado fica o plano.</p>
-              </div>
-
-              <div className="grid sm:grid-cols-2 gap-4">
-                <Field label="Seu nome"><input required className={inp} value={f.name} onChange={set("name")} autoComplete="name" /></Field>
-                <Field label="WhatsApp"><input required className={inp} value={f.phone} inputMode="tel" placeholder="(85) 99999-9999"
-                  onChange={(e) => setF((s) => ({ ...s, phone: maskPhone(e.target.value) }))} autoComplete="tel" /></Field>
-                <Field label="E-mail"><input required type="email" className={inp} value={f.email} onChange={set("email")} autoComplete="email" /></Field>
-                <Field label="CPF ou CNPJ" hint="Exigido pelo banco para emitir o Pix.">
-                  <input required className={inp} value={f.cpfCnpj} inputMode="numeric" onChange={(e) => setF((s) => ({ ...s, cpfCnpj: cpfMask(e.target.value) }))} />
-                </Field>
-              </div>
-
-              <div className="grid sm:grid-cols-2 gap-4">
-                <Field label="@ do Instagram da marca">
-                  <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-neutral-400">@</span>
-                    <input required className={`${inp} pl-7`} value={f.instagramHandle} placeholder="suamarca"
-                      onChange={(e) => setF((s) => ({ ...s, instagramHandle: e.target.value.replace(/^@/, "").trim() }))} />
-                  </div>
-                </Field>
-                <Field label="Ticket médio" hint="Valor médio de cada venda.">
-                  <input required className={inp} value={f.ticket} placeholder="Ex.: R$ 180" onChange={set("ticket")} />
-                </Field>
-              </div>
-
-              <Field label="Produto / nicho" hint="O que a marca vende e qual o estilo.">
-                <input required className={inp} value={f.nicho} placeholder="Ex.: moda feminina casual, vestidos e conjuntos de linho" onChange={set("nicho")} />
-              </Field>
-              <Field label="Público" hint="Quem compra de você: idade, estilo de vida, onde mora.">
-                <textarea required rows={2} className={inp} value={f.publico} placeholder="Ex.: mulheres de 25 a 40 anos, trabalham fora, Fortaleza e Nordeste" onChange={set("publico")} />
-              </Field>
-
-              <div className="grid sm:grid-cols-2 gap-4">
-                <Field label="Quem posta hoje?">
-                  <select required className={inp} value={f.quemPosta} onChange={set("quemPosta")}>
-                    <option value="">Escolha</option>
-                    {info.options.quemPosta.map((o) => <option key={o}>{o}</option>)}
-                  </select>
-                </Field>
-                <Field label="Verba mensal para conteúdo e anúncio">
-                  <select required className={inp} value={f.verba} onChange={set("verba")}>
-                    <option value="">Escolha</option>
-                    {info.options.verba.map((o) => <option key={o}>{o}</option>)}
-                  </select>
-                </Field>
-              </div>
-
-              <Field label="Objetivo principal nos próximos 3 meses">
-                <select required className={inp} value={f.objetivo} onChange={set("objetivo")}>
-                  <option value="">Escolha</option>
-                  {info.options.objetivo.map((o) => <option key={o}>{o}</option>)}
-                </select>
-              </Field>
-
-              <div>
-                <span className="text-sm font-semibold">Onde vende hoje?</span>
-                <span className="block text-xs text-neutral-500 mt-0.5">Pode marcar mais de um.</span>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {info.options.ondeVende.map((o) => {
-                    const on = ondeVende.includes(o);
-                    return (
-                      <button key={o} type="button" aria-pressed={on}
-                        onClick={() => setOndeVende((v) => (on ? v.filter((x) => x !== o) : [...v, o]))}
-                        className={`px-3 py-2 text-sm rounded-full border transition-colors ${on ? "bg-neutral-950 text-white border-neutral-950" : "bg-white border-neutral-300 hover:border-neutral-900"}`}>
-                        {o}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <Field label="Marcas que você admira ou concorrentes (opcional)">
-                <input className={inp} value={f.referencias} placeholder="Ex.: @marca1, @marca2" onChange={set("referencias")} />
-              </Field>
-
-              <Field label="Algo mais que a gente deve saber? (opcional)">
-                <textarea rows={2} className={inp} value={f.observacoes} placeholder="Lançamentos previstos, loja física, o que já tentou..." onChange={set("observacoes")} />
-              </Field>
-
-              {error && <p className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">{error}</p>}
-
-              <button type="submit" disabled={sending}
-                className="w-full inline-flex items-center justify-center gap-2 px-6 py-4 rounded-full font-bold bg-neutral-950 text-white hover:bg-neutral-800 disabled:opacity-60 transition-colors">
-                {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-                {sending ? "Gerando o Pix..." : `Gerar Pix de ${price}`}
-              </button>
-              <p className="text-xs text-neutral-500 text-center">Ao continuar, você recebe o QR Code do Pix na próxima tela.</p>
-            </form>
+            <div className="bg-white rounded-2xl shadow-sm p-5 sm:p-8">
+              <h2 className="text-2xl font-black tracking-tight">Conte sobre a sua marca</h2>
+              <p className="text-neutral-600 mt-2 leading-relaxed">
+                O plano nasce das suas respostas: data real do lançamento, onde você faz as fotos, seus concorrentes e o que já está pronto.
+                A gente confere os @ das marcas no Instagram com você, para o plano não olhar para a marca errada.
+              </p>
+              <Link href={formUrl}
+                className="mt-6 w-full inline-flex items-center justify-center gap-2 px-6 py-4 rounded-full font-bold bg-neutral-950 text-white hover:bg-neutral-800 transition-colors">
+                Começar o questionário <ArrowRight className="w-4 h-4" />
+              </Link>
+              <p className="mt-3 text-xs text-neutral-500 text-center">Leva uns 6 minutos. No final, você recebe o QR Code do Pix de {price}.</p>
+            </div>
 
             <aside className="bg-neutral-950 text-white rounded-2xl p-6 lg:sticky lg:top-6">
               <p className="text-sm text-white/60">{info.productName}</p>

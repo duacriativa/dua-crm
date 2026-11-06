@@ -1,6 +1,6 @@
 import { BadRequestException } from '@nestjs/common';
 import { askClaude, parseJsonObject } from '../contacts/claude';
-import { PlanAnswers } from './plan.config';
+import { PlanAnswers, answerLines } from './plan-brief';
 
 export interface PlanContent {
   estrategia: {
@@ -31,6 +31,7 @@ export interface PlanInput {
   brandName: string;
   instagramHandle: string;
   answers: PlanAnswers;
+  planStart: string; // AAAA-MM-DD: segunda-feira em que começa a semana 1
   profile: any | null; // dados reais do Instagram (Business Discovery) ou null
   profileReason?: string;
 }
@@ -39,11 +40,12 @@ const SYSTEM =
   'Você é estrategista sênior de conteúdo para marcas de moda brasileiras, trabalhando para a agência Dua Criativa (Fortaleza). ' +
   'Escreve planos práticos, específicos para a marca e executáveis por uma equipe pequena. Português do Brasil, tom direto e acolhedor, ' +
   'falando com a dona ou o dono da marca ("você", "sua marca"). Nunca invente números ou fatos sobre a marca que não estejam no contexto. ' +
+  'O plano vai pronto para a cliente executar: nunca deixe campo em aberto, como colchetes, "a definir", "XX" ou "inserir aqui". ' +
+  'Quando faltar uma informação, escreva uma orientação que funcione sem ela. ' +
   'Não use emojis nos campos de texto (exceto dentro das legendas prontas, com moderação). Não use markdown. ' +
   'Retorne sempre APENAS um JSON válido, sem texto antes ou depois.';
 
 function context(i: PlanInput) {
-  const a = i.answers;
   const perfil = i.profile
     ? `Dados reais do Instagram @${i.instagramHandle}, obtidos agora pela API oficial:\n${JSON.stringify(i.profile, null, 2)}`
     : `Não foi possível ler o Instagram @${i.instagramHandle} (${i.profileReason ?? 'sem dados'}). Baseie-se só nas respostas do formulário e não cite números do perfil.`;
@@ -51,18 +53,10 @@ function context(i: PlanInput) {
     `Produto: "${i.productName}", um plano de conteúdo e estratégia de 3 meses (12 semanas) para a marca.`,
     `Marca / responsável: ${i.brandName}. Instagram: @${i.instagramHandle}.`,
     `Respostas do formulário:`,
-    `- Produto / nicho: ${a.nicho}`,
-    `- Ticket médio: ${a.ticket}`,
-    `- Público: ${a.publico}`,
-    `- Quem posta hoje: ${a.quemPosta}`,
-    `- Verba mensal para conteúdo e anúncio: ${a.verba}`,
-    a.objetivo ? `- Objetivo principal nos próximos 3 meses: ${a.objetivo} (oriente o plano para isso)` : null,
-    a.ondeVende ? `- Onde vende hoje: ${a.ondeVende} (os CTAs devem levar para esses canais)` : null,
-    a.referencias ? `- Marcas que admira ou concorrentes: ${a.referencias}` : null,
-    a.observacoes ? `- Observações da marca: ${a.observacoes}` : null,
+    ...answerLines(i.answers, i.planStart),
     '',
     perfil,
-  ].filter((l) => l !== null).join('\n');
+  ].join('\n');
 }
 
 function strategySummary(p: Partial<PlanContent>) {
@@ -123,7 +117,8 @@ async function genWeeks(i: PlanInput, base: Partial<PlanContent>, from: number, 
     `${context(i)}\n\nEstratégia já definida:\n${strategySummary(base)}\n\n` +
       `Monte o CALENDÁRIO das semanas ${from} a ${to} (de 12). Semanas 1-4 constroem base e confiança, 5-8 aceleram alcance com Reels ` +
       `e prova social, 9-12 focam em conversão e venda. Respeite a frequência da estratégia e use os pilares na proporção definida. ` +
-      `Considere datas sazonais do varejo de moda no Brasil quando fizer sentido, sem citar datas exatas.\n` +
+      `Se o contexto trouxer uma instrução de LANÇAMENTO, ela manda sobre essa divisão. Nunca coloque mais de um lançamento no calendário. ` +
+      `Considere datas sazonais do varejo de moda no Brasil quando fizer sentido, sem citar datas exatas (a data real do lançamento pode ser citada).\n` +
       `Retorne JSON com calendario: array com uma entrada por semana { semana (número), tema (até 6 palavras), objetivo (1 frase), ` +
       `feed: array de posts { dia (ex.: "Segunda"), formato ("Reels", "Carrossel", "Foto" ou "Vídeo"), pilar (nome de um pilar), ideia (1-2 frases concretas) }, ` +
       `stories: array de 3 a 5 ideias de stories da semana (1 frase cada) }. Ideias objetivas, de 1 a 2 frases.`,

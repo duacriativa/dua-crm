@@ -32,16 +32,10 @@ export const PLAN_FORM_OPTIONS = {
   ondeVende: ['Loja física', 'Site / e-commerce', 'WhatsApp', 'Instagram', 'Marketplace'],
   quemPosta: ['Eu mesma(o)', 'Alguém da equipe', 'Freelancer', 'Agência', 'Ninguém posta com frequência'],
   verba: ['Até R$ 500/mês', 'R$ 500 a R$ 1.500/mês', 'R$ 1.500 a R$ 3.000/mês', 'Acima de R$ 3.000/mês', 'Ainda não tenho verba'],
+  pecasProntas: ['Sim, já estão prontas', 'Parte pronta, parte em produção', 'Ainda vou produzir', 'Produzo sob encomenda'],
+  identidade: ['Tenho logo e identidade visual', 'Tenho só o logo', 'Ainda não tenho'],
+  quemAparece: ['Eu, dona(o) da marca', 'Alguém da equipe', 'Modelo contratada', 'Clientes', 'Creators', 'Ninguém, só as peças'],
+  localFotos: ['Estúdio', 'Loja física', 'Casa ou ateliê', 'Externas (rua, praia, cafés)', 'Ainda não sei'],
 };
 
-export interface PlanAnswers {
-  nicho: string;
-  ticket: string;
-  publico: string;
-  quemPosta: string;
-  verba: string;
-  objetivo: string;
-  ondeVende: string; // canais separados por vírgula
-  referencias?: string;
-  observacoes?: string;
-}
+export type { PlanAnswers, PlanBrandRef, PlanLaunchStatus } from './plan-brief';

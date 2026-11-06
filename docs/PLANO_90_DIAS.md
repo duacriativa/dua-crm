@@ -6,13 +6,15 @@ Funil: diagnóstico gratuito (`/diagnostico/[token]`) → chamada no PDF → pá
 ## Links
 
 - Página de venda (sem login): `https://crm.duacriativa.com.br/plano-90-dias`
-- Vindo do diagnóstico, com nome, WhatsApp, e-mail e @ já preenchidos: `https://crm.duacriativa.com.br/plano-90-dias?d=<token do diagnóstico>`
+- Questionário (uma pergunta por tela): `/plano-90-dias/questionario`
+- Vindo do diagnóstico, com nome, WhatsApp, e-mail e @ já preenchidos: `https://crm.duacriativa.com.br/plano-90-dias?d=<token do diagnóstico>` (o token segue para o questionário)
 - Acompanhamento do cliente (Pix, prazo e PDF): `/plano-90-dias/pedido/<token do pedido>`
 - Equipe: menu **Planos 90 dias** (`/dashboard/planos`)
 
 ## Fluxo
 
-1. O cliente preenche o formulário (nome, WhatsApp, e-mail, CPF/CNPJ, @, produto/nicho, ticket médio, público, quem posta, verba).
+1. O cliente responde o questionário: dados de contato, marca (@, nicho, público, cidade ou região, ticket, faixa de preço, grade, onde vende), conteúdo (objetivo, se as peças estão prontas, data real do lançamento, local das fotos, logo e identidade, quem aparece, quem posta, verba), referências (até 3 marcas que inspiram, 3 concorrentes) e CPF/CNPJ. Tudo fica em `PlanOrder.answers` (JSON), sem coluna nova; pedidos antigos não têm esses campos e continuam abrindo.
+   Cada @ de marca é conferido ao vivo (`GET /public/plano/instagram/:handle`, Business Discovery, com cache de 10 min): a cliente vê foto, nome e seguidores e responde "É essa marca?". Perfil não encontrado ou consulta com falha não barra o pedido: o @ fica **não confirmado**, com aviso na revisão e nota no contato, e não entra como referência no prompt. O servidor refaz a consulta ao receber o pedido, então nome e seguidores nunca vêm do navegador.
    O CPF/CNPJ é exigido pelo Asaas para emitir a cobrança. O contato é criado ou atualizado no CRM com a tag `plano-90d-pedido`.
 2. O backend cria o cliente e a cobrança Pix no Asaas e mostra o QR Code e o copia-e-cola. Reenviar o formulário com o Pix
    ainda aberto (mesmo CPF, menos de 20h) reaproveita a cobrança.
@@ -25,6 +27,8 @@ Funil: diagnóstico gratuito (`/diagnostico/[token]`) → chamada no PDF → pá
    e clica **Aprovar e liberar entrega**. Nada vai para o cliente antes disso; editar depois de aprovar tira a aprovação.
 6. Entrega manual: **Copiar texto** / **Abrir no WhatsApp** (WhatsApp Business no celular, sem template) com o link do PDF, depois
    **Marcar como entregue**. O botão de baixar o PDF também aparece na página de acompanhamento do cliente.
+
+O lançamento vai para o prompt como instrução única (`plan-brief.ts`): a semana é calculada a partir da data real, com a semana 1 na primeira segunda-feira depois do prazo de um dia, e os 3 blocos do calendário recebem a mesma instrução. Teste: `npm run test:plan`.
 
 A lista destaca os pedidos **atrasados** (passou do prazo e não foi entregue). Status: aguardando pagamento → pago → em produção → em revisão → entregue (ou cancelado).
 Se a geração falhar ou for interrompida (ex.: deploy no meio), o pedido mostra o erro e o botão de gerar de novo.

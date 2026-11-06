@@ -9,11 +9,13 @@ import { NotifyService } from '../notifications/notify.service';
 import { InstagramProfileService, normalizeInstagramHandle } from '../contacts/instagram-profile.service';
 import { normalizePhone, phoneVariants } from '../../common/phone.util';
 import {
-  PLAN_FORM_OPTIONS, PLAN_TAGS, PlanAnswers, PlanStatus, planConfig, planOrderUrl, planPdfUrl,
+  PLAN_FORM_OPTIONS, PLAN_TAGS, PlanStatus, planConfig, planOrderUrl, planPdfUrl,
 } from './plan.config';
 import { PLAN_PARTS, PlanContent, PlanPart, generatePlan } from './plan-generator';
+import { PlanAnswers, PlanBrandRef, isIsoDate, planStartDate, unconfirmedHandles } from './plan-brief';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+const HANDLE_RE = /^[a-z0-9._]{1,30}$/;
 const PAID_EVENTS = ['PAYMENT_RECEIVED', 'PAYMENT_CONFIRMED'];
 const PAID_STATUSES = ['RECEIVED', 'CONFIRMED', 'RECEIVED_IN_CASH'];
 /** Geração parada há mais que isso (ex.: o servidor reiniciou no meio) pode ser disparada de novo. */
@@ -98,9 +100,44 @@ export class PlanOrdersService {
     };
   }
 
+  /** Conferência ao vivo de um @ no questionário. */
+  async checkInstagram(raw: string) {
+    const handle = normalizeInstagramHandle(String(raw ?? '').slice(0, 120));
+    if (!HANDLE_RE.test(handle)) return { status: 'invalid' as const };
+    return this.instagramProfile.lookup(handle);
+  }
+
+  /**
+   * Monta os @ do pedido consultando o Instagram aqui no servidor: nome e seguidores não vêm do
+   * navegador, e só fica confirmado o perfil que existe e que a cliente disse ser a marca certa.
+   * Falha na consulta nunca barra o pedido: o @ fica não confirmado para a Dua revisar.
+   */
+  private async resolveBrands(raw: any): Promise<PlanBrandRef[]> {
+    const seen = new Set<string>();
+    const items = (Array.isArray(raw) ? raw : [])
+      .map((x: any) => ({ handle: normalizeInstagramHandle(String(x?.handle ?? '').slice(0, 120)), confirmed: x?.confirmed === true }))
+      .filter((x) => HANDLE_RE.test(x.handle) && !seen.has(x.handle) && !!seen.add(x.handle))
+      .slice(0, 3);
+    return Promise.all(items.map(async ({ handle, confirmed }): Promise<PlanBrandRef> => {
+      const found = await this.instagramProfile.lookup(handle);
+      if (found.status !== 'found') {
+        return { handle, confirmed: false, reason: found.status === 'not_found' ? 'not_found' : 'lookup_failed' };
+      }
+      return {
+        handle: found.username, confirmed, name: found.name, followers: found.followers,
+        ...(confirmed ? {} : { reason: 'not_confirmed' as const }),
+      };
+    }));
+  }
+
   async create(body: any) {
     const c = planConfig();
     const s = (v: any, max: number) => String(v ?? '').trim().slice(0, max);
+    const oneOf = (v: any, options: string[]) => (options.includes(s(v, 80)) ? s(v, 80) : undefined);
+    const launch = oneOf(body?.lancamentoStatus, ['data', 'sem_data', 'nao']) as PlanAnswers['lancamentoStatus'];
+    if (launch === 'data' && !isIsoDate(s(body?.lancamentoData, 10))) throw new BadRequestException('Informe a data do lançamento.');
+    const multi = (v: any, options: string[]) => (Array.isArray(v) ? v : [v])
+      .map((x: any) => s(x, 40)).filter((x: string) => options.includes(x)).join(', ');
     const name = s(body?.name, 120);
     const email = s(body?.email, 200).toLowerCase();
     const phone = normalizePhone(s(body?.phone, 40));
@@ -109,9 +146,17 @@ export class PlanOrdersService {
     const answers: PlanAnswers = {
       nicho: s(body?.nicho, 300), ticket: s(body?.ticket, 60), publico: s(body?.publico, 500),
       quemPosta: s(body?.quemPosta, 80), verba: s(body?.verba, 80), objetivo: s(body?.objetivo, 80),
-      ondeVende: (Array.isArray(body?.ondeVende) ? body.ondeVende : [body?.ondeVende])
-        .map((v: any) => s(v, 40)).filter((v: string) => PLAN_FORM_OPTIONS.ondeVende.includes(v)).join(', '),
+      ondeVende: multi(body?.ondeVende, PLAN_FORM_OPTIONS.ondeVende),
       referencias: s(body?.referencias, 500) || undefined, observacoes: s(body?.observacoes, 1000) || undefined,
+      cidadeRegiao: s(body?.cidadeRegiao, 200) || undefined,
+      faixaPreco: s(body?.faixaPreco, 120) || undefined,
+      gradeTamanhos: s(body?.gradeTamanhos, 200) || undefined,
+      pecasProntas: oneOf(body?.pecasProntas, PLAN_FORM_OPTIONS.pecasProntas),
+      lancamentoStatus: launch,
+      lancamentoData: launch === 'data' ? s(body?.lancamentoData, 10) : undefined,
+      localFotos: s(body?.localFotos, 300) || undefined,
+      identidade: oneOf(body?.identidade, PLAN_FORM_OPTIONS.identidade),
+      quemAparece: multi(body?.quemAparece, PLAN_FORM_OPTIONS.quemAparece) || undefined,
     };
     const diagnosisToken = s(body?.diagnosisToken, 64) || null;
 
@@ -119,7 +164,7 @@ export class PlanOrdersService {
     if (!phone || phone.length < 12 || phone.length > 16) throw new BadRequestException('Informe um WhatsApp válido com DDD.');
     if (!EMAIL_RE.test(email)) throw new BadRequestException('Informe um e-mail válido.');
     if (!validCpfCnpj(cpfCnpj)) throw new BadRequestException('Informe um CPF ou CNPJ válido (é exigido para emitir o Pix).');
-    if (!/^[a-z0-9._]{1,30}$/.test(instagramHandle)) throw new BadRequestException('Informe o @ do Instagram da marca.');
+    if (!HANDLE_RE.test(instagramHandle)) throw new BadRequestException('Informe o @ do Instagram da marca.');
     if (answers.nicho.length < 2) throw new BadRequestException('Conte qual é o produto ou nicho da marca.');
     if (!answers.ticket) throw new BadRequestException('Informe o ticket médio.');
     if (answers.publico.length < 2) throw new BadRequestException('Conte quem é o seu público.');
@@ -127,6 +172,10 @@ export class PlanOrdersService {
     if (!answers.verba) throw new BadRequestException('Escolha a verba mensal.');
     if (!answers.objetivo) throw new BadRequestException('Escolha o objetivo principal.');
     if (!answers.ondeVende) throw new BadRequestException('Marque onde a marca vende hoje.');
+
+    if (body?.inspiradoras !== undefined) answers.inspiradoras = await this.resolveBrands(body.inspiradoras);
+    if (body?.concorrentes !== undefined) answers.concorrentes = await this.resolveBrands(body.concorrentes);
+    const pending = unconfirmedHandles(answers);
 
     const tenantId = await this.tenantId();
     const contact = await this.upsertContact(tenantId, { name, phone, email, instagramHandle });
@@ -141,6 +190,9 @@ export class PlanOrdersService {
         where: { id: open.id },
         data: { name, phone, email, instagramHandle, answers: answers as any, contactId: contact.id, diagnosisToken: diagnosisToken ?? open.diagnosisToken },
       });
+      if (pending.length) {
+        await this.note(open, `⚠️ @ não confirmados no questionário, para revisar antes de aprovar o plano: ${pending.map((h) => `@${h}`).join(', ')}`);
+      }
       return { token: open.token };
     }
 
@@ -175,6 +227,9 @@ export class PlanOrdersService {
     }
 
     await this.note(order, `🧾 Pedido do ${c.productName} (R$ ${c.price}) criado pela página. Aguardando o Pix.`);
+    if (pending.length) {
+      await this.note(order, `⚠️ @ não confirmados no questionário, para revisar antes de aprovar o plano: ${pending.map((h) => `@${h}`).join(', ')}`);
+    }
     return { token: order.token };
   }
 
@@ -294,7 +349,8 @@ export class PlanOrdersService {
       const plan = await generatePlan(
         {
           productName: order.productName, brandName: order.name, instagramHandle: order.instagramHandle,
-          answers: order.answers as unknown as PlanAnswers, profile: profile.data, profileReason: profile.reason,
+          answers: order.answers as unknown as PlanAnswers, planStart: planStartDate(order.paidAt ?? new Date()),
+          profile: profile.data, profileReason: profile.reason,
         },
         part ? (order.plan as unknown as PlanContent) : null,
         part,

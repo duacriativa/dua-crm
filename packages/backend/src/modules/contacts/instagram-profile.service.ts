@@ -6,10 +6,76 @@ export function normalizeInstagramHandle(raw: string): string {
   return semUrl.replace(/^@/, '').toLowerCase();
 }
 
+/** Resultado da conferência rápida de um @ (questionário do plano). */
+export type InstagramLookup =
+  | { status: 'found'; username: string; name: string | null; followers: number | null; pictureUrl: string | null }
+  | { status: 'not_found' }
+  | { status: 'error' };
+
+const LOOKUP_TTL_MS = 10 * 60_000;
+const LOOKUP_CACHE_MAX = 500;
+
 /** Perfil do Instagram via Graph API (Business Discovery). Usado pela análise e pelo diagnóstico. */
 @Injectable()
 export class InstagramProfileService {
   private igBusinessId: string | null = null;
+  private readonly lookups = new Map<string, { at: number; result: InstagramLookup }>();
+
+  /** Conta do Instagram da Dua, que faz as consultas. Null se o token não enxerga nenhuma. */
+  private async businessId(graph: string, token: string) {
+    if (this.igBusinessId) return this.igBusinessId;
+    this.igBusinessId = process.env.INSTAGRAM_BUSINESS_ID || null;
+    if (!this.igBusinessId) {
+      const r = await fetch(`${graph}/me/accounts?fields=instagram_business_account&access_token=${encodeURIComponent(token)}`,
+        { signal: AbortSignal.timeout(15000) });
+      const pages: any = await r.json();
+      this.igBusinessId = pages.data?.find((p: any) => p.instagram_business_account)?.instagram_business_account?.id ?? null;
+    }
+    return this.igBusinessId;
+  }
+
+  /**
+   * Foto, nome e seguidores de um @, para a cliente confirmar se é a marca certa. Nunca lança erro.
+   * `username` precisa vir validado. O formulário público chama isto a cada @ digitado: guarda o
+   * resultado por 10 min para não gastar a cota da API; erro não fica guardado, para poder tentar de novo.
+   */
+  async lookup(username: string): Promise<InstagramLookup> {
+    const hit = this.lookups.get(username);
+    if (hit && Date.now() - hit.at < LOOKUP_TTL_MS) return hit.result;
+
+    const token = process.env.INSTAGRAM_ACCESS_TOKEN;
+    if (!token) return { status: 'error' };
+    const graph = 'https://graph.facebook.com/v21.0';
+    try {
+      const id = await this.businessId(graph, token);
+      if (!id) return { status: 'error' };
+      const fields = `business_discovery.username(${username}){username,name,followers_count,profile_picture_url}`;
+      const r = await fetch(`${graph}/${id}?fields=${encodeURIComponent(fields)}&access_token=${encodeURIComponent(token)}`,
+        { signal: AbortSignal.timeout(8000) });
+      const body: any = await r.json();
+      const p = body.business_discovery;
+      let result: InstagramLookup;
+      if (r.ok && p) {
+        result = {
+          status: 'found', username: p.username ?? username, name: p.name ?? null,
+          followers: p.followers_count ?? null, pictureUrl: p.profile_picture_url ?? null,
+        };
+      } else {
+        const msg: string = body.error?.error_user_msg || body.error?.message || '';
+        if (!/cannot be found|invalid user id|not.*business/i.test(msg)) {
+          console.warn(`[Instagram] Conferência de @ falhou: ${msg.slice(0, 200) || `HTTP ${r.status}`}`);
+          return { status: 'error' };
+        }
+        result = { status: 'not_found' };
+      }
+      if (this.lookups.size >= LOOKUP_CACHE_MAX) this.lookups.clear();
+      this.lookups.set(username, { at: Date.now(), result });
+      return result;
+    } catch (err: any) {
+      console.warn(`[Instagram] Conferência de @ falhou: ${err.message}`);
+      return { status: 'error' };
+    }
+  }
 
   /**
    * Busca bio, números e últimos posts de um perfil comercial/criador via Business Discovery
@@ -23,16 +89,7 @@ export class InstagramProfileService {
     const graph = 'https://graph.facebook.com/v21.0';
 
     try {
-      if (!this.igBusinessId) {
-        this.igBusinessId = process.env.INSTAGRAM_BUSINESS_ID || null;
-        if (!this.igBusinessId) {
-          const r = await fetch(`${graph}/me/accounts?fields=instagram_business_account&access_token=${encodeURIComponent(token)}`,
-            { signal: AbortSignal.timeout(15000) });
-          const pages: any = await r.json();
-          this.igBusinessId = pages.data?.find((p: any) => p.instagram_business_account)?.instagram_business_account?.id ?? null;
-          if (!this.igBusinessId) return { data: null, reason: 'conta do Instagram da Dua não encontrada no token' };
-        }
-      }
+      if (!(await this.businessId(graph, token))) return { data: null, reason: 'conta do Instagram da Dua não encontrada no token' };
 
       const fields =
         `business_discovery.username(${username}){username,name,biography,website,followers_count,follows_count,media_count,` +
