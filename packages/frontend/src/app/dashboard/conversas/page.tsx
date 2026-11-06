@@ -768,6 +768,11 @@ function ConversasInner() {
   const recordStartRef = useRef(0);
   const [holdMode, setHoldModeState] = useState(false);
   const setHoldMode = (v: boolean) => { holdModeRef.current = v; setHoldModeState(v); };
+  // Segurando: arrastar para a esquerda cancela (igual ao WhatsApp)
+  const [dragX, setDragX] = useState(0);
+  const CANCEL_DRAG_PX = 110;
+  // O mesmo botão vira "enviar" ao começar a gravar: ignora o clique do toque que iniciou a gravação
+  const ignoreMicClickRef = useRef(false);
   useEffect(() => {
     if (!recording) return;
     const t = setInterval(() => setRecordSeconds((s) => s + 1), 1000);
@@ -806,25 +811,46 @@ function ConversasInner() {
     // Ainda segurando quando a gravação começou: soltar envia
     setHoldMode(micHeldRef.current);
   };
-  const handleMicPointerDown = (e: ReactPointerEvent) => {
-    if (e.button !== 0 || recording || sendingMedia) return;
+  const handleMicPointerDown = (e: ReactPointerEvent<HTMLButtonElement>) => {
+    if (e.button !== 0 || sendingMedia) return;
+    if (recording) { ignoreMicClickRef.current = false; return; } // toque em "enviar": o clique cuida
     e.preventDefault();
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* sem captura, segue pela janela */ }
+    ignoreMicClickRef.current = true;
     micHeldRef.current = true;
-    const onUp = () => {
+    const startX = e.clientX;
+    const cleanup = () => {
+      window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
       window.removeEventListener("pointercancel", onUp);
       micHeldRef.current = false;
+      setDragX(0);
+    };
+    const onMove = (ev: PointerEvent) => {
+      if (!holdModeRef.current) return;
+      const dx = Math.min(0, ev.clientX - startX);
+      setDragX(dx);
+      if (dx <= -CANCEL_DRAG_PX) { cleanup(); stopRecording(true); }
+    };
+    const onUp = () => {
+      cleanup();
       // Segurou por mais de meio segundo depois de começar a gravar: envia. Toque rápido: continua gravando.
       const held = holdModeRef.current;
       setHoldMode(false);
       if (held && recorderRef.current?.state === "recording" && Date.now() - recordStartRef.current > 500) stopRecording(false);
     };
+    window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
     window.addEventListener("pointercancel", onUp);
     startRecording();
   };
+  const handleMicClick = () => {
+    if (ignoreMicClickRef.current) { ignoreMicClickRef.current = false; return; }
+    if (recording) stopRecording(false);
+  };
   const stopRecording = (cancel: boolean) => {
     setHoldMode(false);
+    setDragX(0);
     recordCancelRef.current = cancel;
     if (recorderRef.current?.state === "recording") recorderRef.current.stop();
   };
@@ -1554,7 +1580,14 @@ function ConversasInner() {
             <div className="flex-1 min-w-0 flex items-center gap-3 h-[42px] bg-red-50 border border-red-200 rounded-2xl px-4 text-sm text-red-700">
               <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse" />
               <span className="font-semibold tabular-nums">{Math.floor(recordSeconds / 60)}:{String(recordSeconds % 60).padStart(2, "0")}</span>
-              <span className="text-xs text-red-500 truncate">{holdMode ? "Solte para enviar" : "Gravando áudio…"}</span>
+              {holdMode ? (
+                <span className="text-xs text-red-500 truncate select-none transition-opacity"
+                  style={{ transform: `translateX(${dragX}px)`, opacity: 1 - Math.min(0.7, -dragX / CANCEL_DRAG_PX) }}>
+                  ‹ Arraste para cancelar
+                </span>
+              ) : (
+                <span className="text-xs text-red-500 truncate">Gravando áudio…</span>
+              )}
               <button onClick={() => stopRecording(true)} title="Descartar áudio" className="ml-auto shrink-0 p-1 text-red-400 hover:text-red-600">
                 <Trash2 className="w-4 h-4" />
               </button>
@@ -1570,7 +1603,10 @@ function ConversasInner() {
               {savingNote ? <RefreshCw className="w-4 h-4 animate-spin" /> : <StickyNote className="w-4 h-4" />}{noteRecipient ? "Enviar" : "Salvar nota"}
             </button>
           ) : recording ? (
-            <button key="rec-send" onClick={() => stopRecording(false)} title="Parar e enviar áudio" className="shrink-0 p-2.5 bg-brand-600 text-white rounded-2xl hover:bg-brand-700 transition-colors">
+            <button key="mic" onPointerDown={handleMicPointerDown} onClick={handleMicClick} onContextMenu={(e) => e.preventDefault()}
+              title={holdMode ? "Solte para enviar" : "Parar e enviar áudio"}
+              style={{ touchAction: "none", WebkitTouchCallout: "none", WebkitUserSelect: "none", userSelect: "none" }}
+              className={`shrink-0 p-2.5 bg-brand-600 text-white rounded-2xl hover:bg-brand-700 transition-all ${holdMode ? "scale-125" : ""}`}>
               <Send className="w-4 h-4" />
             </button>
           ) : pendingFile ? (
@@ -1578,7 +1614,7 @@ function ConversasInner() {
               <Send className="w-4 h-4" />
             </button>
           ) : !newMessage.trim() ? (
-            <button key="mic" onPointerDown={handleMicPointerDown} onContextMenu={(e) => e.preventDefault()} disabled={sendingMedia}
+            <button key="mic" onPointerDown={handleMicPointerDown} onClick={handleMicClick} onContextMenu={(e) => e.preventDefault()} disabled={sendingMedia}
               title="Toque para gravar ou segure e solte para enviar"
               style={{ touchAction: "none", WebkitTouchCallout: "none", WebkitUserSelect: "none", userSelect: "none" }}
               className="shrink-0 p-2.5 bg-brand-600 text-white rounded-2xl hover:bg-brand-700 disabled:opacity-40 transition-colors">
