@@ -7,7 +7,8 @@ import { phoneVariants, toBrDigits } from '../../common/phone.util';
 import { MEETING_EVENTS, appUrl } from '../scheduling/scheduling.service';
 import {
   AutomationConditions, AutomationStep, DEFAULT_BOOKING_TIMEOUT_S, DEFAULT_MEETING_STATUS_TIMEOUT_S, MEETING_LATE_GRACE_MS, Reminder, StepTarget, WINDOW_MS,
-  bookingLinkStep, businessHours, dueReminder, giveUpAfter, meetingWaitAt, originFromText, originLabel, salesChannelPhrase, sameAnswer, waitPlan, waitReplyTarget, waitUntil, wantsBookingLink, extractInstagramHandle } from './automation-steps';
+  DECLINED_STEP, bookingLinkStep, businessHours, declinedReply, dueReminder, giveUpAfter, meetingWaitAt, originFromText, originLabel, salesChannelPhrase, sameAnswer, waitPlan, waitReplyTarget, waitUntil, wantsBookingLink, extractInstagramHandle,
+} from './automation-steps';
 
 const ACTIVE = ['RUNNING', 'WAITING_REPLY'];
 const POLL_MS = 5000;
@@ -354,6 +355,14 @@ export class AutomationRunner implements OnModuleInit, OnModuleDestroy {
     });
     if (human) return;
 
+    // Recusou o último lembrete depois que o bot desistiu: continua encerrado
+    const last = await this.prisma.message.findFirst({
+      where: { conversationId: e.conversationId, direction: 'INBOUND' },
+      orderBy: { sentAt: 'desc' },
+      select: { content: true },
+    });
+    if (declinedReply(last?.content ?? '') && (await this.lastBotWasTemplate(e.conversationId))) return;
+
     const claimed = await this.prisma.automationRun.updateMany({
       where: { id: run.id, status: run.status, finishedAt: run.finishedAt },
       data: { status: 'WAITING_REPLY', stepIndex: k, finishedAt: null, timedOutStep: null, nextRunAt: new Date(Date.now() + LEASE_MS), conversationId: e.conversationId },
@@ -427,8 +436,14 @@ export class AutomationRunner implements OnModuleInit, OnModuleDestroy {
         data: { instagramHandle: handle },
       }).catch((err) => this.logger.warn(`[Bots] Não gravou o @ da sessão ${run.id}: ${err.message}`));
     }
-    const again = !handle && skip < 0 && run.remindersSent && (await this.lastBotWasTemplate(conversationId)) ? askAgainAt(steps, run.stepIndex, answer) : null;
-    const next = skip >= 0 ? skip : again ?? afterReply(steps, run.stepIndex, answer);
+    const toReminder = skip < 0 && !handle && !!run.remindersSent && (await this.lastBotWasTemplate(conversationId));
+    // Recusou o lembrete ("Agora não"): encerra pelo bloco "recusou" (sem ele, só encerra). Nunca pergunta de novo.
+    const declined = toReminder && !run.meetingId && !tappedButton && declinedReply(answer);
+    if (declined) this.logger.log(`[Bots] Sessão ${run.id}: recusou o lembrete, encerrando`);
+    const again = toReminder && !declined ? askAgainAt(steps, run.stepIndex, answer) : null;
+    const next = skip >= 0 ? skip
+      : declined ? (steps.some((s) => s.id === DECLINED_STEP) ? indexOf(steps, DECLINED_STEP, run.stepIndex) : END)
+      : again ?? afterReply(steps, run.stepIndex, answer);
     const now = new Date();
     await this.prisma.automationRun.updateMany({
       where: { id: run.id, status: 'WAITING_REPLY', stepIndex: run.stepIndex },

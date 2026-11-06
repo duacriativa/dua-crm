@@ -245,6 +245,18 @@ export const ASKED_LINK_STEPS: BotStep[] = [
 ];
 
 /**
+ * Quem recusou um lembrete em template ("Agora não"): o bot agradece, marca e encerra, sem novos lembretes.
+ * Fica no fim do bot (só se chega por esse pulo). O id "recusou" é o que o executor procura.
+ */
+export const DECLINED_STEPS: BotStep[] = [
+  { id: "recusou", name: "Recusou o lembrete", type: "send_text", text: "Tranquilo, {{primeiro_nome}}! Obrigada por responder 💜 Se mudar de ideia, é só me chamar aqui." },
+  { id: "recusou_tag", type: "add_tag", tag: "recusou no lembrete" },
+  { id: "recusou_etapa", type: "move_stage", stageName: "Esfriou 🧊" },
+  { id: "recusou_aviso", type: "notify", to: "Daniel", text: "{{primeiro_nome}} recusou o lembrete da qualificação e o bot encerrou.\n\nO que respondeu:\n{{respostas}}" },
+  { id: "recusou_fim", type: "end" },
+];
+
+/**
  * Qualificação de quem preencheu o formulário, seguindo o roteiro da call do Dua Lab:
  * 1ª mensagem → follow-up se não responder → marca já vende ou está começando →
  * 2 perguntas de diagnóstico de cada caminho → convite para a call com o Daniel (link de agendamento).
@@ -312,7 +324,7 @@ export function whatsappQualifyPreset(): Partial<Bot> {
     description: "Quem chama direto no WhatsApp: descobre a origem (ou pergunta), entende se a marca já vende ou está começando e convida para a call",
     trigger: "WHATSAPP_FIRST_MESSAGE",
     active: false,
-    actions: [...steps, ...ASKED_LINK_STEPS],
+    actions: [...steps, ...ASKED_LINK_STEPS, ...DECLINED_STEPS],
   };
 }
 

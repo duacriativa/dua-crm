@@ -1,7 +1,7 @@
 // Teste do "pular as perguntas e mandar o link": `npm run test:bots`
 import { test } from 'node:test';
 import * as assert from 'node:assert/strict';
-import { bookingLinkStep, extractInstagramHandle, dueReminder, sanitizeSteps, waitPlan, waitReplyTarget, wantsBookingLink } from './automation-steps';
+import { STEP_TYPES, bookingLinkStep, declinedReply, extractInstagramHandle, dueReminder, sanitizeSteps, waitPlan, waitReplyTarget, wantsBookingLink } from './automation-steps';
 
 test('entende pedido do link', () => {
   for (const t of [
@@ -15,6 +15,20 @@ test('não confunde resposta normal com pedido do link', () => {
     'Já estou vendendo', 'Estou começando', 'Instagram', 'pelo instagram e indicação, não investimos em tráfego',
     'a marca já está pronta', 'não temos horário fixo pra isso', 'não quero o link agora', 'sim', 'Ainda vou definir',
   ]) assert.equal(wantsBookingLink(t), false, t);
+});
+
+test('entende a recusa do lembrete', () => {
+  for (const t of [
+    'Agora não', 'agora nao', 'AGORA NÃO!', 'Agora não, obrigada', 'não', 'Não.', 'não, obrigada', 'Não obrigado',
+    'não quero', 'Não tenho interesse', 'não tenho mais interesse', 'sem interesse', 'não é o momento', 'pare de me mandar mensagem',
+  ]) assert.equal(declinedReply(t), true, t);
+});
+
+test('não confunde resposta normal com recusa', () => {
+  for (const t of [
+    'Já estou vendendo', 'Estou começando', 'sim', 'Quero sim', 'oi, tudo bem?', 'não sei', 'ainda não', 'ainda não vendo',
+    'não vendo ainda', 'não entendi', 'tenho interesse sim', 'agora sim', '', '[documento]',
+  ]) assert.equal(declinedReply(t), false, t);
 });
 
 test('acha o passo do link depois da pergunta atual', () => {
@@ -83,6 +97,7 @@ test('lê o @ da resposta à pergunta do Instagram', () => {
 });
 
 test('sanitizeSteps mantém o passo do Instagram', () => {
+  assert.ok(STEP_TYPES.includes('check_instagram'));
   const steps = sanitizeSteps([
     { id: 'tem', type: 'check_instagram', onKnown: 'fim' },
     { id: 'espera', type: 'wait_reply', captureInstagram: true, timeoutSeconds: 3600 },
