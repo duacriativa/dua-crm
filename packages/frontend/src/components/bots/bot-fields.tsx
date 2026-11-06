@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import {
-  X, Timer, MessageSquare, MessageCircle, FileText, ArrowRightLeft, MousePointerClick, Tag, Bell, CornerDownRight, StopCircle, Compass, MapPin,
+  X, Timer, MessageSquare, MessageCircle, FileText, ArrowRightLeft, MousePointerClick, Tag, Bell, CornerDownRight, StopCircle, Compass, MapPin, Instagram,
   CalendarClock, CalendarCheck, CalendarPlus, Wallet,
 } from "lucide-react";
 import type { WaTemplate } from "@/components/whatsapp/templates";
@@ -21,6 +21,7 @@ export const STEP_META: Record<StepType, { label: string; icon: (cls?: string) =
   add_tag: { label: "Adicionar etiqueta", icon: (c = "w-3.5 h-3.5") => <Tag className={c} />, color: "bg-green-50 text-green-600", head: "bg-green-600" },
   notify: { label: "Avisar o time", icon: (c = "w-3.5 h-3.5") => <Bell className={c} />, color: "bg-amber-50 text-amber-700", head: "bg-amber-500" },
   check_origin: { label: "Sabemos a origem?", icon: (c = "w-3.5 h-3.5") => <Compass className={c} />, color: "bg-teal-50 text-teal-700", head: "bg-teal-600" },
+  check_instagram: { label: "Já temos o @ do Instagram?", icon: (c = "w-3.5 h-3.5") => <Instagram className={c} />, color: "bg-pink-50 text-pink-600", head: "bg-pink-500" },
   set_origin: { label: "Gravar origem", icon: (c = "w-3.5 h-3.5") => <MapPin className={c} />, color: "bg-teal-50 text-teal-700", head: "bg-teal-600" },
   goto: { label: "Ir para", icon: (c = "w-3.5 h-3.5") => <CornerDownRight className={c} />, color: "bg-purple-50 text-purple-600", head: "bg-purple-500" },
   end: { label: "Encerrar o bot", icon: (c = "w-3.5 h-3.5") => <StopCircle className={c} />, color: "bg-red-50 text-red-600", head: "bg-red-500" },
@@ -41,6 +42,7 @@ export const NEW_STEP: Record<StepType, () => BotStep> = {
   add_tag: () => ({ type: "add_tag", tag: "" }),
   notify: () => ({ type: "notify", to: "Daniel", text: "{{primeiro_nome}} respondeu o bot:\n{{respostas}}" }),
   check_origin: () => ({ type: "check_origin" }),
+  check_instagram: () => ({ type: "check_instagram" }),
   set_origin: () => ({ type: "set_origin", origin: "ORGANIC" }),
   goto: () => ({ type: "goto" }),
   end: () => ({ type: "end" }),
@@ -90,6 +92,7 @@ export function stepSummary(s: BotStep): string {
     case "add_tag": return s.tag ? `Etiqueta: ${s.tag}` : "Etiqueta vazia";
     case "notify": return `${s.to ? `Para ${s.to}: ` : ""}${s.text}`;
     case "check_origin": return "Anúncio, texto pronto do link ou origem já gravada no contato";
+    case "check_instagram": return "Desvia quem já tem o @ gravado no contato, para não perguntar de novo";
     case "set_origin": return `Origem: ${ORIGIN_LABEL[s.origin]}${s.source ? ` (${s.source})` : ""}`;
     case "end": return "O bot termina aqui";
     case "wait_meeting": return `Até ${fmtDuration(s.seconds)} ${s.when === "before" ? "antes" : "depois"} do início da reunião`;
@@ -180,6 +183,10 @@ export function StepFields({ step, set, templates, tplError, stages, onAddButton
             <DurationInput seconds={step.timeoutSeconds ?? 7 * 86400} onChange={(timeoutSeconds) => set({ timeoutSeconds })} />
           </div>
           <AlignInput value={step.alignTo} weekends={step.alignWeekends} onChange={(patch) => set(patch)} />
+          <label className="flex items-center gap-2 text-xs text-gray-600">
+            <input type="checkbox" checked={!!step.captureInstagram} onChange={(e) => set({ captureInstagram: e.target.checked || undefined })} />
+            Gravar a resposta como @ do Instagram do contato
+          </label>
           {(step.buttons ?? []).map((b, k) => (
             <div key={k} className="flex items-center gap-2">
               <input
@@ -280,6 +287,12 @@ export function StepFields({ step, set, templates, tplError, stages, onAddButton
         <p className="text-xs text-gray-500">
           Segue por "Sabemos a origem" quando o contato veio de anúncio de clique para WhatsApp, mandou o texto pronto de um link
           ("Vim pelo Instagram", "Vim pelo site", "Vi o anúncio", "Fui indicado") ou já tem origem gravada.
+        </p>
+      )}
+
+      {step.type === "check_instagram" && (
+        <p className="text-xs text-gray-500">
+          Segue por "Já temos o @" quando o contato já tem Instagram gravado (formulário, agendamento ou edição manual).
         </p>
       )}
 

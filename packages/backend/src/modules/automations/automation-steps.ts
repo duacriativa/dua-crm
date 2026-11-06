@@ -16,7 +16,7 @@ export type AutomationStep = { id?: string; name?: string; pos?: StepPos } & (
   | ({ type: 'wait'; seconds: number } & Align)
   // `buttons`: botões de resposta rápida do template enviado antes; cada um pode desviar para um passo.
   // Qualquer outra resposta segue por onReply. Sem onTimeout → encerra.
-  | ({ type: 'wait_reply'; timeoutSeconds?: number; buttons?: { title: string; goto?: StepTarget }[]; onReply?: StepTarget; onTimeout?: StepTarget } & Align)
+  | ({ type: 'wait_reply'; captureInstagram?: boolean; timeoutSeconds?: number; buttons?: { title: string; goto?: StepTarget }[]; onReply?: StepTarget; onTimeout?: StepTarget } & Align)
   | { type: 'send_text'; text: string }
   | {
       type: 'send_template';
@@ -40,6 +40,7 @@ export type AutomationStep = { id?: string; name?: string; pos?: StepPos } & (
   | { type: 'notify'; text: string; to?: string } // nota interna na conversa + notificação nos aparelhos
   | { type: 'check_origin'; onKnown?: StepTarget; onUnknown?: StepTarget } // já sabemos de onde o contato veio?
   | { type: 'set_origin'; origin: LeadOrigin; source?: string } // grava a origem (ex.: resposta de um botão)
+  | { type: 'check_instagram'; onKnown?: StepTarget; onUnknown?: StepTarget } // o contato já tem @ gravado?
   | { type: 'goto'; target: StepTarget }
   | { type: 'end' }
   // Reunião (gatilho "Reunião agendada"): espera até `seconds` antes/depois do início.
@@ -299,6 +300,7 @@ export function sanitizeSteps(input: any, strict = true): AutomationStep[] {
         return {
           ...base,
           type: 'wait_reply',
+          ...(s.captureInstagram ? { captureInstagram: true } : {}),
           ...(s.timeoutSeconds ? { timeoutSeconds: secs(s.timeoutSeconds, 90 * 24 * 3600) } : {}),
           ...align(s),
           ...(Array.isArray(s.buttons) && s.buttons.length ? { buttons: buttonsOf(s.buttons).slice(0, 10) } : {}),
@@ -369,6 +371,8 @@ export function sanitizeSteps(input: any, strict = true): AutomationStep[] {
       }
       case 'check_origin':
         return { ...base, type: 'check_origin', ...opt('onKnown', s.onKnown), ...opt('onUnknown', s.onUnknown) };
+      case 'check_instagram':
+        return { ...base, type: 'check_instagram', ...opt('onKnown', s.onKnown), ...opt('onUnknown', s.onUnknown) };
       case 'set_origin': {
         if (!LEAD_ORIGINS.includes(s.origin)) throw new Error('Escolha a origem do contato.');
         const source = String(s.source ?? '').trim().toLowerCase().slice(0, 40);
@@ -485,4 +489,25 @@ export function originLabel(c: { leadOrigin: string | null; utmSource: string | 
     case 'OTHER': return 'Outra';
     default: return 'não informada';
   }
+}
+
+const NOT_A_HANDLE = new Set([
+  'nao', 'nem', 'sim', 'ola', 'opa', 'oii', 'oie', 'nope', 'ainda', 'tenho', 'temos', 'nenhum', 'nenhuma', 'link', 'beleza', 'blz',
+  'certo', 'claro', 'instagram', 'insta', 'obrigado', 'obrigada', 'bom', 'boa', 'isso', 'pode', 'vou', 'depois', 'tbm', 'sei', 'hmm',
+]);
+const IG_PATHS = new Set(['p', 'reel', 'reels', 'stories', 'explore', 'tv', 'accounts']);
+
+/**
+ * O @ do Instagram numa resposta à pergunta "qual o @ da sua marca?": link do perfil, @menção
+ * ou uma palavra só com cara de usuário. Frase solta ("ainda não tenho", "Francine Brand") → null.
+ */
+export function extractInstagramHandle(text: string): string | null {
+  const t = String(text ?? '').trim();
+  const clean = (h: string) => h.replace(/\.+$/, '').toLowerCase() || null;
+  const url = t.match(/instagram\.com\/([a-z0-9._]{1,30})/i);
+  if (url) return IG_PATHS.has(url[1].toLowerCase()) ? null : clean(url[1]);
+  const at = t.match(/(?:^|[^\w.])@([a-z0-9._]{1,30})/i);
+  if (at) return clean(at[1]);
+  if (!/^[a-z0-9._]{3,30}$/i.test(t) || !/[a-z]/i.test(t) || /\.(com|net|org|br|store)(\.|$)/i.test(t)) return null;
+  return NOT_A_HANDLE.has(t.toLowerCase()) ? null : clean(t);
 }

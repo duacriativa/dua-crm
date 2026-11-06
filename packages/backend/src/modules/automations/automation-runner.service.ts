@@ -7,8 +7,7 @@ import { phoneVariants, toBrDigits } from '../../common/phone.util';
 import { MEETING_EVENTS, appUrl } from '../scheduling/scheduling.service';
 import {
   AutomationConditions, AutomationStep, DEFAULT_BOOKING_TIMEOUT_S, DEFAULT_MEETING_STATUS_TIMEOUT_S, MEETING_LATE_GRACE_MS, Reminder, StepTarget, WINDOW_MS,
-  bookingLinkStep, businessHours, dueReminder, giveUpAfter, meetingWaitAt, originFromText, originLabel, salesChannelPhrase, sameAnswer, waitPlan, waitReplyTarget, waitUntil, wantsBookingLink,
-} from './automation-steps';
+  bookingLinkStep, businessHours, dueReminder, giveUpAfter, meetingWaitAt, originFromText, originLabel, salesChannelPhrase, sameAnswer, waitPlan, waitReplyTarget, waitUntil, wantsBookingLink, extractInstagramHandle } from './automation-steps';
 
 const ACTIVE = ['RUNNING', 'WAITING_REPLY'];
 const POLL_MS = 5000;
@@ -420,7 +419,15 @@ export class AutomationRunner implements OnModuleInit, OnModuleDestroy {
     const tappedButton = (current?.type === 'send_buttons' || current?.type === 'wait_reply') && !!current.buttons?.some((b) => sameAnswer(b.title, answer));
     const skip = !run.meetingId && !tappedButton && wantsBookingLink(answer) ? bookingLinkStep(steps, run.stepIndex) : -1;
     if (skip >= 0) this.logger.log(`[Bots] Sessão ${run.id}: pediu o link de agendamento, pulando as perguntas`);
-    const again = skip < 0 && run.remindersSent && (await this.lastBotWasTemplate(conversationId)) ? askAgainAt(steps, run.stepIndex, answer) : null;
+    // Passo que pergunta o @: grava no contato (sem sobrescrever o que já existe) e conta como resposta certa
+    const handle = skip < 0 && current?.type === 'wait_reply' && current.captureInstagram && !tappedButton ? extractInstagramHandle(answer) : null;
+    if (handle) {
+      await this.prisma.contact.updateMany({
+        where: { id: run.contactId, tenantId: run.tenantId, OR: [{ instagramHandle: null }, { instagramHandle: '' }] },
+        data: { instagramHandle: handle },
+      }).catch((err) => this.logger.warn(`[Bots] Não gravou o @ da sessão ${run.id}: ${err.message}`));
+    }
+    const again = !handle && skip < 0 && run.remindersSent && (await this.lastBotWasTemplate(conversationId)) ? askAgainAt(steps, run.stepIndex, answer) : null;
     const next = skip >= 0 ? skip : again ?? afterReply(steps, run.stepIndex, answer);
     const now = new Date();
     await this.prisma.automationRun.updateMany({
@@ -615,6 +622,13 @@ export class AutomationRunner implements OnModuleInit, OnModuleDestroy {
 
         if (step.type === 'check_origin') {
           i = indexOf(steps, (await this.originKnown(run, conversationId)) ? step.onKnown : step.onUnknown, i);
+          if (i !== END) await this.prisma.automationRun.update({ where: { id: run.id }, data: { stepIndex: i } });
+          continue;
+        }
+
+        if (step.type === 'check_instagram') {
+          const c = await this.prisma.contact.findUnique({ where: { id: run.contactId }, select: { instagramHandle: true } });
+          i = indexOf(steps, c?.instagramHandle?.trim() ? step.onKnown : step.onUnknown, i);
           if (i !== END) await this.prisma.automationRun.update({ where: { id: run.id }, data: { stepIndex: i } });
           continue;
         }

@@ -1,7 +1,7 @@
 // Teste do "pular as perguntas e mandar o link": `npm run test:bots`
 import { test } from 'node:test';
 import * as assert from 'node:assert/strict';
-import { bookingLinkStep, dueReminder, sanitizeSteps, waitPlan, waitReplyTarget, wantsBookingLink } from './automation-steps';
+import { bookingLinkStep, extractInstagramHandle, dueReminder, sanitizeSteps, waitPlan, waitReplyTarget, wantsBookingLink } from './automation-steps';
 
 test('entende pedido do link', () => {
   for (const t of [
@@ -69,4 +69,26 @@ test('lembrete do pagamento sai de madrugada; os outros esperam as 9h', () => {
   assert.equal(waitPlan(since, 0, { timeoutSeconds: 3600 }, { reminders, anyHour: true }).reminderAt?.toISOString(), hora.toISOString());
   assert.equal(dueReminder(since, 0, { reminders }, hora.getTime()), null);
   assert.equal(waitPlan(since, 0, { timeoutSeconds: 3600 }, { reminders }).reminderAt?.toISOString(), '2026-11-06T12:00:00.000Z');
+});
+
+test('lê o @ da resposta à pergunta do Instagram', () => {
+  const ok: [string, string][] = [
+    ['@FrancineBrand', 'francinebrand'], ['francine.brand', 'francine.brand'], ['é @francine_brand.', 'francine_brand'],
+    ['https://www.instagram.com/francinebrand/?hl=pt', 'francinebrand'], ['instagram.com/marca', 'marca'], ['o nosso é @marca2 tá', 'marca2'],
+  ];
+  for (const [text, handle] of ok) assert.equal(extractInstagramHandle(text), handle, text);
+  for (const text of ['não', 'nao', 'Não tenho', 'ainda não temos', 'sim', 'ok', 'LINK', 'Francine Brand', '[áudio]', 'eu@gmail.com', 'minhaloja.com.br', '12345', 'https://instagram.com/p/abc123', '']) {
+    assert.equal(extractInstagramHandle(text), null, text);
+  }
+});
+
+test('sanitizeSteps mantém o passo do Instagram', () => {
+  const steps = sanitizeSteps([
+    { id: 'tem', type: 'check_instagram', onKnown: 'fim' },
+    { id: 'espera', type: 'wait_reply', captureInstagram: true, timeoutSeconds: 3600 },
+    { id: 'fim', type: 'end' },
+  ]) as any[];
+  assert.equal(steps[0].type, 'check_instagram');
+  assert.equal(steps[0].onKnown, 'fim');
+  assert.equal(steps[1].captureInstagram, true);
 });

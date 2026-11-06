@@ -6,7 +6,7 @@ import type { WaTemplate } from "@/components/whatsapp/templates";
 
 export type BotStep = { id?: string; name?: string; pos?: { x: number; y: number } } & (
   | { type: "wait"; seconds: number; alignTo?: string; alignWeekends?: boolean }
-  | { type: "wait_reply"; timeoutSeconds?: number; alignTo?: string; alignWeekends?: boolean; buttons?: { title: string; goto?: string }[]; onReply?: string; onTimeout?: string }
+  | { type: "wait_reply"; captureInstagram?: boolean; timeoutSeconds?: number; alignTo?: string; alignWeekends?: boolean; buttons?: { title: string; goto?: string }[]; onReply?: string; onTimeout?: string }
   | { type: "send_text"; text: string }
   | {
       type: "send_template";
@@ -31,6 +31,7 @@ export type BotStep = { id?: string; name?: string; pos?: { x: number; y: number
   | { type: "notify"; text: string; to?: string }
   | { type: "check_origin"; onKnown?: string; onUnknown?: string }
   | { type: "set_origin"; origin: LeadOrigin; source?: string }
+  | { type: "check_instagram"; onKnown?: string; onUnknown?: string }
   | { type: "goto"; target?: string }
   | { type: "end" }
   | { type: "wait_meeting"; seconds: number; when: "before" | "after"; onTime?: string; onLate?: string }
@@ -166,6 +167,8 @@ const QUALIFY_BUTTONS = (existing: string, fresh: string) => [
   { title: "Estou começando", goto: fresh },
 ];
 
+const INSTAGRAM_QUESTION = "Só mais uma coisinha, {{primeiro_nome}}: qual é o @ da sua marca no Instagram? Assim o Daniel já chega na conversa conhecendo o perfil de vocês 😊\n\nSe ainda não tiver, é só me avisar.";
+
 /**
  * Roteiro de qualificação (do passo "momento" em diante), igual para o formulário e para o WhatsApp:
  * já vende ou está começando → 2 perguntas de cada caminho → convite para a call (link de agendamento).
@@ -210,6 +213,10 @@ function qualifySteps(momentoText: string): BotStep[] {
     { id: "sem_orcamento", type: "add_tag", tag: "sem orçamento definido" },
 
     { id: "pausa_convite", name: "Convite", type: "wait", seconds: 30 },
+    { id: "tem_instagram", name: "Já temos o @?", type: "check_instagram", onKnown: "convite" },
+    { id: "pede_instagram", name: "Pergunta o @", type: "send_text", text: INSTAGRAM_QUESTION },
+    { id: "espera_instagram", type: "wait_reply", captureInstagram: true, timeoutSeconds: 4 * H, onTimeout: "parou" },
+    { id: "pausa_instagram", type: "wait", seconds: 20 },
     {
       id: "convite", type: "send_text",
       text: "Perfeito, {{primeiro_nome}}! Com o que você me contou já dá pra preparar uma conversa bem direcionada pro momento da sua marca 💜\n\nQuem vai conversar com você é o *Daniel*, que cuida da estratégia aqui na Dua. São 45 min por vídeo: ele entende seu cenário com calma, te mostra como a gente trabalha e, se fizer sentido pros dois lados, vocês veem os próximos passos.\n\nEscolhe o melhor horário aqui: https://crm.duacriativa.com.br/agendar/especialista",

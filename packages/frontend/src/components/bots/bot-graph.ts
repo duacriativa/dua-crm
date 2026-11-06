@@ -39,6 +39,10 @@ export function outputsOf(s: BotStep): Output[] {
     { handle: "known", kind: "reply", label: "Sabemos a origem" },
     { handle: "unknown", kind: "other", label: "Não sabemos" },
   ];
+  if (s.type === "check_instagram") return [
+    { handle: "known", kind: "reply", label: "Já temos o @" },
+    { handle: "unknown", kind: "other", label: "Não temos" },
+  ];
   if (s.type === "wait_meeting") return [
     { handle: "time", kind: "next", label: "Na hora" },
     { handle: "late", kind: "other", label: "Horário já passou" },
@@ -97,7 +101,7 @@ export function toGraph(actions: BotStep[]): BotGraph {
       (s.buttons ?? []).forEach((b, k) => set(id, `b${k}`, resolve(b.goto, i), !b.goto));
       set(id, "reply", resolve(s.onReply, i), !s.onReply);
       set(id, "timeout", s.onTimeout ? resolve(s.onTimeout, i) : null, !s.onTimeout);
-    } else if (s.type === "check_origin") {
+    } else if (s.type === "check_origin" || s.type === "check_instagram") {
       set(id, "known", resolve(s.onKnown, i), !s.onKnown);
       set(id, "unknown", resolve(s.onUnknown, i), !s.onUnknown);
     } else if (s.type === "wait_meeting") {
@@ -189,7 +193,7 @@ export function toSteps(g: BotGraph, posOf: (id: string) => { x: number; y: numb
       if (s.buttons?.length) step.buttons = s.buttons.map((b, i) => { const t = branch(`b${i}`); return t ? { title: b.title, goto: t } : { title: b.title }; });
       put("onReply", branch("reply"));
       put("onTimeout", timeout("timeout"));
-    } else if (s.type === "check_origin") {
+    } else if (s.type === "check_origin" || s.type === "check_instagram") {
       put("onKnown", branch("known"));
       put("onUnknown", branch("unknown"));
     } else if (s.type === "wait_meeting") {
