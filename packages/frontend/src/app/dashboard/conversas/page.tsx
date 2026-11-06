@@ -285,13 +285,15 @@ function ConversasInner() {
     if (mobileView === "chat") setMobileView("list");
     else if (mobileView === "info") setMobileView("chat");
   };
-  const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const isInitialLoadRef = useRef(false);
   const forceScrollRef = useRef(false);   // rola até o fim após enviar
-  const prevScrollHeightRef = useRef(0);  // altura antes da última atualização
-  const stickUntilRef = useRef(0);        // até quando a conversa recém-aberta fica presa no fim (fotos carregando)
-  const scrollToBottom = () => requestAnimationFrame(() => messagesEndRef.current?.scrollIntoView({ block: "end" }));
+  const pinnedToBottomRef = useRef(true); // a pessoa está acompanhando o fim; rolou para cima = solta
+  // Vai até o fim real (com o padding da lista): parar antes pareceria um gesto de subir
+  const scrollToBottom = () => requestAnimationFrame(() => {
+    const c = messagesContainerRef.current;
+    if (c) c.scrollTop = c.scrollHeight;
+  });
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const selectedRef = useRef<Conversation | null>(null);
   selectedRef.current = selected;
@@ -615,47 +617,47 @@ function ConversasInner() {
 
     if (isInitialLoadRef.current) {
       isInitialLoadRef.current = false;
+      pinnedToBottomRef.current = true;
       // setTimeout garante que o browser terminou o layout antes de scrollar
-      stickUntilRef.current = Date.now() + 10_000;
       setTimeout(() => {
         const container = messagesContainerRef.current;
-        if (container) { container.scrollTop = container.scrollHeight; prevScrollHeightRef.current = container.scrollHeight; }
+        if (container) container.scrollTop = container.scrollHeight;
       }, 50);
       return;
     }
 
-    const container = messagesContainerRef.current;
-    if (!container) return;
-    // Mede pela altura anterior: a mensagem nova já está no DOM e não deve contar
-    const wasNearBottom = prevScrollHeightRef.current - container.scrollTop - container.clientHeight < 200;
-    if (forceScrollRef.current || wasNearBottom) {
-      forceScrollRef.current = false;
-      scrollToBottom();
-    }
-    prevScrollHeightRef.current = container.scrollHeight;
+    // O polling recria a lista a cada 3s: só desce se a pessoa estiver acompanhando o fim.
+    // Mensagem longa não cabe em "perto do fim" por distância, por isso vale o gesto dela
+    if (forceScrollRef.current) pinnedToBottomRef.current = true;
+    forceScrollRef.current = false;
+    if (pinnedToBottomRef.current) scrollToBottom();
   }, [timeline]);
 
-  // Fotos e vídeos carregam depois da rolagem inicial e empurram o fim para baixo:
-  // enquanto a conversa acabou de abrir, volta para o fim a cada mídia carregada,
-  // até a pessoa rolar por conta própria
+  // Quem decide se a tela fica presa no fim é a rolagem da pessoa (roda, dedo, barra, teclado).
+  // Fotos e vídeos carregam depois e empurram o fim para baixo: só acompanha se estiver presa
   useEffect(() => {
     const container = messagesContainerRef.current;
     if (!container) return;
-    const onMediaLoad = () => {
-      if (Date.now() > stickUntilRef.current) return;
-      container.scrollTop = container.scrollHeight;
-      prevScrollHeightRef.current = container.scrollHeight;
+    let lastTop = container.scrollTop;
+    const onScroll = () => {
+      const top = container.scrollTop;
+      const distance = container.scrollHeight - top - container.clientHeight;
+      // distance <= 2 vem antes: o campo de texto encolhendo também reduz o scrollTop, sem gesto
+      if (distance <= 2) pinnedToBottomRef.current = true;
+      else if (top < lastTop) pinnedToBottomRef.current = false;
+      else if (distance < 40) pinnedToBottomRef.current = true;
+      lastTop = top;
     };
-    const release = () => { stickUntilRef.current = 0; };
+    const onMediaLoad = () => {
+      if (pinnedToBottomRef.current) container.scrollTop = container.scrollHeight;
+    };
+    container.addEventListener("scroll", onScroll, { passive: true });
     container.addEventListener("load", onMediaLoad, true);
     container.addEventListener("loadedmetadata", onMediaLoad, true);
-    container.addEventListener("wheel", release, { passive: true });
-    container.addEventListener("touchmove", release, { passive: true });
     return () => {
+      container.removeEventListener("scroll", onScroll);
       container.removeEventListener("load", onMediaLoad, true);
       container.removeEventListener("loadedmetadata", onMediaLoad, true);
-      container.removeEventListener("wheel", release);
-      container.removeEventListener("touchmove", release);
     };
   }, [selected?.id, isDesktop, mobileView]);
 
@@ -720,12 +722,6 @@ function ConversasInner() {
       .slice(-20)
       .forEach((m) => { triedMediaRef.current.add(m.id); fetchMediaUrl(selected.id, m.id).catch(() => {}); });
   }, [messages, selected]);
-
-  // Imagem terminou de carregar: se estava no fim da conversa, continua no fim
-  const handleMediaLoad = () => {
-    const c = messagesContainerRef.current;
-    if (c && c.scrollHeight - c.scrollTop - c.clientHeight < 300) scrollToBottom();
-  };
 
   const downloadDocument = async (msg: Message) => {
     if (!selected || downloadingId) return;
@@ -1252,7 +1248,6 @@ function ConversasInner() {
                         src={msg.mediaUrl} alt="mídia"
                         className="w-full max-w-[280px] object-cover rounded-t-2xl cursor-pointer hover:opacity-90 transition-opacity"
                         style={{ maxHeight: 200 }}
-                        onLoad={handleMediaLoad}
                         onClick={() => setLightboxUrl(msg.mediaUrl!)}
                       />
                     )}
@@ -1262,7 +1257,6 @@ function ConversasInner() {
                         src={msg.mediaUrl} controls playsInline preload="metadata"
                         className="w-full max-w-[280px] rounded-t-2xl bg-black"
                         style={{ maxHeight: 360 }}
-                        onLoadedMetadata={handleMediaLoad}
                       />
                     )}
                     {/* Ícone para tipos sem thumbnail */}
@@ -1357,7 +1351,6 @@ function ConversasInner() {
             );
           })
         )}
-        <div ref={messagesEndRef} />
       </div>
 
       <div className="bg-white border-t border-gray-200 px-3 py-3 shrink-0">
