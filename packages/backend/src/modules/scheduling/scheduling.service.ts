@@ -7,6 +7,7 @@ import { FunnelService } from '../pipelines/funnel.service';
 import { NotifyService } from '../notifications/notify.service';
 import { normalizePhone, phoneVariants } from '../../common/phone.util';
 import { GoogleCalendarService } from './google-calendar.service';
+import { normalizeInstagramHandle } from '../contacts/instagram-profile.service';
 import {
   AvailabilityConfig, DEFAULT_WEEKLY_HOURS, Interval, addDays, bookableWindow, cleanDateOverrides, cleanWeeklyHours,
   computeSlots, dateInZone, isSlotAvailable, zonedToUtc,
@@ -30,7 +31,7 @@ export const MEETING_EVENTS = {
   completed: 'meeting.completed',
 } as const;
 
-export interface BookingInput { startAt: string; name: string; phone: string; email: string; notes?: string }
+export interface BookingInput { startAt: string; name: string; phone: string; email: string; instagram?: string; notes?: string }
 
 export const appUrl = () => (process.env.PUBLIC_APP_URL ?? 'https://crm.duacriativa.com.br').replace(/\/$/, '');
 
@@ -246,7 +247,7 @@ export class SchedulingService {
   }
 
   /** Acha o contato pelo telefone (com/sem nono dígito) ou e-mail; senão cria como lead. */
-  private async upsertContact(tenantId: string, name: string, phone: string, email: string) {
+  private async upsertContact(tenantId: string, name: string, phone: string, email: string, instagramHandle: string | null) {
     const existing = await this.prisma.contact.findFirst({ where: { tenantId, phone: { in: phoneVariants(phone) } } })
       ?? await this.prisma.contact.findFirst({ where: { tenantId, email: { equals: email, mode: 'insensitive' } } });
     if (existing) {
@@ -256,12 +257,13 @@ export class SchedulingService {
           name: !existing.name || existing.name === existing.phone ? name : undefined,
           email: existing.email ? undefined : email,
           phone: existing.phone ? undefined : phone,
+          instagramHandle: existing.instagramHandle?.trim() || !instagramHandle ? undefined : instagramHandle,
           tags: existing.tags.includes('agendou-reuniao') ? undefined : [...existing.tags, 'agendou-reuniao'],
         },
       });
     }
     return this.prisma.contact.create({
-      data: { tenantId, type: 'LEAD', name, phone, email, tags: ['agendou-reuniao'] },
+      data: { tenantId, type: 'LEAD', name, phone, email, instagramHandle, tags: ['agendou-reuniao'] },
     });
   }
 
@@ -270,14 +272,17 @@ export class SchedulingService {
     const name = String(input.name ?? '').trim().slice(0, 120);
     const email = String(input.email ?? '').trim().toLowerCase().slice(0, 200);
     const phone = normalizePhone(String(input.phone ?? ''));
-    const notes = String(input.notes ?? '').trim().slice(0, 1000) || null;
+    const instagram = normalizeInstagramHandle(String(input.instagram ?? '').slice(0, 120)) || null;
+    if (instagram && !/^[a-z0-9._]{1,30}$/.test(instagram)) throw new BadRequestException('Confira o @ do Instagram: só letras, números, ponto e sublinhado, sem espaços.');
+    // O @ vai junto das observações: aparece na nota da conversa, em Reuniões e no evento do Google
+    const notes = [instagram ? `Instagram: @${instagram}` : '', String(input.notes ?? '').trim()].filter(Boolean).join('\n').slice(0, 1000) || null;
     if (name.length < 2) throw new BadRequestException('Informe seu nome.');
     if (!EMAIL_RE.test(email)) throw new BadRequestException('Informe um e-mail válido.');
     if (!phone || phone.length < 12 || phone.length > 16) throw new BadRequestException('Informe um WhatsApp válido com DDD.');
 
     const start = await this.checkFree(page, input.startAt);
     const end = new Date(start.getTime() + page.durationMin * 60_000);
-    const contact = await this.upsertContact(page.tenantId, name, phone, email);
+    const contact = await this.upsertContact(page.tenantId, name, phone, email, instagram);
 
     const already = await this.prisma.meeting.findFirst({
       where: { tenantId: page.tenantId, contactId: contact.id, bookingPageId: page.id, status: 'SCHEDULED', startAt: { gt: new Date() } },

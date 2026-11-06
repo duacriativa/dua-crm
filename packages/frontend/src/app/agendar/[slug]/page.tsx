@@ -14,7 +14,8 @@ export default function BookingPage({ params }: { params: { slug: string } }) {
   const [page, setPage] = useState<PageInfo | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [slot, setSlot] = useState<string | null>(null);
-  const [form, setForm] = useState({ name: "", phone: "", email: "", notes: "" });
+  const [form, setForm] = useState({ name: "", phone: "", email: "", instagram: "", notes: "" });
+  const [noInstagram, setNoInstagram] = useState(false);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
   const [booked, setBooked] = useState<Booked | null>(null);
@@ -36,7 +37,7 @@ export default function BookingPage({ params }: { params: { slug: string } }) {
     if (!slot) return;
     setSending(true); setError("");
     try {
-      const res = await publicApi<Booked>(`/${encodeURIComponent(params.slug)}/book`, { method: "POST", body: { startAt: slot, ...form } });
+      const res = await publicApi<Booked>(`/${encodeURIComponent(params.slug)}/book`, { method: "POST", body: { startAt: slot, ...form, instagram: noInstagram ? "" : form.instagram } });
       setBooked(res);
     } catch (err: any) {
       setError(err.message);
@@ -113,10 +114,21 @@ export default function BookingPage({ params }: { params: { slug: string } }) {
                   <input required type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className={`${inp} mt-1`} autoComplete="email" />
                   <span className="text-xs text-neutral-500">O convite com o link do Google Meet vai para este e-mail.</span>
                 </label>
+                <div>
+                  <label className="block">
+                    <span className="text-sm font-medium">Instagram da marca *</span>
+                    <input required={!noInstagram} disabled={noInstagram} placeholder="@suamarca" value={noInstagram ? "" : form.instagram} autoCapitalize="none" autoCorrect="off" spellCheck={false}
+                      onChange={(e) => setForm({ ...form, instagram: e.target.value })} className={`${inp} mt-1 disabled:bg-neutral-100`} />
+                  </label>
+                  <label className="flex items-center gap-2 mt-2 text-xs text-neutral-600">
+                    <input type="checkbox" checked={noInstagram} onChange={(e) => setNoInstagram(e.target.checked)} />
+                    Minha marca ainda não tem Instagram
+                  </label>
+                </div>
                 <label className="block">
                   <span className="text-sm font-medium">Quer contar algo antes da reunião?</span>
                   <textarea rows={3} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} className={`${inp} mt-1 resize-none`}
-                    placeholder="Ex.: @ da sua marca, o que você vende, maior desafio hoje" />
+                    placeholder="Ex.: o que você vende, maior desafio hoje" />
                 </label>
               </div>
               {error && <p className="text-sm text-red-600 mt-4">{error}</p>}

@@ -350,6 +350,7 @@ function ConversasInner() {
   const [editingContact, setEditingContact] = useState(false);
   const [editName, setEditName] = useState("");
   const [editPhone, setEditPhone] = useState("");
+  const [editInstagram, setEditInstagram] = useState("");
   const [savingContact, setSavingContact] = useState(false);
 
   // Limpa LID e formatos estranhos para exibição
@@ -374,19 +375,21 @@ function ConversasInner() {
   const saveContact = async () => {
     if (!selected) return;
     setSavingContact(true);
+    const instagramHandle = igHandle(editInstagram) || null;
     try {
       await authFetch(`${API_URL}/api/v1/contacts/${selected.contact.id}`, {
         method: "PATCH",
         headers: { ...authHeaders(), "Content-Type": "application/json" },
-        body: JSON.stringify({ name: editName, phone: editPhone }),
+        body: JSON.stringify({ name: editName, phone: editPhone, instagramHandle }),
       });
       // Atualiza local
       setConversations((prev) => prev.map((c) =>
         c.id === selected.id
-          ? { ...c, contact: { ...c.contact, name: editName, phone: editPhone }, externalId: editPhone }
+          ? { ...c, contact: { ...c.contact, name: editName, phone: editPhone, instagramHandle }, externalId: editPhone }
           : c
       ));
-      setSelected((prev) => prev ? { ...prev, contact: { ...prev.contact, name: editName, phone: editPhone }, externalId: editPhone } : prev);
+      setSelected((prev) => prev ? { ...prev, contact: { ...prev.contact, name: editName, phone: editPhone, instagramHandle }, externalId: editPhone } : prev);
+      setContactInfo((prev) => prev ? { ...prev, instagramHandle } : prev);
       setEditingContact(false);
     } finally {
       setSavingContact(false);
@@ -1579,6 +1582,14 @@ function ConversasInner() {
   );
 
   // ── Info Panel ────────────────────────────────────────────────────────────
+  const openEditContact = () => {
+    if (!selected) return;
+    setEditName(selected.contact.name);
+    setEditPhone(selected.contact.phone ?? "");
+    setEditInstagram(selected.contact.instagramHandle ?? "");
+    setEditingContact(true);
+  };
+
   const InfoPanel = selected ? (
     <aside className="w-full lg:w-64 flex flex-col bg-white h-full border-l border-gray-200 overflow-y-auto shrink-0">
       <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-100 lg:hidden">
@@ -1616,7 +1627,7 @@ function ConversasInner() {
         <div className="flex gap-2 mt-3">
           <Link href={`/dashboard/contatos/${selected.contact.id}`} className="flex-1 py-1.5 text-xs font-semibold text-brand-600 border border-brand-200 rounded-lg hover:bg-brand-50">Ver Perfil</Link>
           <button
-            onClick={() => { setEditName(selected.contact.name); setEditPhone(selected.contact.phone ?? ""); setEditingContact(true); }}
+            onClick={openEditContact}
             className="flex-1 py-1.5 text-xs font-semibold text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50"
           >Editar</button>
         </div>
@@ -1630,6 +1641,10 @@ function ConversasInner() {
           <a href={`https://instagram.com/${ig}`} target="_blank" rel="noopener noreferrer" className="text-pink-600 hover:underline flex items-center gap-1 min-w-0">
             <Instagram className="w-3.5 h-3.5 shrink-0" /><span className="truncate">@{ig}</span>
           </a>) });
+        else rows.push({ label: "Instagram", value: (
+          <button onClick={openEditContact} className="text-gray-400 hover:text-pink-600 flex items-center gap-1">
+            <Instagram className="w-3.5 h-3.5 shrink-0" />Adicionar @
+          </button>) });
         if (contactInfo.email) rows.push({ label: "E-mail", value: (
           <a href={`mailto:${contactInfo.email}`} className="text-brand-600 hover:underline flex items-center gap-1 min-w-0">
             <Mail className="w-3.5 h-3.5 shrink-0" /><span className="truncate">{contactInfo.email}</span>
@@ -1725,6 +1740,16 @@ function ConversasInner() {
                 {(editPhone.startsWith("lid:") || editPhone.includes("@lid")) && (
                   <p className="text-xs text-orange-600 mt-1">⚠️ Digite o número real para poder enviar mensagens</p>
                 )}
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Instagram</label>
+                <input
+                  type="text"
+                  value={editInstagram}
+                  onChange={(e) => setEditInstagram(e.target.value)}
+                  placeholder="@marca"
+                  className="w-full text-sm text-gray-900 bg-white border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-500"
+                />
               </div>
             </div>
             <div className="flex gap-2 mt-5">

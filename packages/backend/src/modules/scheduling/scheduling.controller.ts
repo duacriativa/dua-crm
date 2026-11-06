@@ -45,7 +45,7 @@ export class PublicBookingController {
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   book(@Param('slug') slug: string, @Body() body: any) {
     return this.scheduling.book(slug, {
-      startAt: String(body?.startAt ?? ''), name: body?.name, phone: body?.phone, email: body?.email, notes: body?.notes,
+      startAt: String(body?.startAt ?? ''), name: body?.name, phone: body?.phone, email: body?.email, instagram: body?.instagram, notes: body?.notes,
     });
   }
 }
