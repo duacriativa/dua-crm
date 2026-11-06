@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import * as assert from 'node:assert/strict';
 import { PlanAnswers, answerLines, isIsoDate, launchBrief, planStartDate, unconfirmedHandles } from './plan-brief';
+import { isProfileNotFoundError } from '../contacts/instagram-errors';
 
 const base: PlanAnswers = {
   nicho: 'Moda feminina', ticket: 'R$ 180', publico: 'Mulheres 25-40', quemPosta: 'Eu mesma(o)',
@@ -91,4 +92,13 @@ test('valida data real', () => {
   assert.equal(isIsoDate('2026-02-31'), false);
   assert.equal(isIsoDate('11/12/2026'), false);
   assert.equal(isIsoDate(undefined), false);
+});
+
+test('reconhece perfil não encontrado em qualquer idioma, sem confundir com falha da API', () => {
+  // texto real da produção (05/11/2026)
+  assert.equal(isProfileNotFoundError({ error_user_msg: 'Não foi possível encontrar o usuário com o nome de usuário qqxx7720dua.' }), true);
+  assert.equal(isProfileNotFoundError({ message: 'Invalid user id', code: 110 }), true);
+  assert.equal(isProfileNotFoundError({ message: 'Erro qualquer', error_subcode: 2207013 }), true);
+  assert.equal(isProfileNotFoundError({ message: 'Application does not have permission for this action', code: 10 }), false);
+  assert.equal(isProfileNotFoundError(undefined), false);
 });
