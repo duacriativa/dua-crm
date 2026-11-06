@@ -7,7 +7,7 @@ import { phoneVariants, toBrDigits } from '../../common/phone.util';
 import { MEETING_EVENTS, appUrl } from '../scheduling/scheduling.service';
 import {
   AutomationConditions, AutomationStep, DEFAULT_BOOKING_TIMEOUT_S, DEFAULT_MEETING_STATUS_TIMEOUT_S, MEETING_LATE_GRACE_MS, Reminder, StepTarget, WINDOW_MS,
-  DECLINED_STEP, bookingLinkStep, businessHours, declinedReply, dueReminder, giveUpAfter, meetingWaitAt, originFromText, originLabel, salesChannelPhrase, sameAnswer, waitPlan, waitReplyTarget, waitUntil, wantsBookingLink, extractInstagramHandle,
+  CANDIDATE_REPLY, DECLINED_STEP, NEW_CONTACT_MS, bookingLinkStep, businessHours, declinedReply, dueReminder, giveUpAfter, meetingWaitAt, originFromText, originLabel, salesChannelPhrase, sameAnswer, waitPlan, waitReplyTarget, waitUntil, wantsBookingLink, extractInstagramHandle,
 } from './automation-steps';
 
 const ACTIVE = ['RUNNING', 'WAITING_REPLY'];
@@ -20,12 +20,11 @@ const END = -1;
 const MAX_STEPS_PER_RUN = 60;
 // Respondeu até esse tempo depois de o bot desistir por falta de resposta: o bot retoma
 const REVIVE_MS = 7 * 24 * 3600_000;
-// "Primeira mensagem no WhatsApp" só vale para contato criado há menos que isso
-const NEW_CONTACT_MS = 24 * 3600_000;
 
 /** Eventos que os outros módulos emitem para os bots. */
 export interface LeadFormEvent { tenantId: string; contactId: string }
 export interface InboundMessageEvent { tenantId: string; contactId: string; conversationId: string; firstMessage?: boolean }
+export interface CandidateEvent { tenantId: string; contactId: string; conversationId: string; preview: string }
 export interface HumanMessageEvent { tenantId: string; conversationId: string }
 export interface StageEnteredEvent { tenantId: string; contactId: string; stageId: string }
 export interface MeetingEvent { tenantId: string; meetingId: string; contactId: string; startAt: Date }
@@ -251,6 +250,21 @@ export class AutomationRunner implements OnModuleInit, OnModuleDestroy {
       await this.trigger(e.tenantId, 'WHATSAPP_FIRST_MESSAGE', e.contactId);
     } catch (err: any) {
       this.logger.error(`[Bots] Falha no gatilho de 1ª mensagem (${e.contactId}): ${err.message}`);
+    }
+  }
+
+  /** Procurou a Dua para trabalhar aqui: uma resposta só, e o time fica sabendo o que a pessoa escreveu. */
+  @OnEvent('whatsapp.candidate', { async: true })
+  async onCandidate(e: CandidateEvent) {
+    try {
+      const ref: RunRef = { id: `candidato-${e.contactId}`, tenantId: e.tenantId, contactId: e.contactId, conversationId: e.conversationId, startedAt: new Date(), meetingId: null };
+      await this.execute(ref, { type: 'send_text', text: CANDIDATE_REPLY });
+      await this.execute(ref, {
+        type: 'notify', to: 'Daniel',
+        text: `{{primeiro_nome}} parece ser uma candidatura: recebeu a resposta do banco de talentos e não entrou no bot nem no funil. Se for lead, é só tirar a etiqueta "candidato" e responder.\n\nO que escreveu:\n${e.preview}`,
+      });
+    } catch (err: any) {
+      this.logger.error(`[Bots] Falha ao responder o candidato ${e.contactId}: ${err.message}`);
     }
   }
 

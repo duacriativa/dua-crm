@@ -113,7 +113,7 @@ export class SalesTasksService implements OnModuleInit, OnModuleDestroy {
 
     const contactIds = [...new Set([...meetings.map((m) => m.contactId), ...leads.map((l) => l.contactId), ...convs.map((c) => c.contactId), ...notes.map((n) => n.contactId)])];
     const contacts = contactIds.length
-      ? await this.prisma.contact.findMany({ where: { tenantId, id: { in: contactIds } }, select: { id: true, name: true, phone: true, instagramHandle: true, type: true } })
+      ? await this.prisma.contact.findMany({ where: { tenantId, id: { in: contactIds } }, select: { id: true, name: true, phone: true, instagramHandle: true, type: true, tags: true } })
       : [];
 
     return {

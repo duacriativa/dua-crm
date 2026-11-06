@@ -233,6 +233,41 @@ export function declinedReply(answer: string) {
   );
 }
 
+/** Etiqueta de quem procurou a Dua para trabalhar aqui, não para contratar. */
+export const CANDIDATE_TAG = 'candidato';
+
+/** "Primeira mensagem" e candidatura só valem para contato criado há menos que isso. */
+export const NEW_CONTACT_MS = 24 * 3600_000;
+
+export const CANDIDATE_REPLY = 'Oi, {{primeiro_nome}}! Recebemos seu material e guardamos no nosso banco de talentos 💜 Se surgir uma oportunidade com o seu perfil, a gente te chama por aqui.';
+
+/**
+ * A mensagem é de quem quer trabalhar na Dua (currículo, vaga, estágio)? Só frases claras:
+ * "oportunidade", "equipe" ou "trabalhar com vocês" sozinhos também aparecem em conversa de cliente.
+ * Regra conferida no histórico de mensagens de 120 dias, sem nenhum lead barrado.
+ */
+export function looksLikeCandidate(type: string, content: string | null | undefined) {
+  const t = (content || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  if (type === 'DOCUMENT') return /portfolio|curricul|(^|[^a-z0-9])cv([^a-z0-9]|$)/.test(t);
+  if (type !== 'TEXT') return false;
+  if (/\bvagas?\b.*\b(agenda|mentoria|consultoria|turma|curso|reuniao)\b/.test(t)) return false;
+  return (
+    /\bcurricul(o|um)\b/.test(t) ||
+    /\b(meu|meus|segue|anexo|envio|enviando) (o |os |meu |meus )?portfolios?\b/.test(t) ||
+    /\bvagas? (abertas?|disponive(l|is)|de|para|pra)\b/.test(t) ||
+    /\b(alguma|algum|tem|tenho|possuem|teria|teriam|ha|existe) (oportunidade de )?vagas?\b/.test(t) ||
+    /\boportunidade de vaga\b/.test(t) ||
+    /\b(vaga|procuro|busco|fazer|oportunidade)( de)? estagio\b/.test(t) ||
+    /\boportunidades? (de (emprego|trabalho|colaboracao)|na (equipe|area|empresa|agencia))\b/.test(t) ||
+    /\b(futuras|possiveis) oportunidades\b/.test(t) ||
+    /\bbanco de talentos\b/.test(t) ||
+    /\b(me candidatar|candidatura)\b/.test(t) ||
+    /\bfazer parte (da equipe|do time|de voces)\b/.test(t) ||
+    /\btrabalhar como\b/.test(t) ||
+    /\b(estou procurando|procuro|busco) (um )?emprego\b/.test(t)
+  );
+}
+
 /** Id do bloco de quem recusou o lembrete: agradece, marca e encerra. */
 export const DECLINED_STEP = 'recusou';
 
