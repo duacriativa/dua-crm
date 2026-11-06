@@ -215,6 +215,26 @@ export function bookingLinkStep(steps: { id?: string; type: string; text?: strin
   return steps.findIndex((s, n) => n > i && s.type === 'send_text' && /\/agendar\/|\{\{link_agendamento\}\}/.test(s.text ?? ''));
 }
 
+/**
+ * A pessoa recusou o lembrete ("Agora não", "não tenho interesse")? Só vale para resposta a um
+ * lembrete em template, que pergunta se ela ainda quer ajuda. Por isso um "não" sozinho conta.
+ */
+export function declinedReply(answer: string) {
+  const t = (answer || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+  return (
+    /^agora nao\b/.test(t) ||
+    /^nao( obrigad[oa])?( mesmo)?$/.test(t) ||
+    /^nao quero\b/.test(t) ||
+    /\bnao tenho (mais )?interesse\b/.test(t) ||
+    /\bsem interesse\b/.test(t) ||
+    /\bnao e o momento\b/.test(t) ||
+    /\b(para|pare|parem) de (me )?(mandar|enviar|chamar)\b/.test(t)
+  );
+}
+
+/** Id do bloco de quem recusou o lembrete: agradece, marca e encerra. */
+export const DECLINED_STEP = 'recusou';
+
 export const STEP_TYPES = ['wait', 'wait_reply', 'send_text', 'send_template', 'send_buttons', 'move_stage', 'add_tag', 'notify', 'check_origin', 'set_origin', 'goto', 'end', 'wait_booking', 'wait_payment', ...MEETING_STEPS];
 
 /** Espera pelo agendamento sem prazo configurado: 2 dias. */
