@@ -27,6 +27,13 @@ export class PublicPlanController {
     return this.orders.publicInfo(diagnosisToken);
   }
 
+  /** Confere um @ enquanto a cliente digita: foto, nome e seguidores, ou o motivo de não achar. */
+  @Get('instagram/:handle')
+  @Throttle({ default: { limit: 40, ttl: 60_000 } })
+  checkInstagram(@Param('handle') handle: string) {
+    return this.orders.checkInstagram(handle);
+  }
+
   @Post('pedido')
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
   create(@Body() body: any) {

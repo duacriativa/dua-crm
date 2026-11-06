@@ -14,17 +14,60 @@ import { PlanEditor } from "@/components/plans/plan-editor";
 
 interface Order {
   id: string; status: string; productName: string; value: number; name: string; phone: string; email: string; cpfCnpj: string;
-  instagramHandle: string; answers: Record<string, string>; contactId: string; diagnosisToken: string | null;
+  instagramHandle: string; answers: Record<string, any>; contactId: string; diagnosisToken: string | null;
   createdAt: string; paidAt: string | null; dueAt: string | null; deliveredAt: string | null; reviewedAt: string | null; reviewedBy: string | null;
   plan: Record<string, any> | null; generating: boolean; generationState: string | null; generationError: string | null; generatedAt: string | null;
   late: boolean; clientUrl: string; pdfUrl: string | null; whatsappText: string | null; sandbox: boolean; notes: string | null;
 }
 
 const ANSWERS: [string, string][] = [
-  ["nicho", "Produto / nicho"], ["ticket", "Ticket médio"], ["publico", "Público"],
+  ["nicho", "Produto / nicho"], ["ticket", "Ticket médio"], ["faixaPreco", "Faixa de preço"], ["gradeTamanhos", "Grade de tamanhos"],
+  ["publico", "Público"], ["cidadeRegiao", "Cidade ou região"],
   ["quemPosta", "Quem posta hoje"], ["verba", "Verba mensal"], ["objetivo", "Objetivo principal"],
-  ["ondeVende", "Onde vende"], ["referencias", "Marcas de referência"], ["observacoes", "Observações"],
+  ["ondeVende", "Onde vende"], ["pecasProntas", "Peças"], ["localFotos", "Local das fotos"],
+  ["identidade", "Logo e identidade"], ["quemAparece", "Quem aparece"],
+  ["referencias", "Marcas de referência"], ["observacoes", "Observações"],
 ];
+
+interface BrandRef { handle: string; confirmed: boolean; name?: string | null; followers?: number | null; reason?: string }
+
+const LAUNCH_LABEL: Record<string, string> = { sem_data: "Vai lançar, ainda sem data", nao: "Sem lançamento nos próximos 3 meses" };
+const launchText = (a: Record<string, any>) =>
+  a?.lancamentoStatus === "data" && a.lancamentoData
+    ? String(a.lancamentoData).split("-").reverse().join("/")
+    : LAUNCH_LABEL[a?.lancamentoStatus] ?? "";
+const BRAND_REASON: Record<string, string> = {
+  not_found: "perfil não encontrado", lookup_failed: "consulta falhou", not_confirmed: "cliente não confirmou",
+};
+
+/** @ informados no questionário. Os não confirmados ficam em destaque para a equipe revisar. */
+function BrandList({ title, refs }: { title: string; refs?: BrandRef[] }) {
+  if (!refs) return null;
+  return (
+    <div>
+      <p className="text-xs text-muted-foreground">{title}</p>
+      {!refs.length && <p className="text-foreground">Nenhuma informada</p>}
+      <ul className="space-y-1">
+        {refs.map((r) => (
+          <li key={r.handle}>
+            <a href={`https://instagram.com/${r.handle}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-foreground hover:underline">
+              @{r.handle} <ExternalLink className="w-3 h-3" />
+            </a>
+            {r.confirmed ? (
+              <span className="block text-xs text-muted-foreground">
+                {[r.name, typeof r.followers === "number" ? `${r.followers.toLocaleString("pt-BR")} seguidores` : null, "confirmado"].filter(Boolean).join(" · ")}
+              </span>
+            ) : (
+              <span className="flex items-center gap-1 text-xs font-semibold text-amber-500">
+                <AlertTriangle className="w-3 h-3 shrink-0" /> Não confirmado, revisar{r.reason && BRAND_REASON[r.reason] ? ` (${BRAND_REASON[r.reason]})` : ""}
+              </span>
+            )}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
 
 const btn = "inline-flex items-center justify-center gap-2 px-3 py-2 text-sm font-semibold rounded-xl border border-border hover:bg-muted/50 disabled:opacity-50";
 const primary = "inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-semibold rounded-xl text-white bg-gradient-primary hover:opacity-90 disabled:opacity-50 shadow-elegant";
@@ -181,6 +224,9 @@ export default function PlanoPedidoPage({ params }: { params: { id: string } }) 
                   {o.plan && o.plan.perfilLido === false && (
                     <span className="text-xs text-amber-500">Gerado sem dados do Instagram (perfil não acessível pela API)</span>
                   )}
+                  {[...(o.answers?.inspiradoras ?? []), ...(o.answers?.concorrentes ?? [])].some((r: BrandRef) => !r.confirmed) && (
+                    <span className="text-xs text-amber-500">Há @ não confirmados pela cliente: confira no quadro Cliente antes de aprovar</span>
+                  )}
                 </div>
                 <PlanEditor
                   plan={draft}
@@ -259,6 +305,14 @@ export default function PlanoPedidoPage({ params }: { params: { id: string } }) 
                     <p className="text-foreground whitespace-pre-line">{o.answers[k]}</p>
                   </div>
                 ))}
+                {launchText(o.answers) && (
+                  <div>
+                    <p className="text-xs text-muted-foreground">Lançamento</p>
+                    <p className="text-foreground">{launchText(o.answers)}</p>
+                  </div>
+                )}
+                <BrandList title="Marcas que inspiram" refs={o.answers?.inspiradoras} />
+                <BrandList title="Concorrentes" refs={o.answers?.concorrentes} />
               </div>
               <div className="border-t border-border pt-3 text-xs text-muted-foreground space-y-0.5">
                 <p>Pedido {fmtDateTime(o.createdAt)}{o.diagnosisToken ? " · veio do diagnóstico" : ""}</p>
