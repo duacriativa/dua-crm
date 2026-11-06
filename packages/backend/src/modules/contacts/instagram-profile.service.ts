@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { isProfileNotFoundError } from './instagram-errors';
 
 /** Aceita "@loja", "loja" ou URL do perfil e devolve só o username. */
 export function normalizeInstagramHandle(raw: string): string {
@@ -61,8 +62,8 @@ export class InstagramProfileService {
           followers: p.followers_count ?? null, pictureUrl: p.profile_picture_url ?? null,
         };
       } else {
-        const msg: string = body.error?.error_user_msg || body.error?.message || '';
-        if (!/cannot be found|invalid user id|not.*business/i.test(msg)) {
+        if (!isProfileNotFoundError(body.error)) {
+          const msg: string = body.error?.error_user_msg || body.error?.message || '';
           console.warn(`[Instagram] Conferência de @ falhou: ${msg.slice(0, 200) || `HTTP ${r.status}`}`);
           return { status: 'error' };
         }
@@ -100,7 +101,7 @@ export class InstagramProfileService {
       if (!r.ok || !body.business_discovery) {
         const msg: string = body.error?.error_user_msg || body.error?.message || `HTTP ${r.status}`;
         // Perfis pessoais ou inexistentes não são visíveis pelo Business Discovery
-        const reason = /cannot be found|invalid user id|not.*business/i.test(msg)
+        const reason = isProfileNotFoundError(body.error)
           ? 'perfil pessoal, privado ou inexistente (a API só enxerga contas comerciais e de criador)'
           : `erro na API do Instagram: ${msg.slice(0, 200)}`;
         return { data: null, reason };
