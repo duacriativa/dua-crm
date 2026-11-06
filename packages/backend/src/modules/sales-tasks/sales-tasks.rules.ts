@@ -27,7 +27,7 @@ export interface DesiredTask {
 
 export interface RulesSnapshot {
   now: Date;
-  contacts: Record<string, { id: string; name: string | null; phone: string | null; instagramHandle: string | null; type?: string }>;
+  contacts: Record<string, { id: string; name: string | null; phone: string | null; instagramHandle: string | null; type?: string; tags?: string[] | null }>;
   meetings: { id: string; contactId: string; status: string; startAt: Date; endAt: Date; createdAt: Date }[];
   /** Todos os cards dos contatos envolvidos (abertos, ganhos e perdidos). */
   leads: { id: string; contactId: string; stageName: string; stageKind: string; value: number | null; updatedAt: Date }[];
@@ -231,6 +231,8 @@ export function evaluateRules(s: RulesSnapshot): DesiredTask[] {
     if (now - last.sentAt.getTime() > RULES.replyLookback) continue;
     if (businessMinutesBetween(last.sentAt, s.now) < RULES.replyBusinessMinutes) continue;
     const contact = s.contacts[c.contactId];
+    // Candidatura não é tarefa do comercial
+    if (contact?.tags?.includes('candidato')) continue;
     out.push({
       ruleKey: `reply:${c.id}:${last.id}`,
       kind: 'REPLY',

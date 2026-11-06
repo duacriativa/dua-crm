@@ -1,7 +1,7 @@
 // Teste do "pular as perguntas e mandar o link": `npm run test:bots`
 import { test } from 'node:test';
 import * as assert from 'node:assert/strict';
-import { STEP_TYPES, bookingLinkStep, declinedReply, extractInstagramHandle, dueReminder, sanitizeSteps, waitPlan, waitReplyTarget, wantsBookingLink } from './automation-steps';
+import { STEP_TYPES, bookingLinkStep, declinedReply, extractInstagramHandle, dueReminder, sanitizeSteps, waitPlan, waitReplyTarget, wantsBookingLink, looksLikeCandidate } from './automation-steps';
 
 test('entende pedido do link', () => {
   for (const t of [
@@ -29,6 +29,33 @@ test('não confunde resposta normal com recusa', () => {
     'Já estou vendendo', 'Estou começando', 'sim', 'Quero sim', 'oi, tudo bem?', 'não sei', 'ainda não', 'ainda não vendo',
     'não vendo ainda', 'não entendi', 'tenho interesse sim', 'agora sim', '', '[documento]',
   ]) assert.equal(declinedReply(t), false, t);
+});
+
+test('reconhece candidatura (mensagens reais)', () => {
+  for (const t of [
+    'Anexo meu currículo e portfólios relevantes para conhecimento',
+    'demonstrar meu interesse em possíveis oportunidades na área de design na empresa',
+    'Olá, tudo bem? Boa tarde!\n\nVocês estão com alguma oportunidade de vaga aberta?',
+    'gostaria de saber se possuem vaga de estágio em produção audiovisual',
+    'precisa de algum cadastro pra trabalhar como modelo pra vocês?',
+    'quero fazer parte da equipe', 'segue meu portfólio',
+  ]) assert.equal(looksLikeCandidate('TEXT', t), true, t);
+  for (const f of ['Curriculo.pdf', 'Fulana de Tal Curriculo 2026.2.pdf', ' CV Fulana de Tal .pdf', 'Portfolio_Fulana_Tal 2.pdf']) {
+    assert.equal(looksLikeCandidate('DOCUMENT', f), true, f);
+  }
+});
+
+test('não confunde lead com candidatura (mensagens reais)', () => {
+  for (const t of [
+    'Tenho uma loja de bolsas e estou procurando uma agência de marketing para cuidar do Instagram',
+    'Estou com duas modelos vindo pra Fortaleza, seria uma ótima oportunidade para criar conteúdo',
+    'Aqui você terá contato direto com nossa equipe',
+    'Estou começando a trabalhar com produção de Stories para marcas',
+    'gostaria de trabalhar com vocês na minha marca', 'quero ver o portfólio de vocês', 'minha marca está em estágio inicial',
+    'tem vaga na agenda essa semana?', 'Já estou vendendo', 'Instagram', '',
+  ]) assert.equal(looksLikeCandidate('TEXT', t), false, t);
+  assert.equal(looksLikeCandidate('DOCUMENT', 'Manual de Identidade.pdf'), false);
+  assert.equal(looksLikeCandidate('IMAGE', 'meu currículo'), false);
 });
 
 test('acha o passo do link depois da pergunta atual', () => {

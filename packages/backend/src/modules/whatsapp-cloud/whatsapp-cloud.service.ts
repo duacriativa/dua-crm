@@ -8,7 +8,7 @@ import { FunnelService } from '../pipelines/funnel.service';
 import { NotifyService } from '../notifications/notify.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { phoneVariants, toBrDigits } from '../../common/phone.util';
-import { originFromText, originLabel } from '../automations/automation-steps';
+import { CANDIDATE_TAG, NEW_CONTACT_MS, looksLikeCandidate, originFromText, originLabel } from '../automations/automation-steps';
 
 /** Texto gravado quando a API não entrega o conteúdo da mensagem (tipo "unsupported"). */
 const UNSUPPORTED_TEXT = 'Mensagem que o WhatsApp não mostra aqui (enquete, visualização única ou propaganda). Veja no celular.';
@@ -701,16 +701,19 @@ export class WhatsAppCloudService {
       // não faria sentido e, se for propaganda de empresa, nem é entregue). Como 1ª mensagem do número
       // quase sempre é propaganda, então também não vira card: se for gente, o card sai na próxima.
       const unsupported = m.type === 'unsupported';
+      const candidate = await this.candidateStatus(tenantId, contact, parsed, firstMessage);
       if (unsupported) this.logger.log(`[Cloud] Mensagem não suportada de ${customerWaId} (${m.id}): sem bot${firstMessage ? ' e sem card' : ''}`);
       // Alimenta o funil: lead novo que chamou agora cai na 1ª etapa
       const origin = referral
         ? `Origem: Anúncio${contact.adHeadline ? ` — ${contact.adHeadline}` : ''}`
         : fromLink ? `Origem: WhatsApp — ${originLabel(contact)}` : 'Origem: WhatsApp';
-      if (!(unsupported && firstMessage)) {
+      if (!(unsupported && firstMessage) && !candidate) {
         await this.funnel.ensureLead(tenantId, contact.id, isNewContact || referral || fromLink ? origin : undefined);
       }
       // Bots esperando a resposta desse contato seguem o fluxo
-      if (!unsupported) {
+      if (candidate === 'new') {
+        this.events.emit('whatsapp.candidate', { tenantId, contactId: contact.id, conversationId: conv.id, preview: parsed.content.slice(0, 300) });
+      } else if (!unsupported) {
         this.events.emit('whatsapp.inbound', { tenantId, contactId: contact.id, conversationId: conv.id, firstMessage });
       }
       // Notifica os aparelhos com o PWA instalado
@@ -721,6 +724,37 @@ export class WhatsAppCloudService {
         tag: conv.id,
       });
     }
+  }
+
+  /**
+   * Quem procurou a Dua para trabalhar aqui não é lead. 'new': acabou de ser identificado (ganha a etiqueta,
+   * sai do bot de qualificação e do funil). 'known': já tinha a etiqueta. null: segue o caminho normal.
+   * Só vale na 1ª mensagem ou durante o bot de qualificação de um contato novo: conversa em andamento não muda.
+   */
+  private async candidateStatus(
+    tenantId: string,
+    contact: { id: string; type: string; tags: string[] | null; createdAt: Date; monthlyRevenue: string | null; saleModel: string | null },
+    parsed: ParsedMessage,
+    firstMessage: boolean,
+  ): Promise<'new' | 'known' | null> {
+    if (contact.type !== 'LEAD') return null;
+    const tags = contact.tags ?? [];
+    if (tags.includes(CANDIDATE_TAG)) return 'known';
+    if (!looksLikeCandidate(parsed.type, parsed.content)) return null;
+    if (contact.monthlyRevenue || contact.saleModel) return null;
+    if (Date.now() - contact.createdAt.getTime() > NEW_CONTACT_MS) return null;
+    const running = { contactId: contact.id, status: { in: ['RUNNING', 'WAITING_REPLY'] }, meetingId: null, automation: { trigger: 'WHATSAPP_FIRST_MESSAGE' as const } };
+    if (!firstMessage && !(await this.prisma.automationRun.findFirst({ where: { tenantId, ...running }, select: { id: true } }))) return null;
+
+    await this.prisma.contact.update({ where: { id: contact.id }, data: { tags: [...tags, CANDIDATE_TAG] } });
+    await this.prisma.automationRun.updateMany({
+      where: { tenantId, ...running },
+      data: { status: 'CANCELLED', finishedAt: new Date(), nextRunAt: null, lastError: 'Candidatura' },
+    });
+    // Card que o bot criou nesta sessão: candidatura não fica no funil de vendas
+    await this.prisma.pipelineLead.deleteMany({ where: { contactId: contact.id, wonAt: null, stage: { pipeline: { tenantId } } } });
+    this.logger.log(`[Cloud] Contato ${contact.id} identificado como candidatura: fora do bot e do funil`);
+    return 'new';
   }
 
   private async applyStatus(s: any) {

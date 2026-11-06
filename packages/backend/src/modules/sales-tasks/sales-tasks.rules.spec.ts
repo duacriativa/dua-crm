@@ -26,6 +26,15 @@ function base(): RulesSnapshot {
 
 const kinds = (s: RulesSnapshot) => evaluateRules(s).map((t) => t.kind).sort();
 
+test('candidatura não vira tarefa de responder', () => {
+  const s = base();
+  s.contacts.ana.tags = ['candidato'];
+  s.conversations = [{ id: 'c1', contactId: 'ana', status: 'OPEN', lastMessage: { id: 'm1', direction: 'INBOUND', sentAt: ago(24) } } as any];
+  assert.deepEqual(evaluateRules(s).filter((t) => t.kind === 'REPLY'), []);
+  s.contacts.ana.tags = [];
+  assert.equal(evaluateRules(s).filter((t) => t.kind === 'REPLY').length, 1);
+});
+
 test('horário comercial: conta só seg–sex 9h–18h de Brasília', () => {
   // Qui 16h → sex 10h (Brasília): 2h na quinta + 1h na sexta
   assert.equal(businessMinutesBetween(new Date('2026-10-29T19:00:00Z'), new Date('2026-10-30T13:00:00Z')), 180);
