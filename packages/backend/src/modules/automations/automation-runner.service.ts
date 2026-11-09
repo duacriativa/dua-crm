@@ -302,20 +302,27 @@ export class AutomationRunner implements OnModuleInit, OnModuleDestroy {
           const allowed = new Set(cond.onlyPhones.flatMap((p) => phoneVariants(p)));
           if (!phoneVariants(contact.phone).some((v) => allowed.has(v))) continue;
         }
-        // Não repete: já tem sessão em andamento, ou começou nas últimas 24h (form enviado 2x).
-        // Reunião: uma sessão por reunião (cancelou e marcou outra → sessão nova)
-        const recent = await this.prisma.automationRun.findFirst({
-          where: opts.meetingId
-            ? { automationId: a.id, meetingId: opts.meetingId }
-            : {
-                automationId: a.id,
-                contactId,
-                OR: [{ status: { in: ACTIVE } }, { startedAt: { gte: new Date(Date.now() - 24 * 3600_000) } }],
-              },
-          select: { id: true },
-        });
-        if (recent) continue;
-        await this.start(a.id, tenantId, contactId, { meetingId: opts.meetingId });
+        // Trava por bot + contato (ou reunião): duas mensagens chegando juntas abrem uma sessão só.
+        // A trava cobre a consulta e a criação, e vale entre instâncias do backend.
+        const lockKey = `bot-run:${a.id}:${opts.meetingId ?? contactId}`;
+        const run = await this.prisma.$transaction(async (tx) => {
+          await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`;
+          // Não repete: já tem sessão em andamento, ou começou nas últimas 24h (form enviado 2x).
+          // Reunião: uma sessão por reunião (cancelou e marcou outra → sessão nova)
+          const recent = await tx.automationRun.findFirst({
+            where: opts.meetingId
+              ? { automationId: a.id, meetingId: opts.meetingId }
+              : {
+                  automationId: a.id,
+                  contactId,
+                  OR: [{ status: { in: ACTIVE } }, { startedAt: { gte: new Date(Date.now() - 24 * 3600_000) } }],
+                },
+            select: { id: true },
+          });
+          if (recent) return null;
+          return tx.automationRun.create({ data: this.newRunData(a.id, tenantId, contactId, { meetingId: opts.meetingId }) });
+        }, { maxWait: 10_000, timeout: 15_000 });
+        if (run) await this.afterStart(run.id, a.id, contactId);
       }
     } catch (err: any) {
       this.logger.error(`[Bots] Falha no gatilho ${trigger} (${contactId}): ${err.message}`);
@@ -324,16 +331,22 @@ export class AutomationRunner implements OnModuleInit, OnModuleDestroy {
 
   /** Começa uma sessão já (também usado pelo "testar com um contato"). */
   async start(automationId: string, tenantId: string, contactId: string, opts: { isTest?: boolean; meetingId?: string } = {}) {
-    const run = await this.prisma.automationRun.create({
-      data: {
-        tenantId, automationId, contactId, status: 'RUNNING', stepIndex: 0, nextRunAt: new Date(), isTest: !!opts.isTest,
-        meetingId: opts.meetingId ?? null,
-      },
-    });
-    await this.prisma.automation.update({ where: { id: automationId }, data: { runCount: { increment: 1 } } });
-    this.logger.log(`[Bots] Sessão ${run.id} iniciada (bot ${automationId}, contato ${contactId})`);
-    this.kick();
+    const run = await this.prisma.automationRun.create({ data: this.newRunData(automationId, tenantId, contactId, opts) });
+    await this.afterStart(run.id, automationId, contactId);
     return run;
+  }
+
+  private newRunData(automationId: string, tenantId: string, contactId: string, opts: { isTest?: boolean; meetingId?: string }) {
+    return {
+      tenantId, automationId, contactId, status: 'RUNNING', stepIndex: 0, nextRunAt: new Date(), isTest: !!opts.isTest,
+      meetingId: opts.meetingId ?? null,
+    };
+  }
+
+  private async afterStart(runId: string, automationId: string, contactId: string) {
+    await this.prisma.automation.update({ where: { id: automationId }, data: { runCount: { increment: 1 } } });
+    this.logger.log(`[Bots] Sessão ${runId} iniciada (bot ${automationId}, contato ${contactId})`);
+    this.kick();
   }
 
   /**
