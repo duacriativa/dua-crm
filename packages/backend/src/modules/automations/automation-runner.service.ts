@@ -5,9 +5,10 @@ import { WhatsAppCloudService } from '../whatsapp-cloud/whatsapp-cloud.service';
 import { NotifyService } from '../notifications/notify.service';
 import { phoneVariants, toBrDigits } from '../../common/phone.util';
 import { MEETING_EVENTS, appUrl } from '../scheduling/scheduling.service';
+import { askClaude } from '../contacts/claude';
 import {
   AutomationConditions, AutomationStep, DEFAULT_BOOKING_TIMEOUT_S, DEFAULT_MEETING_STATUS_TIMEOUT_S, MEETING_LATE_GRACE_MS, Reminder, StepTarget, WINDOW_MS,
-  CANDIDATE_REPLY, DECLINED_STEP, NEW_CONTACT_MS, bookingLinkStep, businessHours, declinedReply, dueReminder, giveUpAfter, meetingWaitAt, originFromText, originLabel, salesChannelPhrase, sameAnswer, waitPlan, waitReplyTarget, waitUntil, wantsBookingLink, extractInstagramHandle,
+  CANDIDATE_REPLY, DECLINED_STEP, NEW_CONTACT_MS, bookingLinkStep, businessHours, declinedReply, dueReminder, giveUpAfter, meetingWaitAt, originFromAnswer, AI_ORIGINS, originFromText, originLabel, salesChannelPhrase, sameAnswer, waitPlan, waitReplyTarget, waitUntil, wantsBookingLink, extractInstagramHandle,
 } from './automation-steps';
 
 const ACTIVE = ['RUNNING', 'WAITING_REPLY'];
@@ -463,6 +464,11 @@ export class AutomationRunner implements OnModuleInit, OnModuleDestroy {
         data: { instagramHandle: handle },
       }).catch((err) => this.logger.warn(`[Bots] Não gravou o @ da sessão ${run.id}: ${err.message}`));
     }
+    // Pergunta aberta "como conheceu a Dua?": descobre a origem pela resposta e guarda a frase numa nota
+    if (skip < 0 && current?.type === 'wait_reply' && current.classifyOrigin && !tappedButton) {
+      await this.saveAnsweredOrigin(run, answer, conversationId)
+        .catch((err) => this.logger.warn(`[Bots] Não gravou a origem da sessão ${run.id}: ${err.message}`));
+    }
     const toReminder = skip < 0 && !handle && !!run.remindersSent && (await this.lastBotWasTemplate(conversationId));
     // Recusou o lembrete ("Agora não"): encerra pelo bloco "recusou" (sem ele, só encerra). Nunca pergunta de novo.
     const declined = toReminder && !run.meetingId && !tappedButton && declinedReply(answer);
@@ -478,6 +484,50 @@ export class AutomationRunner implements OnModuleInit, OnModuleDestroy {
         ? { status: 'COMPLETED', finishedAt: now, nextRunAt: null, conversationId }
         : { status: 'RUNNING', stepIndex: next, nextRunAt: now, conversationId, waitingSince: null },
     });
+  }
+
+  /** Grava a origem lida da resposta (palavras; se nenhuma bater, a IA) sem sobrescrever uma já conhecida. */
+  private async saveAnsweredOrigin(run: { id: string; tenantId: string; contactId: string }, answer: string, conversationId: string | null) {
+    const text = String(answer ?? '').trim();
+    if (!text || /^\[.*\]$/.test(text)) return; // áudio, figurinha, documento…
+    const found = originFromAnswer(text) ?? (await this.originByAi(text));
+    const contact = await this.prisma.contact.findFirst({
+      where: { id: run.contactId, tenantId: run.tenantId },
+      select: { leadOrigin: true, utmSource: true, adHeadline: true },
+    });
+    if (!contact) return;
+    if (found && !contact.leadOrigin) {
+      await this.prisma.contact.update({
+        where: { id: run.contactId },
+        data: { leadOrigin: found.origin, ...(!contact.utmSource && { utmSource: found.source, utmMedium: 'resposta_bot' }) },
+      });
+    }
+    const label = found ? originLabel({ leadOrigin: found.origin, utmSource: found.source }) : 'não deu pra saber';
+    await this.prisma.activity.create({
+      data: {
+        tenantId: run.tenantId, contactId: run.contactId, conversationId, type: 'NOTE', authorName: 'Bot',
+        content: `Como conheceu a Dua: "${text.slice(0, 300)}" → ${label}`,
+      },
+    });
+  }
+
+  /** Resposta que nenhuma palavra classificou: pede para a IA escolher uma categoria (falha = sem origem). */
+  private async originByAi(text: string) {
+    if (!process.env.ANTHROPIC_API_KEY) return null;
+    try {
+      const out = await askClaude({
+        system: 'Você classifica como um cliente conheceu uma agência de marketing. Responda só com uma destas palavras: '
+          + `${Object.keys(AI_ORIGINS).join(', ')}. Use "nao_respondeu" se a mensagem não diz como a pessoa conheceu.`,
+        prompt: text.slice(0, 500),
+        maxTokens: 10,
+        timeoutMs: 15000,
+      });
+      const key = out.toLowerCase().replace(/[^a-z_]/g, '');
+      return AI_ORIGINS[key] ?? null;
+    } catch (err: any) {
+      this.logger.warn(`[Bots] IA não classificou a origem: ${err.message}`);
+      return null;
+    }
   }
 
   // ── Laço ───────────────────────────────────────────────────────────────────
