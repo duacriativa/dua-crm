@@ -16,7 +16,8 @@ export type AutomationStep = { id?: string; name?: string; pos?: StepPos } & (
   | ({ type: 'wait'; seconds: number } & Align)
   // `buttons`: botões de resposta rápida do template enviado antes; cada um pode desviar para um passo.
   // Qualquer outra resposta segue por onReply. Sem onTimeout → encerra.
-  | ({ type: 'wait_reply'; captureInstagram?: boolean; timeoutSeconds?: number; buttons?: { title: string; goto?: StepTarget }[]; onReply?: StepTarget; onTimeout?: StepTarget } & Align)
+  // classifyOrigin: a pergunta foi "como conheceu a Dua?" — lê a resposta escrita e grava a origem do contato.
+  | ({ type: 'wait_reply'; captureInstagram?: boolean; classifyOrigin?: boolean; timeoutSeconds?: number; buttons?: { title: string; goto?: StepTarget }[]; onReply?: StepTarget; onTimeout?: StepTarget } & Align)
   | { type: 'send_text'; text: string }
   | {
       type: 'send_template';
@@ -356,6 +357,7 @@ export function sanitizeSteps(input: any, strict = true): AutomationStep[] {
           ...base,
           type: 'wait_reply',
           ...(s.captureInstagram ? { captureInstagram: true } : {}),
+          ...(s.classifyOrigin ? { classifyOrigin: true } : {}),
           ...(s.timeoutSeconds ? { timeoutSeconds: secs(s.timeoutSeconds, 90 * 24 * 3600) } : {}),
           ...align(s),
           ...(Array.isArray(s.buttons) && s.buttons.length ? { buttons: buttonsOf(s.buttons).slice(0, 10) } : {}),
@@ -534,13 +536,47 @@ export function originFromText(text: string | null | undefined) {
   return hit ? { leadOrigin: hit.origin, utmSource: hit.utmSource, utmMedium: hit.utmMedium } : null;
 }
 
+/** Origem lida de uma resposta livre à pergunta "como você conheceu a Dua?". */
+export type AnsweredOrigin = { origin: LeadOrigin; source: string };
+
+/**
+ * Resposta aberta → origem, por palavras. A ordem decide quando a pessoa cita mais de uma coisa:
+ * anúncio > IA > indicação > Google > Instagram ("o chat me recomendou" é IA, não indicação).
+ */
+const ANSWER_ORIGINS: { re: RegExp; origin: LeadOrigin; source: string }[] = [
+  { re: /\b(anuncio|anuncios|propaganda|patrocinad[oa]|impulsionad[oa]|ads?)\b/, origin: 'ADS', source: 'meta_ads' },
+  { re: /\b(chat ?gpt|gpt|chat|openai|(?:pela|na|numa|uma|com|a|pra|pro|da|no) ia|inteligencia artificial|gemini|perplexity|claude|copilot)\b/, origin: 'ORGANIC', source: 'chatgpt' },
+  { re: /\b(indic\w*|recomend\w*|amig[oa]s?|conhecid[oa]s?|me passou|me passaram|falou de voces|falaram de voces)\b/, origin: 'REFERRAL', source: 'indicacao' },
+  { re: /\b(google|pesquis\w*|busquei|procurei)\b/, origin: 'ORGANIC', source: 'google' },
+  { re: /\b(tik ?tok)\b/, origin: 'ORGANIC', source: 'tiktok' },
+  { re: /\b(insta|instagram|ig|reels?|post|posts|perfil|story|stories|feed|explorar)\b/, origin: 'ORGANIC', source: 'instagram' },
+];
+
+export function originFromAnswer(text: string | null | undefined): AnsweredOrigin | null {
+  const t = (text || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  const hit = ANSWER_ORIGINS.find((p) => p.re.test(t));
+  return hit ? { origin: hit.origin, source: hit.source } : null;
+}
+
+/** Categorias que a IA pode devolver quando nenhuma palavra bateu. */
+export const AI_ORIGINS: Record<string, AnsweredOrigin | null> = {
+  anuncio: { origin: 'ADS', source: 'meta_ads' },
+  chatgpt: { origin: 'ORGANIC', source: 'chatgpt' },
+  indicacao: { origin: 'REFERRAL', source: 'indicacao' },
+  google: { origin: 'ORGANIC', source: 'google' },
+  instagram: { origin: 'ORGANIC', source: 'instagram' },
+  outra: { origin: 'OTHER', source: 'outra' },
+  nao_respondeu: null,
+};
+
 /** Origem por extenso para {{origem}} nos textos e avisos. */
 export function originLabel(c: { leadOrigin: string | null; utmSource: string | null; adHeadline?: string | null }) {
   const src = (c.utmSource || '').toLowerCase();
   switch (c.leadOrigin) {
     case 'ADS': return c.adHeadline ? `Anúncio — ${c.adHeadline}` : src === 'meta_ads' ? 'Anúncio da Meta' : 'Anúncio';
     case 'REFERRAL': return 'Indicação';
-    case 'ORGANIC': return src.includes('instagram') ? 'Instagram' : src === 'site' ? 'Site' : 'Orgânico';
+    case 'ORGANIC': return src.includes('instagram') ? 'Instagram' : src === 'site' ? 'Site' : src === 'chatgpt' ? 'ChatGPT / IA'
+      : src === 'google' ? 'Google' : src === 'tiktok' ? 'TikTok' : 'Orgânico';
     case 'OTHER': return 'Outra';
     default: return 'não informada';
   }

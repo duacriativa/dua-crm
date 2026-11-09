@@ -187,6 +187,10 @@ export function StepFields({ step, set, templates, tplError, stages, onAddButton
             <input type="checkbox" checked={!!step.captureInstagram} onChange={(e) => set({ captureInstagram: e.target.checked || undefined })} />
             Gravar a resposta como @ do Instagram do contato
           </label>
+          <label className="flex items-center gap-2 text-xs text-gray-600">
+            <input type="checkbox" checked={!!step.classifyOrigin} onChange={(e) => set({ classifyOrigin: e.target.checked || undefined })} />
+            Descobrir a origem pela resposta (como conheceu a Dua)
+          </label>
           {(step.buttons ?? []).map((b, k) => (
             <div key={k} className="flex items-center gap-2">
               <input

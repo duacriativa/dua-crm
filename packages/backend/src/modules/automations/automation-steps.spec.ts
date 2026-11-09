@@ -1,7 +1,7 @@
 // Teste do "pular as perguntas e mandar o link": `npm run test:bots`
 import { test } from 'node:test';
 import * as assert from 'node:assert/strict';
-import { STEP_TYPES, bookingLinkStep, declinedReply, extractInstagramHandle, dueReminder, sanitizeSteps, waitPlan, waitReplyTarget, wantsBookingLink, looksLikeCandidate } from './automation-steps';
+import { STEP_TYPES, bookingLinkStep, declinedReply, extractInstagramHandle, dueReminder, sanitizeSteps, waitPlan, waitReplyTarget, wantsBookingLink, looksLikeCandidate, originFromAnswer } from './automation-steps';
 
 test('entende pedido do link', () => {
   for (const t of [
@@ -133,4 +133,30 @@ test('sanitizeSteps mantém o passo do Instagram', () => {
   assert.equal(steps[0].type, 'check_instagram');
   assert.equal(steps[0].onKnown, 'fim');
   assert.equal(steps[1].captureInstagram, true);
+});
+
+test('descobre a origem pela resposta aberta', () => {
+  const cases: [string, string | null][] = [
+    ['Vi um anúncio', 'meta_ads'],
+    ['foi uma propaganda no insta', 'meta_ads'],
+    ['pesquisei no ChatGPT', 'chatgpt'],
+    ['o chat gpt me recomendou vocês', 'chatgpt'],
+    ['perguntei pra IA', 'chatgpt'],
+    ['Instagram', 'instagram'],
+    ['vi uns reels de vocês', 'instagram'],
+    ['uma amiga me indicou', 'indicacao'],
+    ['indicação da Fulana', 'indicacao'],
+    ['pesquisei no google', 'google'],
+    ['eu ia te chamar antes', null],
+    ['oi', null],
+    ['quero saber o preço', null],
+  ];
+  for (const [t, src] of cases) assert.equal(originFromAnswer(t)?.source ?? null, src, t);
+  assert.equal(originFromAnswer('Vi um anúncio')?.origin, 'ADS');
+  assert.equal(originFromAnswer('uma amiga me indicou')?.origin, 'REFERRAL');
+});
+
+test('pergunta de origem mantém classifyOrigin', () => {
+  const steps = sanitizeSteps([{ id: 'espera', type: 'wait_reply', classifyOrigin: true, timeoutSeconds: 3600 }] as any);
+  assert.equal((steps[0] as any).classifyOrigin, true);
 });

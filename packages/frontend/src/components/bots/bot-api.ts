@@ -6,7 +6,7 @@ import type { WaTemplate } from "@/components/whatsapp/templates";
 
 export type BotStep = { id?: string; name?: string; pos?: { x: number; y: number } } & (
   | { type: "wait"; seconds: number; alignTo?: string; alignWeekends?: boolean }
-  | { type: "wait_reply"; captureInstagram?: boolean; timeoutSeconds?: number; alignTo?: string; alignWeekends?: boolean; buttons?: { title: string; goto?: string }[]; onReply?: string; onTimeout?: string }
+  | { type: "wait_reply"; captureInstagram?: boolean; classifyOrigin?: boolean; timeoutSeconds?: number; alignTo?: string; alignWeekends?: boolean; buttons?: { title: string; goto?: string }[]; onReply?: string; onTimeout?: string }
   | { type: "send_text"; text: string }
   | {
       type: "send_template";
@@ -302,22 +302,12 @@ export function whatsappQualifyPreset(): Partial<Bot> {
     { id: "pausa1", type: "wait", seconds: 4 },
     ...qualifySteps("Pra eu te direcionar certinho: a sua marca já está vendendo ou está começando agora?"),
 
+    // Pergunta aberta: a resposta escrita vira a origem (palavras ou IA) e a frase fica numa nota
     {
-      id: "pergunta_origem", name: "Como conheceu a Dua", type: "send_buttons",
-      text: "Oi, {{primeiro_nome}}! Aqui é a Duda, da Dua 💜 Que bom que você chamou por aqui!\n\nAntes de tudo, me conta: como você conheceu a Dua?",
-      buttons: [
-        { title: "Instagram", goto: "origem_instagram" },
-        { title: "Indicação", goto: "origem_indicacao" },
-        { title: "Anúncio / Google", goto: "origem_anuncio" },
-      ],
-      onOther: "registro", timeoutSeconds: 4 * H, onTimeout: "parou",
+      id: "pergunta_origem", name: "Como conheceu a Dua", type: "send_text",
+      text: "Oi, {{primeiro_nome}}! Aqui é a Duda, da Dua 💜\n\nComo você chegou até a gente? Foi por anúncio, ChatGPT, Instagram ou indicação de alguém?",
     },
-    { id: "origem_instagram", type: "set_origin", origin: "ORGANIC", source: "instagram" },
-    { id: "ir_registro_1", type: "goto", target: "registro" },
-    { id: "origem_indicacao", type: "set_origin", origin: "REFERRAL", source: "indicacao" },
-    { id: "ir_registro_2", type: "goto", target: "registro" },
-    { id: "origem_anuncio", type: "set_origin", origin: "ADS", source: "anuncio_google" },
-    { id: "ir_registro_3", type: "goto", target: "registro" },
+    { id: "espera_origem", type: "wait_reply", classifyOrigin: true, timeoutSeconds: 4 * H, onReply: "registro", onTimeout: "parou" },
   ];
   return {
     name: "Pré-qualificação do WhatsApp",
