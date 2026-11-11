@@ -424,6 +424,11 @@ export const MEETING_TEMPLATES = {
     body: "Oi, {{1}}! Sua reunião com a Dua começa às {{2}} (horário de Brasília).\n\nPara entrar, é só acessar o Google Meet: {{3}}\n\nTe esperamos!",
     vars: ["{{primeiro_nome}}", "{{reuniao_hora}}", "{{meet}}"],
   },
+  jaNaSala: {
+    name: "reuniao_ja_na_sala",
+    body: "Hey, {{1}}! Já tô na sala te esperando 💜\n\nÉ só entrar por aqui: {{2}}\n\nAté já!",
+    vars: ["{{primeiro_nome}}", "{{meet}}"],
+  },
   naoCompareceu: {
     name: "reuniao_nao_compareceu",
     body: "Oi, {{1}}! Não conseguimos nos encontrar na reunião de {{2}}. Imagino que tenha surgido algum imprevisto.\n\nSe ainda fizer sentido conversar, escolha um novo horário aqui: {{3}}\n\nQualquer dúvida, é só responder esta mensagem.",
@@ -459,8 +464,11 @@ export function meetingRemindersPreset(templates: WaTemplate[]): Partial<Bot> {
     { id: "confirmacao", name: "Confirmação", ...meetingTemplateStep(templates, T.confirmacao) } as BotStep,
     { id: "espera_24h", name: "24h antes", type: "wait_meeting", seconds: 24 * H, when: "before", onLate: "espera_1h" },
     { id: "lembrete_24h", name: "Lembrete 24h", ...meetingTemplateStep(templates, T.lembrete24h) } as BotStep,
-    { id: "espera_1h", name: "1h antes", type: "wait_meeting", seconds: H, when: "before", onLate: "depois" },
+    { id: "espera_1h", name: "1h antes", type: "wait_meeting", seconds: H, when: "before", onLate: "espera_sala" },
     { id: "lembrete_1h", name: "Lembrete 1h (Meet)", ...meetingTemplateStep(templates, T.lembrete1h) } as BotStep,
+    // Passou de 15 min do início sem enviar (servidor fora do ar): pula o "já tô na sala"
+    { id: "espera_sala", name: "1 min depois do início", type: "wait_meeting", seconds: 60, when: "after", onLate: "depois" },
+    { id: "ja_na_sala", name: "Já na sala (Meet)", ...meetingTemplateStep(templates, T.jaNaSala) } as BotStep,
     { id: "depois", name: "15 min depois do início", type: "wait_meeting", seconds: 15 * 60, when: "after", onLate: "status" },
     { id: "status", name: "Reunião aconteceu?", type: "meeting_status", timeoutSeconds: 24 * H, onDone: "end", onNoShow: "faltou" },
     { id: "faltou", name: "Não compareceu", type: "add_tag", tag: "não compareceu" },
@@ -470,7 +478,7 @@ export function meetingRemindersPreset(templates: WaTemplate[]): Partial<Bot> {
   ];
   return {
     name: "Lembretes da reunião",
-    description: "Confirma o agendamento, lembra 24h e 1h antes (com o Meet) e manda follow-up para quem não compareceu",
+    description: "Confirma o agendamento, lembra 24h e 1h antes (com o Meet), avisa 1 min depois do início que já está na sala e manda follow-up para quem não compareceu",
     trigger: "MEETING_SCHEDULED",
     active: false,
     actions: steps,
