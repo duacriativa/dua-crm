@@ -220,7 +220,7 @@ export function MeetingsPanel({ onChanged }: { onChanged?: () => void }) {
 
       {blocking && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
-          <div className="bg-card border border-border rounded-t-3xl sm:rounded-3xl shadow-2xl w-full sm:max-w-md p-6">
+          <div className="bg-card border border-border rounded-t-3xl sm:rounded-3xl shadow-2xl w-full sm:max-w-md p-6 pb-safe">
             <div className="flex items-center justify-between mb-1">
               <h2 className="text-lg font-bold text-foreground">Bloquear horário</h2>
               <button onClick={() => setBlocking(null)} className="p-1.5 rounded-xl hover:bg-muted/60 text-muted-foreground"><X className="w-4 h-4" /></button>
@@ -246,7 +246,7 @@ export function MeetingsPanel({ onChanged }: { onChanged?: () => void }) {
                 <input value={blocking.title} maxLength={120} placeholder="Ex.: reunião presencial com a FAV" onChange={(e) => setBlocking({ ...blocking, title: e.target.value })} className={inp} />
               </label>
             </div>
-            <div className="flex justify-end gap-2 mt-6">
+            <div className="sticky bottom-0 -mx-6 px-6 pt-3 bg-card flex justify-end gap-2 mt-3">
               <button onClick={() => setBlocking(null)} className="px-4 py-2 text-sm font-medium rounded-xl border border-border text-muted-foreground hover:bg-muted/50">Voltar</button>
               <button onClick={saveBlock} disabled={savingBlock || !blocking.date}
                 className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-gradient-primary rounded-xl hover:opacity-90 disabled:opacity-60">

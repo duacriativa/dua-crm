@@ -114,4 +114,14 @@
   html[data-keyboard] .mobile-bottom-nav,
   html[data-sheet] .mobile-bottom-nav { display: none; }
   html[data-keyboard] .app-main { padding-bottom: 0; }
+
+  /* Janelas que sobem de baixo (bottom sheet): ficam dentro da área visível,
+     mesmo com o teclado aberto, e rolam se não couberem. Assim os botões
+     de salvar/confirmar nunca ficam escondidos. */
+  .fixed.inset-0.items-end { height: var(--app-h, 100dvh); bottom: auto; }
+  .fixed.inset-0.items-end > * {
+    max-height: calc(var(--app-h, 100dvh) - 0.75rem);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
 }
