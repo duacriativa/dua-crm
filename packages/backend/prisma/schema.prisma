@@ -349,6 +349,7 @@ model MetaCredential {
   verifyToken     String  // para validação do webhook
   instagramPageId String?
   instagramToken  String? // criptografado AES-256
+  datasetId       String? // dataset da Conversions API ligado à WABA (eventos de Business Messaging)
 }
 
 model Automation {
@@ -441,6 +442,9 @@ model PipelineStage {
   color      String   @default("#6366F1")
   position   Int      @default(0)
   kind       String   @default("OPEN") // OPEN | WON (ganho) | LOST (perdido)
+  // Evento enviado à Meta (CAPI Business Messaging) quando um lead de anúncio entra na etapa.
+  // null = padrão (1ª etapa → LeadSubmitted, etapa de ganho → Purchase); "NONE" = não envia.
+  metaEvent  String?
 
   leads PipelineLead[]
 
@@ -890,4 +894,21 @@ model ClientProfile {
   updatedAt    DateTime  @updatedAt
 
   @@index([tenantId, status])
+}
+
+// Eventos de conversão enviados à Meta (CAPI / Business Messaging): auditoria e deduplicação
+model MetaEventLog {
+  id        String   @id @default(cuid())
+  tenantId  String
+  contactId String
+  eventName String   // LeadSubmitted | QualifiedLead | InitiateCheckout | Purchase
+  eventId   String   // event_id enviado à Meta (dedup)
+  stageId   String?
+  value     Float?
+  status    String   // SENT | SKIPPED | FAILED
+  error     String?
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, eventId])
 }

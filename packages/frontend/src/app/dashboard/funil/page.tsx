@@ -23,7 +23,20 @@ interface Contact {
 }
 interface Lead { id: string; contactId: string; contact: Contact; value?: number | null; notes?: string | null; position: number; stageId: string; createdAt?: string; wonAt?: string | null; wonItem?: string | null; lostAt?: string | null; lostReason?: string | null; }
 type StageKind = "OPEN" | "WON" | "LOST";
-interface Stage { id: string; name: string; color: string; position: number; kind?: StageKind; leads: Lead[]; }
+interface Stage { id: string; name: string; color: string; position: number; kind?: StageKind; metaEvent?: string | null; leads: Lead[]; }
+
+// Evento enviado à Meta (Conversions API) quando um lead que veio de anúncio de WhatsApp entra na etapa
+const META_EVENT_LABELS: Record<string, string> = {
+  LeadSubmitted: "Lead", QualifiedLead: "Lead qualificado", InitiateCheckout: "Proposta enviada", Purchase: "Venda",
+};
+/** Igual ao backend (stageMetaEvent): escolhido, ou padrão (1ª etapa = Lead, etapa de ganho = Venda). */
+function effectiveMetaEvent(s: Pick<Stage, "metaEvent" | "kind" | "position">): string | null {
+  if (s.metaEvent === "NONE") return null;
+  if (s.metaEvent && META_EVENT_LABELS[s.metaEvent]) return s.metaEvent;
+  if (s.kind === "WON") return "Purchase";
+  if (s.position === 0 && (s.kind ?? "OPEN") === "OPEN") return "LeadSubmitted";
+  return null;
+}
 type LeadOrigin = "ADS" | "ORGANIC" | "REFERRAL" | "OTHER";
 
 const ORIGIN_LABELS: Record<LeadOrigin, string> = { ADS: "Anúncio", ORGANIC: "Orgânico", REFERRAL: "Indicação", OTHER: "Outro" };
@@ -396,6 +409,19 @@ export default function FunilPage() {
     setPipelines((prev) => prev.map((p) => p.id === updated.id ? updated : p));
   };
 
+  // null = padrão da etapa; "NONE" = não envia
+  const setStageMeta = async (stageId: string, metaEvent: string | null) => {
+    if (!activePipeline) return;
+    setStageMenuId(null);
+    const res = await authFetch(`${API_URL}/api/v1/pipelines/stages/${stageId}`, {
+      method: "PATCH", headers: authHeaders(), body: JSON.stringify({ metaEvent }),
+    });
+    if (!res.ok) { alert("Não foi possível alterar o evento da Meta."); return; }
+    const updated = { ...activePipeline, stages: activePipeline.stages.map((s) => s.id !== stageId ? s : { ...s, metaEvent }) };
+    setActivePipeline(updated);
+    setPipelines((prev) => prev.map((p) => p.id === updated.id ? updated : p));
+  };
+
   const setLeadOrigin = async (contactId: string, leadOrigin: LeadOrigin | null) => {
     const res = await authFetch(`${API_URL}/api/v1/contacts/${contactId}`, {
       method: "PATCH", headers: authHeaders(), body: JSON.stringify({ leadOrigin }),
@@ -614,6 +640,13 @@ export default function FunilPage() {
                         {kind === "WON" && <span title="Etapa de ganho"><Trophy className="w-3.5 h-3.5 text-green-500 shrink-0" /></span>}
                         {kind === "LOST" && <span title="Etapa de perda"><XCircle className="w-3.5 h-3.5 text-red-500 shrink-0" /></span>}
                         <span className="text-xs text-muted-foreground bg-muted/40 rounded-full px-1.5 py-0.5 shrink-0">{stage.leads.length}</span>
+                        {(() => {
+                          const ev = effectiveMetaEvent(stage);
+                          return ev ? (
+                            <span title={`Envia "${ev}" para a Meta quando um lead de anúncio entra aqui`}
+                              className="text-[10px] font-medium text-blue-600 bg-blue-500/10 rounded-full px-1.5 py-0.5 shrink-0">Meta</span>
+                          ) : null;
+                        })()}
                       </div>
                       <div className="relative shrink-0" ref={stageMenuId === stage.id ? stageMenuRef : null}>
                         <button onClick={(e) => { e.stopPropagation(); setStageMenuId(stageMenuId === stage.id ? null : stage.id); }}
@@ -638,6 +671,24 @@ export default function FunilPage() {
                                 {icon}<span className="flex-1">{label}</span>{kind === k && <Check className="w-3.5 h-3.5 text-primary" />}
                               </button>
                             ))}
+                            <div className="border-t border-border/50 my-1" />
+                            <p className="px-3 pt-1 pb-0.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider" title="Enviado à Meta quando um lead que veio de anúncio de WhatsApp entra nesta etapa">Evento Meta (anúncios)</p>
+                            {([
+                              { v: null, label: `Padrão${(() => { const d = effectiveMetaEvent({ ...stage, metaEvent: null }); return d ? ` (${META_EVENT_LABELS[d]})` : " (nenhum)"; })()}` },
+                              { v: "LeadSubmitted", label: "Lead" },
+                              { v: "QualifiedLead", label: "Lead qualificado" },
+                              { v: "InitiateCheckout", label: "Proposta enviada" },
+                              { v: "Purchase", label: "Venda" },
+                              { v: "NONE", label: "Não enviar" },
+                            ] as { v: string | null; label: string }[]).map(({ v, label }) => {
+                              const current = stage.metaEvent ?? null;
+                              return (
+                                <button key={v ?? "default"} onClick={() => current !== v && setStageMeta(stage.id, v)}
+                                  className="w-full text-left px-3 py-1.5 text-sm text-foreground/80 hover:bg-muted/20 flex items-center gap-2">
+                                  <span className="flex-1">{label}</span>{current === v && <Check className="w-3.5 h-3.5 text-primary" />}
+                                </button>
+                              );
+                            })}
                             <div className="border-t border-border/50 my-1" />
                             <button onClick={() => deleteStage(stage.id)}
                               className="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50">

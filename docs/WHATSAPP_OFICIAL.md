@@ -59,3 +59,30 @@ principal (o funil mais antigo; se não existir, o CRM cria "Funil de Vendas").
 - O suporte à Evolution API (QR Code) foi removido do código. A instância Evolution (VPS Hetzner),
   o serviço `evolution-api` no Railway e as variáveis `EVOLUTION_API_URL`/`EVOLUTION_API_KEY`
   podem ser desligados/apagados.
+
+## Eventos de conversão para a Meta (anúncios de WhatsApp)
+
+O CRM devolve para a Meta o que acontece com os leads que chegaram por anúncio
+Click-to-WhatsApp (Conversions API para Business Messaging). Assim as campanhas podem
+otimizar por **lead qualificado** ou **venda**, não só por "conversa iniciada".
+
+1. A 1ª mensagem vinda de anúncio traz o `referral` com o `ctwa_clid`; o webhook já grava
+   isso no contato (`adCtwaClid`, `adId`, `adHeadline`).
+2. Cada etapa do funil tem um **Evento Meta** (menu ⋮ da etapa → "Evento Meta (anúncios)"):
+   Lead (`LeadSubmitted`), Lead qualificado (`QualifiedLead`), Proposta enviada
+   (`InitiateCheckout`), Venda (`Purchase`) ou Não enviar. **Padrão**: 1ª etapa = Lead,
+   etapa do tipo Ganho = Venda. Etapas com evento mostram a etiqueta "Meta".
+3. Quando um lead **com `adCtwaClid`** entra na etapa (arrastando, pelo bot, pelo
+   agendamento ou por contrato), o CRM envia o evento para o dataset ligado à WABA
+   (`action_source=business_messaging`). Venda vai com o valor do card. Lead sem anúncio
+   não gera envio. Cada evento vai uma vez por clique (ir e voltar não duplica).
+4. Log: tabela `MetaEventLog` e `GET /api/v1/pipelines/meta-events`.
+
+Requisitos na Meta (já feitos no app Dua CRM em 19/11/2026):
+
+- Permissão **`whatsapp_business_manage_events`** no caso de uso WhatsApp e na configuração
+  do Embedded Signup. O token salvo só ganha a permissão depois de **reconectar o WhatsApp**
+  no CRM; antes disso os envios ficam `FAILED` no log.
+- O dataset é obtido/criado automaticamente na WABA no primeiro envio.
+- Teste: `META_CAPI_TEST_CODE` com o código de **Gerenciador de Eventos → Testar eventos**;
+  depois apague. `META_CAPI_ENABLED=false` desliga os envios.
