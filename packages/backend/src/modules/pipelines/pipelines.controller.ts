@@ -2,6 +2,7 @@ import { Controller, Get, Post, Patch, Delete, Param, Body, Query, UseGuards, Re
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../../prisma/prisma.service';
+import { MetaConversionsService, META_EVENTS, isMetaEvent } from './meta-conversions.service';
 
 const STAGE_KINDS = ['OPEN', 'WON', 'LOST'];
 const PAID_MEDIUMS = ['cpc', 'ppc', 'paid', 'paid_social', 'paidsocial', 'ads', 'ctwa'];
@@ -27,7 +28,15 @@ export class PipelinesController {
   constructor(
     private readonly prisma: PrismaService,
     private readonly events: EventEmitter2,
+    private readonly meta: MetaConversionsService,
   ) {}
+
+  // ── Eventos da Meta (Conversions API) ──────────────────────────────────────
+
+  @Get('meta-events')
+  async metaEvents(@Request() req: any, @Query('limit') limit?: string) {
+    return { events: META_EVENTS, recent: await this.meta.recent(req.user.tenantId, Number(limit) || 50) };
+  }
 
   // ── Pipelines ──────────────────────────────────────────────────────────────
 
@@ -99,8 +108,15 @@ export class PipelinesController {
   async updateStage(
     @Request() req: any,
     @Param('stageId') stageId: string,
-    @Body() body: { name?: string; color?: string; position?: number; kind?: string },
+    @Body() body: { name?: string; color?: string; position?: number; kind?: string; metaEvent?: string | null },
   ) {
+    if (body.metaEvent !== undefined) {
+      // null/"" = padrão da etapa; "NONE" = não envia
+      if (body.metaEvent && body.metaEvent !== 'NONE' && !isMetaEvent(body.metaEvent)) {
+        throw new BadRequestException(`Evento inválido. Use: ${META_EVENTS.join(', ')} ou NONE`);
+      }
+      body.metaEvent = body.metaEvent || null;
+    }
     if (body.kind === undefined) {
       return this.prisma.pipelineStage.update({ where: { id: stageId }, data: body });
     }

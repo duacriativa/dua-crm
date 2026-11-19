@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../../prisma/prisma.service';
+import { MetaConversionsService } from './meta-conversions.service';
 
 /**
  * Coloca contatos no funil de vendas automaticamente.
@@ -14,6 +15,7 @@ export class FunnelService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly events: EventEmitter2,
+    private readonly meta: MetaConversionsService,
   ) {}
 
   /** Card novo no funil: vira aviso de "Novo lead" (NotifyService) */
@@ -141,6 +143,7 @@ export class FunnelService {
       const count = await this.prisma.pipelineLead.count({ where: { stageId: stage.id } });
       if (lead) {
         await this.prisma.pipelineLead.update({ where: { id: lead.id }, data: { stageId: stage.id, position: count } });
+        this.meta.fireLeadInStage(tenantId, contactId, stage.id);
       } else {
         await this.prisma.pipelineLead.create({
           data: { stageId: stage.id, contactId, position: count, notes: notes ?? null },

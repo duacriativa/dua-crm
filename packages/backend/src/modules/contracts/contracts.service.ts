@@ -1,12 +1,16 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { MetaConversionsService } from '../pipelines/meta-conversions.service';
 import { CreateContractDto } from './dto/create-contract.dto';
 
 @Injectable()
 export class ContractsService {
   private readonly logger = new Logger(ContractsService.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private meta: MetaConversionsService,
+  ) {}
 
   async findAll(tenantId: string) {
     const contracts = await this.prisma.contract.findMany({
@@ -185,6 +189,7 @@ export class ContractsService {
           notes: `Contrato fechado — R$${value}/mês`,
         },
       });
+      this.meta.fireLeadInStage(tenantId, contactId, wonStage.id);
     }
   }
 
