@@ -86,3 +86,13 @@ Requisitos na Meta (já feitos no app Dua CRM em 19/11/2026):
 - O dataset é obtido/criado automaticamente na WABA no primeiro envio.
 - Teste: `META_CAPI_TEST_CODE` com o código de **Gerenciador de Eventos → Testar eventos**;
   depois apague. `META_CAPI_ENABLED=false` desliga os envios.
+
+### Leads do site (Pixel)
+
+Lead que não veio de anúncio de WhatsApp (ex.: formulário do site) vai para o **Pixel do site**
+(`META_PIXEL_ID` = "Pixel - duacriativa.com", `META_PIXEL_TOKEN` = token da Conversions API
+gerado no Gerenciador de Eventos). A Meta casa a pessoa pelo telefone e e-mail (SHA-256),
+`external_id` e, se o site mandar no POST `/webhooks/lead`, `fbc`/`_fbc` (ou `fbclid`) e `fbp`/`_fbp`.
+O evento "Lead" o site já envia sozinho, então para esses leads o CRM só manda as etapas
+seguintes (Lead qualificado, Proposta, Venda), com `action_source=system_generated`.
+No log eles aparecem como `pixel:<evento>`.

@@ -169,6 +169,14 @@ export class WebhooksController {
       const utmCampaign = utm('utm_campaign', 'utmCampaign');
       // UTM de mídia paga (ex.: utm_medium=cpc/paid_social) conta como lead de anúncio
       const fromAds = !!utmMedium && /^(cpc|ppc|paid|paid_social|paidsocial|ads|ctwa)$/i.test(utmMedium);
+      // Clique no anúncio (Meta): cookie _fbc, ou monta a partir do fbclid da URL; _fbp = navegador
+      const str = (...keys: string[]) => {
+        for (const k of keys) { const v = body[k]; if (typeof v === 'string' && v.trim() && v.trim() !== '-') return v.trim().slice(0, 500); }
+        return null;
+      };
+      const fbclid = str('fbclid');
+      const metaFbc = str('fbc', '_fbc') ?? (fbclid ? `fb.1.${Date.now()}.${fbclid}` : null);
+      const metaFbp = str('fbp', '_fbp');
       const faturamento = body.faturamento_mensal || body.faturamento || null;
       const modelo = body.modelo_venda || body.modelo || null;
 
@@ -192,6 +200,8 @@ export class WebhooksController {
               utmSource: utmSource ?? undefined,
               utmMedium: utmMedium ?? undefined,
               utmCampaign: utmCampaign ?? undefined,
+              metaFbc: metaFbc ?? undefined,
+              metaFbp: metaFbp ?? undefined,
               leadOrigin: fromAds && !existing.leadOrigin ? 'ADS' : undefined,
               tags: [...new Set([...(existing.tags ?? []), faturamento, modelo].filter(Boolean) as string[])],
             },
@@ -209,6 +219,8 @@ export class WebhooksController {
               utmSource,
               utmMedium,
               utmCampaign,
+              metaFbc,
+              metaFbp,
               leadOrigin: fromAds ? 'ADS' : null,
               tags: [faturamento, modelo].filter(Boolean) as string[],
             },

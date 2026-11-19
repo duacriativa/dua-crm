@@ -420,6 +420,9 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
       `CREATE INDEX IF NOT EXISTS "MetaEventLog_tenantId_eventId_idx" ON "MetaEventLog"("tenantId", "eventId")`,
       `REVOKE ALL ON TABLE "MetaEventLog" FROM anon, authenticated`,
       `GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE "MetaEventLog" TO postgres`,
+      // 20261119000002_contact_meta_click (tabela do postgres: aplicar também pelo Supabase)
+      `ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "metaFbc" TEXT`,
+      `ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "metaFbp" TEXT`,
     ];
     for (const sql of statements) {
       try {
