@@ -27,8 +27,10 @@ export function stageMetaEvent(stage: { metaEvent: string | null; kind: string; 
  * para as campanhas Click-to-WhatsApp otimizarem por lead qualificado / venda
  * e não só por "conversa iniciada".
  *
- * Só contatos que chegaram por anúncio (têm adCtwaClid, gravado pelo webhook do
- * WhatsApp a partir do "referral") são enviados: é ele que liga o evento ao clique.
+ * Lead de anúncio Click-to-WhatsApp (tem adCtwaClid) vai para o dataset da WABA.
+ * Os demais (leads do site) vão para o Pixel do site (META_PIXEL_ID + META_PIXEL_TOKEN),
+ * casados por telefone/e-mail com hash e pelo fbc/fbp que o site manda no formulário.
+ * "Lead" do site o próprio site já envia, então aí o CRM só manda as etapas seguintes.
  *
  * Escuta "funnel.stage_entered" (card movido) e "funnel.lead_created" (card novo);
  * quem move cards sem emitir esses eventos chama onLeadInStage direto.
@@ -96,15 +98,27 @@ export class MetaConversionsService {
 
     const contact = await this.prisma.contact.findFirst({
       where: { id: contactId, tenantId },
-      select: { id: true, adCtwaClid: true },
+      select: { id: true, adCtwaClid: true, phone: true, email: true, metaFbc: true, metaFbp: true },
     });
-    // Sem clique em anúncio não há como atribuir: nada a enviar
-    if (!contact?.adCtwaClid) return { status: 'NO_CTWA' as const };
+    if (!contact) return { status: 'NO_CONTACT' as const };
 
-    // Mesmo evento para o mesmo clique só vai uma vez (lead indo e voltando de etapa)
+    // Dois caminhos:
+    //  - veio de anúncio Click-to-WhatsApp (tem ctwa_clid) → dataset da WABA, business_messaging
+    //  - demais leads (site) → Pixel do site, casando por telefone/e-mail (hash) e fbc/fbp
+    const viaWhatsApp = !!contact.adCtwaClid;
+    const pixelId = process.env.META_PIXEL_ID;
+    const pixelToken = process.env.META_PIXEL_TOKEN;
+    if (!viaWhatsApp) {
+      // O site já manda "Lead" sozinho para o Pixel: o CRM só manda o que acontece depois
+      if (eventName === 'LeadSubmitted') return { status: 'SITE_SENDS_LEAD' as const };
+      if (!pixelId || !pixelToken) return { status: 'NO_PIXEL' as const };
+      if (!contact.phone && !contact.email) return { status: 'NO_MATCH_KEYS' as const };
+    }
+
+    // Mesmo evento para o mesmo lead (e o mesmo clique) só vai uma vez
     const eventId = crypto
       .createHash('sha256')
-      .update(`${contact.id}|${eventName}|${contact.adCtwaClid}`)
+      .update(`${contact.id}|${eventName}|${contact.adCtwaClid ?? 'pixel'}`)
       .digest('hex')
       .slice(0, 32);
     const already = await this.prisma.metaEventLog.findFirst({
@@ -118,7 +132,7 @@ export class MetaConversionsService {
         data: {
           tenantId,
           contactId: contact.id,
-          eventName,
+          eventName: viaWhatsApp ? eventName : `pixel:${eventName}`,
           eventId,
           stageId: opts.stageId ?? null,
           value: opts.value ?? null,
@@ -127,34 +141,47 @@ export class MetaConversionsService {
         },
       });
 
-    const cred = await this.prisma.metaCredential.findUnique({ where: { tenantId } });
-    if (!cred) {
-      await log('SKIPPED', 'WhatsApp oficial não conectado');
-      return { status: 'SKIPPED' as const };
-    }
-    const accessToken = this.encryption.decrypt(cred.accessToken);
-
     let datasetId: string;
-    try {
-      datasetId = cred.datasetId || (await this.ensureDataset(tenantId, cred.wabaId, accessToken));
-    } catch (err: any) {
-      const msg = this.graphError(err);
-      await log('FAILED', `Dataset: ${msg}`);
-      this.logger.warn(`[CAPI] Não foi possível obter o dataset da WABA ${cred.wabaId}: ${msg}`);
-      return { status: 'FAILED' as const, error: msg };
-    }
-
+    let accessToken: string;
     const event: any = {
       event_name: eventName,
       event_time: Math.floor(Date.now() / 1000),
       event_id: eventId,
-      action_source: 'business_messaging',
-      messaging_channel: 'whatsapp',
-      user_data: {
-        whatsapp_business_account_id: cred.wabaId,
-        ctwa_clid: contact.adCtwaClid,
-      },
     };
+
+    if (viaWhatsApp) {
+      const cred = await this.prisma.metaCredential.findUnique({ where: { tenantId } });
+      if (!cred) {
+        await log('SKIPPED', 'WhatsApp oficial não conectado');
+        return { status: 'SKIPPED' as const };
+      }
+      accessToken = this.encryption.decrypt(cred.accessToken);
+      try {
+        datasetId = cred.datasetId || (await this.ensureDataset(tenantId, cred.wabaId, accessToken));
+      } catch (err: any) {
+        const msg = this.graphError(err);
+        await log('FAILED', `Dataset: ${msg}`);
+        this.logger.warn(`[CAPI] Não foi possível obter o dataset da WABA ${cred.wabaId}: ${msg}`);
+        return { status: 'FAILED' as const, error: msg };
+      }
+      event.action_source = 'business_messaging';
+      event.messaging_channel = 'whatsapp';
+      event.user_data = { whatsapp_business_account_id: cred.wabaId, ctwa_clid: contact.adCtwaClid };
+    } else {
+      datasetId = pixelId!;
+      accessToken = pixelToken!;
+      // Evento gerado pelo CRM (não por uma página): system_generated
+      event.action_source = 'system_generated';
+      const sha = (v: string) => crypto.createHash('sha256').update(v).digest('hex');
+      const userData: any = { external_id: [sha(contact.id)], country: [sha('br')] };
+      const digits = (contact.phone || '').replace(/\D/g, '');
+      if (digits) userData.ph = [sha(digits)];
+      const email = (contact.email || '').trim().toLowerCase();
+      if (email) userData.em = [sha(email)];
+      if (contact.metaFbc) userData.fbc = contact.metaFbc;
+      if (contact.metaFbp) userData.fbp = contact.metaFbp;
+      event.user_data = userData;
+    }
     if (eventName === 'Purchase' || (opts.value && opts.value > 0)) {
       event.custom_data = { currency: 'BRL', value: Number(opts.value ?? 0) };
     }
@@ -166,7 +193,7 @@ export class MetaConversionsService {
         { params: { access_token: accessToken }, timeout: 15000 },
       );
       await log('SENT');
-      this.logger.log(`[CAPI] ${eventName} enviado (contato ${contact.id}${opts.value ? `, R$${opts.value}` : ''})`);
+      this.logger.log(`[CAPI] ${eventName} enviado via ${viaWhatsApp ? 'WhatsApp' : 'Pixel'} (contato ${contact.id}${opts.value ? `, R$${opts.value}` : ''})`);
       return { status: 'SENT' as const };
     } catch (err: any) {
       const msg = this.graphError(err);

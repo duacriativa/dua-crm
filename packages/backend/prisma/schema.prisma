@@ -236,6 +236,9 @@ model Contact {
   adHeadline          String?
   adSourceUrl         String?
   adCtwaClid          String?
+  // Clique em anúncio que levou ao site (cookie _fbc / fbclid e _fbp): casa os eventos do CRM no Pixel
+  metaFbc             String?
+  metaFbp             String?
   adReferredAt        DateTime?
   type                ContactType    @default(LEAD)
   profilePicUrl       String?
